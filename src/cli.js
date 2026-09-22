@@ -18,7 +18,8 @@ const USAGE = `crew — a task loop for agents
   crew doctor               is this installation actually wired up?
 
   crew spec-template        print the task template, for a new spec
-  crew graph <what>         read the memory graph: prime, prefs, traps, find
+  crew graph <what>         read the memory graph: prime, prefs, traps,
+                            decisions, files <path...>, find <text>
   crew collisions <task>    unmerged branches already touching its files:
   crew preflight [env]      what this machine can and cannot prove
   crew plan [task|part]     the plan map slice bearing on a task

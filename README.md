@@ -221,7 +221,7 @@ into tasks". See [Planning](#planning).
 | `crew init --list` | the sections, and how to leave one out |
 | `crew doctor` | is this installation actually wired up? |
 | `crew spec-template` | the task template, for a new spec |
-| `crew graph <what>` | read the memory graph: `prime`, `prefs`, `traps`, `find` |
+| `crew graph <what>` | read the memory graph: `prime`, `prefs`, `traps`, `decisions`, `files <path...>`, `find <text>` |
 | `crew collisions <task>` | unmerged branches already touching its `files:` |
 | `crew preflight [env]` | what this machine can and cannot prove |
 | `crew plan [task\|part]` | the plan map slice bearing on a task: its boundaries, symbols and neighbours |

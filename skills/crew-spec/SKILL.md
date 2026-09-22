@@ -157,7 +157,19 @@ Talk it through with the user. Push on:
 - **Which part of the plan?** If there is one, set `part:` — it is how the
   worker and the reviewer reach the same diagram.
 
-Once `files:` is settled, ask whether the work already exists:
+Once `files:` is settled, ask the graph about those exact files:
+
+```sh
+npx crew graph files <each path in files:>
+```
+
+`crew graph traps` is the project's traps in general; this is what is recorded
+against *these* paths, which is the sharper question and the one worth the
+tokens. Anything it returns goes into **Graph context**, compressed, in your
+own words. A trap recorded against a file the task is about to edit is the
+single highest-value line a spec can carry.
+
+Then ask whether the work already exists:
 
 ```sh
 npx crew collisions .claude/tasks/<NNN>-<slug>.md
