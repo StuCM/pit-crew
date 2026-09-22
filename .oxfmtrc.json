@@ -1,5 +1,10 @@
 {
   "printWidth": 100,
   "singleQuote": true,
-  "ignorePatterns": ["**/*.md", "**/*.json", "node_modules/**"]
+  "ignorePatterns": [
+    "**/*.md",
+    "**/*.json",
+    "node_modules/**",
+    "planning/**"
+  ]
 }

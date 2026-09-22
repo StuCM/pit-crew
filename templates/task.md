@@ -6,6 +6,7 @@ branch: crew/NNN-short-slug
 model: sonnet
 env: laptop
 rounds: 0
+part: <part id in the plan maps, or delete this line>
 files:
   - src/example.ts
   - test/example.test.ts
@@ -27,6 +28,13 @@ Which backlog item or decision this serves. One line.
 ## Graph context
 <!-- Inlined by /crew-spec from the memory graph. Workers must NOT re-query:
      if something is missing here, the spec is wrong — say so, don't go digging. -->
+
+## The part this builds
+<!-- `npx crew plan <this file>`, if `part:` is set. The spec carries this
+     part's own purpose and boundaries; that command adds the neighbourhood —
+     what it connects to, and what those neighbours are explicitly NOT for.
+     The map is a reference, not an authority: where it and the code disagree,
+     the code wins and the spec is wrong. -->
 
 ## Constraints that bite here
 <!-- Only the ones that actually touch these files. Not the whole project brief. -->

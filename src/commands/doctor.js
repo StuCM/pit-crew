@@ -34,6 +34,12 @@ export const run = (cfg) => {
     fails.push(`no ${cfg.projectBrief} — the roles have no project rules to include`);
   }
 
+  // A note, never a failure: the loop works without a planning layer, and
+  // most one-file fixes should not have one.
+  if (existsSync(join(cfg.root, cfg.plansDir, 'plan.json'))) {
+    notes.push(`note: planning layer at ${cfg.plansDir} — \`crew plan\` reads it`);
+  }
+
   const settings = join(cfg.root, '.claude', 'settings.json');
   if (existsSync(settings)) {
     if (!readFileSync(settings, 'utf8').includes('crew hook scope')) {

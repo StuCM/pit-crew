@@ -29,6 +29,33 @@ costs a whole round.
 Never query the memory graph. Everything relevant is in **Graph context**. If
 that section looks empty or wrong, say so in the task file.
 
+## The diagram, if the task names one
+
+```sh
+npx crew plan <task-file>
+```
+
+If the task has a `part:`, this prints the part you are building: its purpose,
+what it is explicitly **not** responsible for, the symbols split into the ones
+you change and the ones you only call, and — the bit the spec cannot carry —
+what it connects to and what those neighbours are for.
+
+That last part is what keeps you on track. The commonest drift is not writing
+the wrong code; it is writing the right code in the wrong part, because the
+neighbour it belongs in was never in front of you.
+
+This is still hermetic: it reads JSON in the repo, no graph and no network.
+
+Two rules:
+
+- **The map is a reference, not an authority.** Where it and the code
+  disagree, the code wins and the spec is wrong — say so in the task file.
+  Do not edit the map; you are not its writer.
+- **An open question printed on your part means stop.** Set `status: blocked`
+  and name the question. It reached you because the gate was bypassed or the
+  map moved on, and answering it silently in code is exactly the failure the
+  whole planning layer exists to prevent.
+
 ## Boundaries
 
 - Touch only the paths in `files:`. If the scope hook is installed it will

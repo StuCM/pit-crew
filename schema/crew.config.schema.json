@@ -15,6 +15,7 @@
     "worktreeDir": { "type": "string", "default": "..", "description": "Where /crew-run puts each task's worktree." },
     "tasksDir": { "type": "string", "default": ".claude/tasks" },
     "projectBrief": { "type": "string", "default": ".claude/crew/project.md", "description": "Markdown the worker and reviewer roles include. All project-specific prose lives here." },
+    "plansDir": { "type": "string", "default": ".claude/plans", "description": "Where the planning plugin keeps plan.json and its maps. `crew plan` reads them; nothing breaks if the directory is absent." },
     "decisionsFile": { "type": ["string", "null"], "description": "Where /crew-close records a decision in prose, alongside the graph." },
     "backlogFile": { "type": ["string", "null"], "description": "Read by /crew-status to say what to pick up next." },
     "verify": { "type": ["string", "null"], "description": "The command that proves a task. The gate runs it and will not stamp without it." },

@@ -10,8 +10,12 @@ owns — `.claude/crew.config.json` for the mechanics and
 ## The shape
 
 ```
+                    PLANNING (optional, its own plugin)
+                      maps of the work, traced to evidence and to real symbols
+                      agent-tasks → draft specs, refusing anything unresolved
+                         │
 YOU + ORCHESTRATOR (the main session — not an agent)
-  /crew:crew-spec    discuss → query the graph once → write the spec → YOU APPROVE
+  /crew:crew-spec    read the plan → query the graph once → write the spec → YOU APPROVE
   /crew:crew-run     hand the task to its own session in its own worktree
                          │
                          ├─ TASK SESSION (the crew-worker skill)
@@ -92,7 +96,21 @@ To try it before committing to it:
 claude --plugin-dir /path/to/claude-crew
 ```
 
-### 3. Optional: the memory graph
+### 3. Optional: the planning layer
+
+```
+/plugin install claude-crew-planning@claude-crew
+```
+
+```
+/claude-crew-planning:plan-init
+```
+
+The second plugin in this marketplace, and it installs on its own — you can
+plan with it and hand the specs to any orchestrator. See
+[Planning](#planning).
+
+### 4. Optional: the memory graph
 
 [claude-memory-graph](https://github.com/StuCM/claude-memory-graph) is used if
 it is installed and degrades silently if it is not. See
@@ -117,6 +135,11 @@ The two skills you never call yourself are the point of the design: the worker
 owns its loop from handover to verdict, and the reviewer is spawned by the
 worker, not by you.
 
+With the planning plugin installed there is one more command,
+`/claude-crew-planning:plan-init`, plus six skills that trigger by asking —
+"map this conversation", "let's work through the open threads", "turn the plan
+into tasks". See [Planning](#planning).
+
 ## CLI commands
 
 | | |
@@ -127,6 +150,7 @@ worker, not by you.
 | `crew graph <what>` | read the memory graph: `prime`, `prefs`, `traps`, `find` |
 | `crew collisions <task>` | unmerged branches already touching its `files:` |
 | `crew preflight [env]` | what this machine can and cannot prove |
+| `crew plan [task\|part]` | the plan map slice bearing on a task: its boundaries, symbols and neighbours |
 | `crew gate <task>` | prepare + scope + verify, then stamp the commit |
 | `crew gate --check <task>` | has the gate passed on the code that is here? |
 | `crew scope <task> [base]` | changed files against the spec's `files:` |
@@ -220,25 +244,87 @@ and **stops** for the second approval before it merges.
 ## Planning
 
 Upstream of `/crew:crew-spec` is **`claude-crew-planning`**, the second plugin
-in this marketplace: evidence-traced maps of a piece of work — a brainstorm map
-from the conversation, an architecture map of parts and connections, a feature
-map whose symbols are verified against real files — and a gate that refuses to
-emit a task while a question on it is still open.
+in this marketplace. Six skills that turn a conversation into agent-ready work:
+
+| skill | what it does | needs a repo |
+|---|---|---|
+| `brainstorm-map` | a planning chat becomes a map of what was decided, ruled out, corrected and left open | no |
+| `architecture-map` | the parts that implies, how they connect, and what each is explicitly *not* | no |
+| `feature-map` | the slice of an existing codebase a feature meets, every symbol verified against the file | **yes** |
+| `open-threads` | works the unresolved parts as a conversation, and writes the outcome back | no |
+| `agent-tasks` | task packets in dependency order — **refuses** anything unresolved | no |
+| `taiga-mirror` | crew task state pushed to Taiga as a read-only board | no |
+
+Layout is computed by Python, never emitted by a model, and the validator
+refuses a node with no evidence quote, a rejected route with no stated reason,
+or a symbol claimed without a real `file:line`.
+
+### Where it meets crew
+
+**`agent-tasks` is a pre-stage of `/crew:crew-spec`, not a peer.** It writes
+`status: draft` specs with `files:`, Approach and Out of scope already lifted
+from the maps, and deliberately does not run `crew collisions`, prime the
+graph, or choose `model:`. It removes the blank-page work, not the gate.
+
+**The orchestrator reads the plan at spec time** and records which part a task
+builds in the spec's `part:`.
+
+**The worker and the reviewer read the same part**, through `crew plan`:
+
+```bash
+npx crew plan .claude/tasks/007-mermaid-writer.md
+```
 
 ```
-/plugin install claude-crew-planning@claude-crew
+Build script  [extend]  in the feature map — Arches 3D viewer
+
+  Purpose     Reads the map JSON, validates it, writes the HTML.
+  Why here    This is where the new output format hangs.
+  Where       scripts/build_map.py
+
+  Changing:
+    modify   main  scripts/build_map.py:71
+             Add a --format {html,mermaid,both} argument and branch after validation.
+  Using — do not change these:
+    call     build  scripts/build_map.py:8
+             Untouched. The Mermaid path is a sibling of this call.
+
+  Connected to:
+    → depends "validates first" Validator
+      The export must sit behind the gate, not beside it.
+    ← depends "documents"       Skill instructions
 ```
 
-It installs on its own. You can plan with it and hand the specs to any
-orchestrator, or run crew with no planning layer at all.
+The spec already carries the part's own purpose and boundaries. What it cannot
+carry is the **neighbourhood**, and that is what keeps a worker on track: the
+commonest drift is not writing the wrong code, it is writing the right code in
+the wrong part, because the neighbour it belonged in was never in front of it.
+The reviewer checks the diff against the same `not` list, which catches
+behaviour in a permitted file that a diff alone cannot.
 
-It is one-directional by design. The maps are the working surface for a piece
-of work; the memory graph is the durable record. Confirmed decisions and dead
-ends land in the graph, and the maps become disposable once they have, so crew
-keeps querying one store rather than two that drift.
+Workers stay hermetic — this reads JSON in the repo, no MCP and no network.
+The map is a **reference, not an authority**: where it and the code disagree,
+the code wins and the spec is wrong.
 
-> **Status:** the planning plugin is built but the crew-side seam is not. See
-> [Not done yet](#not-done-yet).
+An open question printed on a part stops the worker. It should never get that
+far — `agent-tasks` refuses to emit a task for a part with one — so it means
+the gate was bypassed or the map moved on afterwards.
+
+### The maps are not a second memory
+
+One-directional by design. The maps are the working surface for one piece of
+work; the memory graph is the durable record. At close,
+`planning/scripts/graph_propose.py` turns confirmed decisions and ruled-out
+routes into proposed Patterns and Constraints — it proposes, the orchestrator
+commits, because one writer is still one writer. Once those have landed the
+maps are disposable. Two stores drift, and a drifting store gives bad advice.
+
+### Not everything earns a map
+
+Route on blast radius, not on the word "bug" or "feature". One file with a
+known cause goes straight to `/crew:crew-spec`. Work that crosses a boundary,
+or a bug nobody can yet scope, earns a map — a bug whose fix nobody can scope
+is a planning problem wearing a bug's clothes.
 
 ## Why it is arranged this way
 
@@ -315,14 +401,17 @@ cost; they are not a way to refuse one.
 
 ## Not done yet
 
-- **The planning seam.** `/crew:crew-spec` does not read plan maps, the task
-  template has no field pointing a worker at the diagram it is building
-  against, and `crew init` does not scaffold a plans directory. The planning
-  plugin's `agent-tasks` emits crew specs today, but they arrive as `draft`
-  with `Graph context` marked as coming from the maps rather than the graph.
-- **The Taiga mirror.** The planning plugin carries a `taiga-mirror` skill, but
-  nothing in crew calls it. It belongs beside `crew log` in this package — a
-  skill copy in a project would be overwritten by the next `crew init`.
+- **Nothing has run end to end on real work.** Every part is tested in
+  isolation; the chain from a planning conversation to a merged task has not
+  been walked once. The next useful thing is to do that on one real piece of
+  work and note every place you had to intervene.
+- **Taiga status names are conventional guesses.** `New` / `Ready` /
+  `In progress` / `Ready for test` / `Done` vary by instance, and a status
+  that does not exist fails the push quietly. Check them before the first run.
+- **`crew init` does not scaffold the plans directory** —
+  `/claude-crew-planning:plan-init` does, and it prints the `plansDir` line to
+  add to `crew.config.json`. Two installers for one thing is worse than one
+  extra command.
 
 ## Contributing
 

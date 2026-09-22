@@ -1,0 +1,14 @@
+{
+  "name": "Arches 3D viewer",
+  "maps": {
+    "brainstorm": {
+      "file": "map-arches-3d-viewer.json"
+    },
+    "architecture": {
+      "file": "arch-arches-3d-viewer.json"
+    },
+    "feature": {
+      "file": "feature-brainstorm-mermaid.json"
+    }
+  }
+}

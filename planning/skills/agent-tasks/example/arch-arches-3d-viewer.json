@@ -1,0 +1,239 @@
+{
+  "id": "arches-3d-architecture",
+  "title": "3D viewer for Arches — architecture",
+  "summary": "The parts implied by the planning session, and how they connect. Nothing here is built yet: this is the shape the conversation arrived at, with the boundaries that were argued for and the questions that would change them.",
+  "generated": "2026-09-20",
+  "source": {
+    "title": "3D viewer widget integration for multiple file formats",
+    "url": "https://claude.ai/chat/acd43749-f346-4f34-8f55-6c6d2b041619",
+    "turns": 14,
+    "brainstorm": "https://claude.ai/artifact/3xW2G8rnK57rCY7cPaYaut"
+  },
+  "groups": [
+    {"id": "g-ingest", "label": "Ingest", "colour": "#3b82ac"},
+    {"id": "g-convert", "label": "Conversion", "colour": "#e08033"},
+    {"id": "g-store", "label": "Storage", "colour": "#5b7086"},
+    {"id": "g-view", "label": "Viewing", "colour": "#14a09a"},
+    {"id": "g-find", "label": "Finding", "colour": "#7b5ea7"}
+  ],
+  "parts": [
+    {
+      "id": "p-digobj",
+      "label": "Digital Object",
+      "group": "g-ingest",
+      "kind": "data",
+      "status": "open",
+      "purpose": "The Arches resource that holds a 3D file, its format, its derivatives and a processing status, and links to the Monument or site it depicts.",
+      "why_split": "Everything else binds to this. The widget needs to know which node holds the file; the search filter needs whatever metadata is worth filtering on. It is the contract the rest of the design rests on.",
+      "responsibilities": [
+        "Point at the original uploaded file",
+        "Record format and processing status",
+        "List derivative files produced at ingest",
+        "Link to the resource the model depicts"
+      ],
+      "not": ["Storing file bytes — that is the file store"],
+      "open": [
+        "Is this the standard Arches reference data model or customised?",
+        "Is there already a node for the file, and one for format?",
+        "Does a Monument link to it via a resource-instance node, so a viewer can be reused without duplicating storage?",
+        "What model metadata is worth capturing at ingest — poly count, textures, scan date?"
+      ],
+      "evidence": [
+        {"turn": 3, "speaker": "assistant", "quote": "What does your current Digital Object graph look like"}
+      ],
+      "traces": [{"id": "n-graph", "label": "Digital Object graph"}, {"id": "n-filterby", "label": "\"Filter by model\""}]
+    },
+    {
+      "id": "p-upload",
+      "label": "Upload handling",
+      "group": "g-ingest",
+      "kind": "service",
+      "status": "agreed",
+      "purpose": "Accepts a 3D file against a Digital Object, stores the original untouched, and enqueues a conversion job.",
+      "why_split": "The decision that conversion happens at ingest rather than at view time puts a queue boundary right here. Upload has to return before conversion finishes.",
+      "responsibilities": ["Store the original", "Enqueue conversion", "Set status to pending"],
+      "not": ["Running any conversion itself", "Deciding which renderer will be used"],
+      "evidence": [
+        {"turn": 11, "speaker": "assistant", "quote": "On upload, not on view"}
+      ],
+      "traces": [{"id": "n-onupload", "label": "Convert on upload"}]
+    },
+    {
+      "id": "p-queue",
+      "label": "Conversion worker",
+      "group": "g-convert",
+      "kind": "job",
+      "status": "agreed",
+      "purpose": "A background worker that picks up conversion jobs, runs the right converter for the format, writes derivatives back and flips the status.",
+      "why_split": "nxsbuild on a 50-million-triangle mesh takes minutes to hours. Nothing in a request cycle can wait for that.",
+      "responsibilities": ["Select converter by format and size", "Run it", "Register derivatives", "Update status"],
+      "not": ["Deciding the tier at view time — the widget does that from what exists"],
+      "open": [
+        "Same-server Celery worker to start, or a dedicated conversion pod? Start simple, split if load appears.",
+        "Which node pool on AKS if CPU pressure shows up?"
+      ],
+      "evidence": [
+        {"turn": 11, "speaker": "assistant", "quote": "I'd start with the same-server Celery approach"}
+      ],
+      "traces": [{"id": "n-where", "label": "Where it runs"}]
+    },
+    {
+      "id": "p-potreeconv",
+      "label": "PotreeConverter 2.x",
+      "group": "g-convert",
+      "kind": "external",
+      "status": "agreed",
+      "purpose": "Converts LAS/LAZ/PLY/PTX point clouds into a static octree directory that can be served as flat files.",
+      "why_split": "Third-party C++ binary. It is a dependency of the worker, not something we write or control.",
+      "not": ["Anything to do with meshes"],
+      "evidence": [{"turn": 5, "speaker": "assistant", "quote": "This is the default choice"}],
+      "traces": [{"id": "n-potreeconv", "label": "PotreeConverter 2.x"}]
+    },
+    {
+      "id": "p-nxsbuild",
+      "label": "Nexus converter",
+      "group": "g-convert",
+      "kind": "external",
+      "status": "proposed",
+      "purpose": "Builds the multiresolution NXZ representation used for meshes too large to load whole.",
+      "why_split": "Only runs for the heavy tier, and brings a packaging problem the other converters do not.",
+      "open": [
+        "Ships officially as Windows binaries — how does it run in a Kubernetes ingest pipeline?",
+        "Accepts only PLY and OBJ, so anything else needs a conversion before the conversion"
+      ],
+      "evidence": [{"turn": 9, "speaker": "assistant", "quote": "Nexus has a Three.js loader built in"}],
+      "traces": [{"id": "n-nexus", "label": "Nexus loader"}]
+    },
+    {
+      "id": "p-dwgconv",
+      "label": "DWG converter",
+      "group": "g-convert",
+      "kind": "external",
+      "status": "open",
+      "purpose": "Would turn AutoCAD DWG into something a browser can read — DWF, IFC or GLTF.",
+      "why_split": "DWG has no browser path at all, so it needs a step nothing else needs, with a licensing question attached.",
+      "open": [
+        "ODA File Converter is free only for non-commercial use — the Queensland work is commercial",
+        "Autodesk APS is the alternative; cost and data-residency unexamined"
+      ],
+      "evidence": [{"turn": 9, "speaker": "assistant", "quote": "DWG still needs its own conversion step regardless"}],
+      "traces": [{"id": "n-dwg", "label": "DWG"}]
+    },
+    {
+      "id": "p-filestore",
+      "label": "File store",
+      "group": "g-store",
+      "kind": "store",
+      "status": "open",
+      "purpose": "Holds originals and derivative files, and serves them to the browser.",
+      "why_split": "Streaming renderers need HTTP range requests. Whether the store supports them decides whether the heavy tier works at all.",
+      "responsibilities": ["Serve originals", "Serve octree chunks and NXZ files", "Support range requests"],
+      "open": [
+        "S3-compatible blob storage, or local filesystem behind Django?",
+        "If Django is serving these, does range-request support come for free or need work?"
+      ],
+      "evidence": [{"turn": 11, "speaker": "assistant", "quote": "what's your storage backend for these files?"}],
+      "traces": [{"id": "n-storage", "label": "Storage backend"}, {"id": "n-selfhost", "label": "Self-hosted files"}]
+    },
+    {
+      "id": "p-widget",
+      "label": "Viewer widget",
+      "group": "g-view",
+      "kind": "ui",
+      "status": "agreed",
+      "purpose": "One Arches widget bound to a Digital Object's file node. Looks at which derivatives exist and hands off to the right renderer.",
+      "why_split": "Keeping the Arches integration in one component means the tile binding, permissions and card template are written once, even though the renderers underneath do genuinely different work.",
+      "responsibilities": ["Bind to the tile", "Choose a renderer from available derivatives", "Own the canvas slot"],
+      "not": ["Rendering anything itself", "Triggering conversion"],
+      "open": ["Knockout for v7 or Vue on the v8 trajectory?"],
+      "evidence": [
+        {"turn": 13, "speaker": "assistant", "quote": "one widget component, but with two rendering modes"}
+      ],
+      "traces": [{"id": "n-widget", "label": "Viewer widget"}, {"id": "n-onewidget", "label": "One shell, two renderers"}]
+    },
+    {
+      "id": "p-o3dv",
+      "label": "Online 3D Viewer",
+      "group": "g-view",
+      "kind": "external",
+      "status": "agreed",
+      "purpose": "Tier-1 renderer. Loads the original file directly for the wide format spread, up to roughly 50MB.",
+      "why_split": "Vendored third-party library with its own Three.js and its own UI. We call it; we do not maintain it.",
+      "not": ["Anything streamed or multiresolution — it loads whole files"],
+      "evidence": [{"turn": 5, "speaker": "assistant", "quote": "Online 3D Viewer for the widget"}],
+      "traces": [{"id": "n-o3dv", "label": "Online 3D Viewer"}]
+    },
+    {
+      "id": "p-nexusview",
+      "label": "Nexus renderer",
+      "group": "g-view",
+      "kind": "external",
+      "status": "proposed",
+      "purpose": "Tier-2 mesh renderer. NexusObject in a Three.js scene, streaming an NXZ derivative.",
+      "why_split": "Separated from 3DHOP deliberately — the streaming is usable without adopting that framework's viewer or its licence.",
+      "evidence": [{"turn": 9, "speaker": "assistant", "quote": "the multiresolution streaming tech and 3DHOP's viewer UI are actually separable"}],
+      "traces": [{"id": "n-nexus", "label": "Nexus loader"}, {"id": "n-3dhop-sep", "label": "Streaming is separable"}]
+    },
+    {
+      "id": "p-potree",
+      "label": "Potree renderer",
+      "group": "g-view",
+      "kind": "external",
+      "status": "agreed",
+      "purpose": "Point cloud renderer. Streams octree chunks so only what is in view at the current zoom is loaded.",
+      "why_split": "Points are not triangles — its camera controls, measurement and clipping semantics are its own, so it stays a distinct renderer even inside the shared widget.",
+      "evidence": [{"turn": 5, "speaker": "assistant", "quote": "the standard for web point cloud viewing"}],
+      "traces": [{"id": "n-potree", "label": "Potree"}]
+    },
+    {
+      "id": "p-search",
+      "label": "Search filter",
+      "group": "g-find",
+      "kind": "ui",
+      "status": "proposed",
+      "purpose": "An Arches search filter that narrows results to resources with 3D data, with format facets and thumbnails.",
+      "why_split": "Extending search keeps permissions, saved searches, export and spatial filters for free. A separate browse page loses all four.",
+      "open": ["What does \"filter by model\" actually mean — format, subject, or model properties?"],
+      "evidence": [{"turn": 3, "speaker": "assistant", "quote": "extend search instead"}],
+      "traces": [{"id": "n-searchfilter", "label": "Search filter first"}]
+    },
+    {
+      "id": "p-plugin",
+      "label": "3D browser plugin",
+      "group": "g-find",
+      "kind": "ui",
+      "status": "rejected",
+      "purpose": "A dedicated page for browsing and comparing 3D models, with its own routing and state.",
+      "why_split": "Deferred, not dropped. Only justified if search genuinely cannot do the job — side-by-side comparison, a spatial 3D browser, or a curated gallery distinct from search.",
+      "evidence": [{"turn": 3, "speaker": "assistant", "quote": "A plugin is a bigger commitment"}],
+      "traces": [{"id": "n-plugin", "label": "3D browser plugin"}]
+    }
+  ],
+  "edges": [
+    {"id": "e-up-store", "from": "p-upload", "to": "p-filestore", "kind": "data", "label": "original",
+     "note": "The original is always preserved, whatever derivatives get made later."},
+    {"id": "e-up-dig", "from": "p-upload", "to": "p-digobj", "kind": "data", "label": "file node + status"},
+    {"id": "e-up-queue", "from": "p-upload", "to": "p-queue", "kind": "event", "label": "enqueue",
+     "note": "The asynchronous boundary. Upload returns immediately; conversion finishes later.",
+     "evidence": [{"turn": 11, "speaker": "assistant", "quote": "On upload, not on view"}]},
+    {"id": "e-q-potc", "from": "p-queue", "to": "p-potreeconv", "kind": "control", "label": "point clouds"},
+    {"id": "e-q-nxs", "from": "p-queue", "to": "p-nxsbuild", "kind": "control", "label": "large meshes"},
+    {"id": "e-q-dwg", "from": "p-queue", "to": "p-dwgconv", "kind": "control", "label": "DWG"},
+    {"id": "e-potc-store", "from": "p-potreeconv", "to": "p-filestore", "kind": "data", "label": "octree"},
+    {"id": "e-nxs-store", "from": "p-nxsbuild", "to": "p-filestore", "kind": "data", "label": "NXZ"},
+    {"id": "e-dwg-store", "from": "p-dwgconv", "to": "p-filestore", "kind": "data", "label": "GLTF"},
+    {"id": "e-q-dig", "from": "p-queue", "to": "p-digobj", "kind": "data", "label": "register derivatives",
+     "note": "This write is what the widget later reads to pick a renderer, so the derivative list is the real interface between conversion and viewing."},
+    {"id": "e-dig-widget", "from": "p-digobj", "to": "p-widget", "kind": "data", "label": "which derivatives exist"},
+    {"id": "e-w-o3dv", "from": "p-widget", "to": "p-o3dv", "kind": "control", "label": "no derivative"},
+    {"id": "e-w-nexus", "from": "p-widget", "to": "p-nexusview", "kind": "control", "label": "NXZ present"},
+    {"id": "e-w-potree", "from": "p-widget", "to": "p-potree", "kind": "control", "label": "octree present"},
+    {"id": "e-o3dv-store", "from": "p-o3dv", "to": "p-filestore", "kind": "data", "label": "whole file"},
+    {"id": "e-nexus-store", "from": "p-nexusview", "to": "p-filestore", "kind": "data", "label": "range requests",
+     "note": "This is the edge that makes the storage question load-bearing rather than incidental."},
+    {"id": "e-potree-store", "from": "p-potree", "to": "p-filestore", "kind": "data", "label": "octree chunks"},
+    {"id": "e-dig-search", "from": "p-digobj", "to": "p-search", "kind": "data", "label": "facets"},
+    {"id": "e-search-widget", "from": "p-search", "to": "p-widget", "kind": "control", "label": "opens",
+     "note": "Search results lead back into the resource report where the widget lives."}
+  ]
+}

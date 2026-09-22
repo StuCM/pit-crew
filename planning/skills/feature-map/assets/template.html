@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>__TITLE__</title>
+<style>
+  :root{
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+    --bg:#f7f6f3; --panel:#ffffff; --ink:#1d1d1f; --muted:#6b6b70;
+    --line:#d9d7d1; --accent:#2f6f6a; --shadow:0 6px 24px rgba(0,0,0,.12);
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#17181a; --panel:#212326; --ink:#eceded; --muted:#9a9ca1;
+      --line:#34373c; --accent:#5fb6ad; --shadow:0 6px 24px rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#17181a; --panel:#212326; --ink:#eceded; --muted:#9a9ca1;
+    --line:#34373c; --accent:#5fb6ad; --shadow:0 6px 24px rgba(0,0,0,.5);
+  }
+  *{box-sizing:inherit}
+  html,body{height:100%;margin:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--font);
+       display:flex;flex-direction:column;overflow:hidden;-webkit-text-size-adjust:100%}
+  header{flex:0 0 auto;padding:10px 12px;border-bottom:1px solid var(--line);
+         background:var(--panel);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .ttl{font-weight:650;font-size:15px;line-height:1.25;margin-right:auto;min-width:0}
+  .ttl small{display:block;font-weight:400;color:var(--muted);font-size:11.5px;margin-top:2px}
+  .tabs{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .tabs button{border:0;background:transparent;color:var(--muted);font:inherit;font-size:13px;padding:6px 11px;cursor:pointer}
+  .tabs button[aria-selected="true"]{background:var(--accent);color:#fff}
+  .btn{border:1px solid var(--line);background:transparent;color:var(--ink);font:inherit;
+       font-size:12.5px;padding:6px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}
+  .btn[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
+  main{flex:1 1 auto;position:relative;overflow:hidden}
+  .view{position:absolute;inset:0;display:none}
+  .view.on{display:block}
+  #mapview{touch-action:none;cursor:grab}
+  #mapview.drag{cursor:grabbing}
+  #svg{width:100%;height:100%;display:block}   /* map canvas only — not the key icons */
+  .key{position:absolute;left:8px;bottom:8px;right:52px;display:flex;align-items:center;
+       gap:11px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+       background:color-mix(in srgb,var(--panel) 88%,transparent);
+       border:1px solid var(--line);border-radius:8px;padding:3px 8px;height:22px}
+  .key::-webkit-scrollbar{display:none}
+  .kchip{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;line-height:1;
+         color:var(--muted);white-space:nowrap}
+  .kchip svg{flex:0 0 auto;display:block;width:auto;height:auto}
+  .kchip .g{font-size:10px;color:var(--ink)}
+  .klabel{flex:0 0 auto;font-size:8.5px;text-transform:uppercase;letter-spacing:.09em;
+          color:var(--muted);opacity:.65}
+  .ksep{flex:0 0 auto;width:1px;height:11px;background:var(--line)}
+  .zoomer{position:absolute;right:8px;bottom:8px;display:flex;flex-direction:column;gap:6px}
+  .zoomer button{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);
+                 background:var(--panel);color:var(--ink);font-size:16px;cursor:pointer;box-shadow:var(--shadow)}
+  .scroll{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 14px 60px}
+  .wrap{max-width:760px;margin:0 auto}
+  .grp-h{display:flex;align-items:center;gap:8px;margin:18px 0 6px;font-size:14.5px;font-weight:650}
+  .swatch{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
+  ul.plain{list-style:none;margin:0;padding:0}
+  ul.plain li{margin:5px 0}
+  .row{display:flex;gap:8px;align-items:flex-start;width:100%;text-align:left;background:var(--panel);
+       border:1px solid var(--line);border-radius:9px;padding:8px 10px;font:inherit;font-size:13.5px;
+       color:var(--ink);cursor:pointer;line-height:1.35}
+  .row .cl{color:var(--muted);font-size:12px;display:block;margin-top:2px}
+  .glyph{flex:0 0 auto;font-size:12px;width:16px;text-align:center;opacity:.85}
+  .doc h2{font-size:17px;margin:26px 0 4px;display:flex;align-items:center;gap:8px}
+  .doc h3{font-size:14.5px;margin:20px 0 4px}
+  .doc p{line-height:1.62;font-size:14px;margin:8px 0}
+  .doc .lead{color:var(--muted);font-size:13.5px;margin:2px 0 6px}
+  .doc ul{margin:6px 0;padding-left:20px;font-size:13.5px;line-height:1.55}
+  .badge{display:inline-block;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;
+         border-radius:999px;padding:2px 8px;border:1px solid currentColor;vertical-align:2px}
+  blockquote{margin:8px 0;padding:6px 0 6px 11px;border-left:3px solid var(--line);color:var(--muted);font-size:12.5px;line-height:1.5}
+  blockquote .who{display:block;font-size:11px;opacity:.8;margin-top:3px}
+  a.who{color:var(--accent);text-decoration:none;opacity:1}
+  a.who:hover{text-decoration:underline}
+  .doc section{scroll-margin-top:14px}
+  .doc section:target{background:color-mix(in srgb,var(--accent) 12%,transparent);border-radius:10px;padding:2px 10px;margin:0 -10px}
+  .sheet{position:absolute;z-index:20;background:var(--panel);box-shadow:var(--shadow);border:1px solid var(--line);display:none;flex-direction:column}
+  .sheet.on{display:flex}
+  @media (max-width:759px){ .sheet{left:0;right:0;bottom:0;max-height:74%;border-radius:16px 16px 0 0;padding-bottom:env(safe-area-inset-bottom,0px)} }
+  @media (min-width:760px){ .sheet{top:12px;right:12px;bottom:12px;width:380px;border-radius:14px} }
+  .sheet header{border:0;border-bottom:1px solid var(--line);background:transparent}
+  .sheet .body{overflow-y:auto;padding:12px 14px 16px;font-size:13.5px;line-height:1.55}
+  .sheet .body p{margin:8px 0}
+  .sheet .body ul{margin:6px 0;padding-left:19px}
+  .sheet .body li{margin:3px 0}
+  .sheet h4{margin:14px 0 2px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .sheet .acts{display:flex;gap:8px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line)}
+  .x{border:0;background:transparent;color:var(--muted);font-size:20px;cursor:pointer;padding:0 4px;line-height:1}
+  .danger{border-color:#cf4055;color:#cf4055}
+  textarea{width:100%;height:190px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;
+           border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);padding:8px}
+  .empty{color:var(--muted);font-size:13px}
+  .note{color:var(--muted);font-size:12px;margin-top:6px}
+  .sym{border-left:2px solid var(--line);padding:3px 0 3px 9px;margin:7px 0}
+  .symhead{display:flex;gap:7px;align-items:baseline;flex-wrap:wrap}
+  .symhead code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--ink);word-break:break-all}
+  .symtag{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
+          border:1px solid var(--line);border-radius:999px;padding:1px 7px;white-space:nowrap}
+  .symtag.change{color:#fff;background:#cf4055;border-color:#cf4055}
+  .symtag.use{color:var(--muted)}
+  .symtag.unver{color:#d9a520;border-color:#d9a520;background:transparent}
+  .symchange{font-size:12.5px;color:var(--ink);margin-top:4px;line-height:1.45}
+  .sym.changing{border-left-color:#cf4055}
+  .symloc{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;color:var(--muted);margin-top:2px;word-break:break-all}
+  .symnote{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.45}
+  .cmt{border-left:2px solid #d9a520;padding:5px 0 5px 9px;margin:8px 0}
+  .cmthead{display:flex;gap:7px;align-items:baseline;flex-wrap:wrap;font-size:10px;
+           text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .cmthead .tp{border:1px solid #d9a520;color:#d9a520;border-radius:999px;padding:1px 7px}
+  .cmtbody{font-size:13px;line-height:1.5;margin-top:4px;color:var(--ink)}
+  .cmtreply{font-size:12.5px;line-height:1.55;margin-top:6px;padding:7px 9px;
+            background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--ink);
+            white-space:pre-wrap}
+  .cmtreply em{color:var(--muted);font-style:normal;font-size:11px;display:block;margin-top:5px}
+  .cmtform{margin-top:8px}
+  .cmtform textarea{height:74px;font-family:var(--font);font-size:13px}
+  .cmtform .kinds{display:flex;gap:6px;margin:6px 0}
+  .cmtform .kinds button{font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);
+                         background:transparent;color:var(--muted);cursor:pointer}
+  .cmtform .kinds button[aria-pressed="true"]{background:#d9a520;border-color:#d9a520;color:#241c00}
+  .trace{display:inline-block;font-size:11.5px;border:1px dashed var(--line);border-radius:7px;
+         padding:3px 8px;margin:3px 5px 0 0;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <div class="ttl">__TITLE__<small id="src"></small></div>
+  <div class="tabs" role="tablist">
+    <button role="tab" data-view="map" aria-selected="true">Map</button>
+    <button role="tab" data-view="outline" aria-selected="false">Parts</button>
+    <button role="tab" data-view="doc" aria-selected="false">Doc</button>
+  </div>
+  <button class="btn" id="editBtn" aria-pressed="false">Prune</button>
+  <button class="btn" id="cmtBtn">Comments <span id="cmtN">0</span></button>
+  <button class="btn" id="exBtn">Removed <span id="exN">0</span></button>
+</header>
+<main>
+  <div class="view on" id="mapview">
+    <svg id="svg"><g id="cam"></g></svg>
+    <div class="key" id="keyPanel"></div>
+    <div class="zoomer">
+      <button id="zin" title="Zoom in">+</button>
+      <button id="zout" title="Zoom out">−</button>
+      <button id="zfit" title="Fit" style="font-size:12px">fit</button>
+      <button id="zreset" title="Reset moved parts" style="display:none">↺</button>
+    </div>
+  </div>
+  <div class="view" id="outlineview"><div class="scroll"><div class="wrap" id="outline"></div></div></div>
+  <div class="view" id="docview"><div class="scroll"><div class="wrap doc" id="doc"></div></div></div>
+  <aside class="sheet" id="sheet" aria-live="polite">
+    <header><div class="ttl" id="sheetTitle"></div><button class="x" id="sheetClose" aria-label="Close">×</button></header>
+    <div class="body" id="sheetBody"></div>
+    <div class="acts" id="sheetActs"></div>
+  </aside>
+</main>
+<script>
+const MAP = __MAP_DATA__;
+
+const PALETTE = ["#14a09a","#3b82ac","#d9a520","#cf4055","#e08033","#7b5ea7","#4a9e5c","#5b7086"];
+const STATUS = {
+  exists:  {glyph:"▪", label:"Exists",       fill:"ghost"},
+  extend:  {glyph:"±", label:"We change it", fill:"outline"},
+  new:     {glyph:"+", label:"We build it",  fill:"solid"},
+  unknown: {glyph:"?", label:"Unknown",      fill:"dotted"}
+};
+
+/* One definition of how a status looks, used by both the map and the key, so
+   the two can never drift apart. Four statuses, four distinct treatments:
+   faint wash, bold outline, solid fill, dotted outline. */
+function boxStyle(fill){
+  switch (fill){
+    case "solid":   return {filled:true,  fillOp:1,   stroke:1.6, strokeOp:1,  dash:null,  white:true,  textOp:1};
+    case "ghost":   return {filled:true,  fillOp:.10, stroke:1,   strokeOp:.5, dash:null,  white:false, textOp:.75};
+    case "outline": return {filled:false, fillOp:1,   stroke:2.4, strokeOp:1,  dash:null,  white:false, textOp:1};
+    default:        return {filled:false, fillOp:1,   stroke:1.4, strokeOp:.9, dash:"2 3", white:false, textOp:1};
+  }
+}
+const KIND = {ui:"▤", service:"⚙", job:"⟳", store:"▦", external:"↗", data:"◇"};
+const EDGE = {data:"data", depends:"depends on", control:"controls", event:"event"};
+const st = s => STATUS[s] || STATUS.proposed;
+
+/* ---------- model ---------- */
+const parts = (MAP.parts || []).map(p => ({...p}));
+const byId = new Map(parts.map(p => [p.id, p]));
+const groups = new Map((MAP.groups || []).map((g,i) => [g.id, {...g, colour: g.colour || PALETTE[i % PALETTE.length]}]));
+parts.forEach(p => { p.colour = (groups.get(p.group) || {}).colour || PALETTE[0]; });
+const edges = (MAP.edges || []).filter(e => byId.has(e.from) && byId.has(e.to))
+  .map((e,i) => ({...e, _i:i, id: e.id || `e${i}`}));
+
+/* ---------- exclusions ---------- */
+const KEY = "fmap:" + (MAP.id || "map") + ":excluded";
+const POSKEY = "fmap:" + (MAP.id || "map") + ":pos";
+let excluded = new Set();
+try { const r = localStorage.getItem(KEY); if (r) excluded = new Set(JSON.parse(r)); } catch(e){}
+function persist(){ try { localStorage.setItem(KEY, JSON.stringify([...excluded])); } catch(e){} }
+let userPos = {};
+try { const r = localStorage.getItem(POSKEY); userPos = r ? JSON.parse(r) : (MAP.layout ? {...MAP.layout} : {}); }
+catch(e){ userPos = MAP.layout ? {...MAP.layout} : {}; }
+function savePos(){ try { localStorage.setItem(POSKEY, JSON.stringify(userPos)); } catch(e){} }
+
+const livePart = p => !excluded.has(p.id) && !excluded.has(p.group);
+const liveParts = () => parts.filter(livePart);
+const liveEdges = () => edges.filter(e => !excluded.has(e.id) && livePart(byId.get(e.from)) && livePart(byId.get(e.to)));
+
+/* ---------- layered layout ----------
+   Longest-path layering on the acyclic part of the graph, barycentre sweeps to
+   cut crossings, then columns sized by the widest label in each. Cycles are
+   real in architecture, so back edges are detected, excluded from layering and
+   drawn differently rather than being treated as an error. */
+const SVGNS = "http://www.w3.org/2000/svg";
+function el(t, a){ const e = document.createElementNS(SVGNS, t); for (const k in a) e.setAttribute(k, a[k]); return e; }
+const COL_GAP = 96, ROW_GAP = 20;
+let back = new Set();
+
+function layerise(ps, es){
+  back = new Set();
+  const out = new Map(ps.map(p => [p.id, []]));
+  es.forEach(e => out.get(e.from).push(e));
+  const state = new Map();
+  const dfs = id => {
+    state.set(id, "open");
+    out.get(id).forEach(e => {
+      const s = state.get(e.to);
+      if (s === "open") back.add(e.id);
+      else if (s !== "done") dfs(e.to);
+    });
+    state.set(id, "done");
+  };
+  ps.forEach(p => { if (!state.get(p.id)) dfs(p.id); });
+
+  const layer = new Map(ps.map(p => [p.id, 0]));
+  for (let pass = 0; pass < ps.length + 2; pass++){
+    let moved = false;
+    es.forEach(e => {
+      if (back.has(e.id)) return;
+      const want = layer.get(e.from) + 1;
+      if (want > layer.get(e.to)){ layer.set(e.to, want); moved = true; }
+    });
+    if (!moved) break;
+  }
+  const cols = [];
+  ps.forEach(p => { const L = layer.get(p.id); (cols[L] = cols[L] || []).push(p); });
+  return cols.filter(Boolean);
+}
+
+function order(cols, es){
+  const pos = new Map();
+  const sync = () => cols.forEach(c => c.forEach((p,i) => pos.set(p.id, i)));
+  sync();
+  const bary = (p, fwd) => {
+    const v = es.filter(e => !back.has(e.id) && (fwd ? e.to === p.id : e.from === p.id))
+                .map(e => pos.get(fwd ? e.from : e.to)).filter(x => x != null);
+    return v.length ? v.reduce((a,b)=>a+b,0)/v.length : pos.get(p.id);
+  };
+  for (let s = 0; s < 8; s++){
+    const fwd = s % 2 === 0;
+    const idx = cols.map((_,i)=>i).slice(fwd ? 1 : 0, fwd ? undefined : -1);
+    (fwd ? idx : idx.reverse()).forEach(L => cols[L].sort((a,b) => bary(a,fwd) - bary(b,fwd)));
+    sync();
+  }
+}
+
+/* ---------- render ---------- */
+const svg = document.getElementById("svg");
+const cam = document.getElementById("cam");
+let view = {k:1, x:0, y:0};
+function applyCam(){ cam.setAttribute("transform", `translate(${view.x},${view.y}) scale(${view.k})`); }
+let EDGEG = null, EDGELBL = null, LIVE = [], LIVEE = [];
+
+function renderMap(){
+  cam.textContent = "";
+  const eg = el("g", {}); const lbl = el("g", {}); const marks = el("g", {});
+  cam.appendChild(eg); cam.appendChild(marks); cam.appendChild(lbl);
+  EDGEG = eg; EDGELBL = lbl;
+  const ps = liveParts(), es = liveEdges();
+  LIVE = ps; LIVEE = es;
+  if (!ps.length) return;
+
+  ps.forEach(p => {
+    const S = st(p.status);
+    const g = el("g", {class:"node", tabindex:"0", role:"button"});
+    g.dataset.id = p.id; g.style.cursor = "grab"; p.g = g;
+    const B = boxStyle(S.fill);
+    const t = el("text", {x:14, y:5, "font-size":13, "font-weight":600, "font-family":"var(--font)",
+      fill: B.white ? "#fff" : "var(--ink)", opacity: B.textOp});
+    t.textContent = (KIND[p.kind] || "") + "  " + p.label;
+    g.appendChild(t); marks.appendChild(g);
+    const w = t.getComputedTextLength() + 30, h = 38;
+    const rect = el("rect", {x:0, y:-h/2, width:w, height:h, rx:9,
+      fill: B.filled ? p.colour : "var(--panel)", "fill-opacity": B.fillOp,
+      stroke: p.colour, "stroke-width": B.stroke, "stroke-opacity": B.strokeOp,
+      ...(B.dash ? {"stroke-dasharray": B.dash} : {})});
+    g.insertBefore(rect, t);
+    p.w = w; p.h = h;
+    if (cFor(p.id).length){
+      g.appendChild(el("circle", {cx:w-9, cy:h/2-9, r:4.5, fill:"#d9a520", stroke:"var(--panel)", "stroke-width":1.5}));
+    }
+    if ((p.open || []).length || (p.surface || []).some(x => !x.verified)){
+      g.appendChild(el("circle", {cx:w-9, cy:-h/2+9, r:4, fill:"#d9a520"}));
+    }
+  });
+
+  const cols = layerise(ps, es);
+  order(cols, es);
+  let x = 0;
+  cols.forEach(col => {
+    const wmax = Math.max(...col.map(p => p.w));
+    let y = 0;
+    col.forEach(p => { p.x = x; p.y = y + p.h/2; y += p.h + ROW_GAP; });
+    const mid = (y - ROW_GAP) / 2;
+    col.forEach(p => p.y -= mid);
+    x += wmax + COL_GAP;
+  });
+  ps.forEach(p => { const u = userPos[p.id]; if (u){ p.x = u[0]; p.y = u[1]; } });
+  ps.forEach(p => p.g.setAttribute("transform", `translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`));
+  drawEdges();
+  ps.forEach(p => attach(p));
+  fit();
+}
+
+function drawEdges(){
+  if (!EDGEG) return;
+  EDGEG.textContent = ""; EDGELBL.textContent = "";
+  LIVEE.forEach(e => {
+    const a = byId.get(e.from), b = byId.get(e.to);
+    const rev = b.x < a.x;
+    const x1 = rev ? a.x : a.x + a.w, y1 = a.y;
+    const x2 = rev ? b.x + b.w : b.x, y2 = b.y;
+    const dx = Math.max(46, Math.abs(x2 - x1) * 0.45) * (rev ? -1 : 1);
+    const d = `M${x1.toFixed(1)},${y1.toFixed(1)} C${(x1+dx).toFixed(1)},${y1.toFixed(1)} ` +
+              `${(x2-dx).toFixed(1)},${y2.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)}`;
+    const cyc = back.has(e.id);
+    const col = e.status === "rejected" ? "var(--muted)" : a.colour;
+    const hit = el("path", {d, fill:"none", stroke:"transparent", "stroke-width":14, class:"edge"});
+    hit.dataset.id = e.id; hit.style.cursor = "pointer";
+    EDGEG.appendChild(el("path", {d, fill:"none", stroke:col,
+      "stroke-opacity": e.status === "rejected" ? .35 : .62, "stroke-width":1.6,
+      ...(e.kind === "event" || cyc ? {"stroke-dasharray":"6 4"} : {}),
+      ...(e.status === "rejected" ? {"stroke-dasharray":"2 4"} : {})}));
+    // arrowhead
+    const ang = Math.atan2(y2 - y2, 1) || 0;
+    const dir = rev ? -1 : 1;
+    const ax = x2, ay = y2;
+    EDGEG.appendChild(el("path", {
+      d:`M${ax},${ay} L${ax - dir*9},${ay - 4.5} L${ax - dir*9},${ay + 4.5} Z`,
+      fill: col, "fill-opacity": e.status === "rejected" ? .35 : .7}));
+    EDGEG.appendChild(hit);
+    if (e.label){
+      const mx = (x1 + x2)/2, my = (y1 + y2)/2 - 7;
+      const t = el("text", {x:mx, y:my, "text-anchor":"middle", "font-size":10.5,
+        "font-family":"var(--font)", fill:"var(--muted)"});
+      t.textContent = e.label;
+      EDGELBL.appendChild(t);
+      const bw = t.getComputedTextLength() + 8;
+      const r = el("rect", {x:mx - bw/2, y:my - 9, width:bw, height:13, rx:4,
+        fill:"var(--bg)", "fill-opacity":.9});
+      EDGELBL.insertBefore(r, t);
+    }
+  });
+  EDGEG.querySelectorAll(".edge").forEach(h =>
+    h.addEventListener("click", () => openEdge(edges.find(x => x.id === h.dataset.id))));
+}
+
+function attach(p){
+  const g = p.g;
+  let active = false, sx = 0, sy = 0, far = 0;
+  g.addEventListener("pointerdown", e => {
+    e.stopPropagation(); active = true; far = 0; sx = e.clientX; sy = e.clientY;
+    p._sx = p.x; p._sy = p.y; g.style.cursor = "grabbing";
+    try { g.setPointerCapture(e.pointerId); } catch(err){}
+  });
+  g.addEventListener("pointermove", e => {
+    if (!active) return;
+    far = Math.max(far, Math.hypot(e.clientX - sx, e.clientY - sy));
+    if (far < 4) return;
+    p.x = p._sx + (e.clientX - sx)/view.k; p.y = p._sy + (e.clientY - sy)/view.k;
+    g.setAttribute("transform", `translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`);
+    drawEdges();
+  });
+  const done = () => {
+    if (!active) return;
+    active = false; g.style.cursor = "grab";
+    if (far < 4) openPart(p);
+    else { userPos[p.id] = [+p.x.toFixed(1), +p.y.toFixed(1)]; savePos(); updateReset(); }
+  };
+  g.addEventListener("pointerup", done);
+  g.addEventListener("pointercancel", done);
+  g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " "){ e.preventDefault(); openPart(p); }});
+}
+
+function fit(){
+  let b; try { b = cam.getBBox(); } catch(e){ return; }
+  if (!b || !b.width || !b.height) return;
+  const W = svg.clientWidth || 800, H = svg.clientHeight || 600, pad = 34;
+  view.k = Math.min((W - pad*2)/b.width, (H - pad*2)/b.height, 1.5);
+  view.x = W/2 - (b.x + b.width/2) * view.k;
+  view.y = H/2 - (b.y + b.height/2) * view.k;
+  applyCam();
+}
+
+(function(){
+  const mv = document.getElementById("mapview");
+  let drag = null, pinch = null;
+  mv.addEventListener("pointerdown", e => {
+    if (e.target.closest(".node") || e.target.closest("button") || e.target.closest(".edge")) return;
+    drag = {px:e.clientX, py:e.clientY, v:{...view}}; mv.classList.add("drag");
+    try { mv.setPointerCapture(e.pointerId); } catch(err){}
+  });
+  mv.addEventListener("pointermove", e => {
+    if (!drag) return;
+    view.x = drag.v.x + (e.clientX - drag.px); view.y = drag.v.y + (e.clientY - drag.py); applyCam();
+  });
+  const end = () => { drag = null; mv.classList.remove("drag"); };
+  mv.addEventListener("pointerup", end); mv.addEventListener("pointercancel", end);
+  mv.addEventListener("wheel", e => {
+    e.preventDefault();
+    const r = mv.getBoundingClientRect();
+    zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * 0.0016));
+  }, {passive:false});
+  mv.addEventListener("touchstart", e => { if (e.touches.length === 2){ drag = null; pinch = dist(e); } }, {passive:true});
+  mv.addEventListener("touchmove", e => {
+    if (e.touches.length === 2 && pinch){
+      e.preventDefault();
+      const d = dist(e), r = mv.getBoundingClientRect();
+      zoomAt((e.touches[0].clientX + e.touches[1].clientX)/2 - r.left,
+             (e.touches[0].clientY + e.touches[1].clientY)/2 - r.top, d.d/pinch.d);
+      pinch = d;
+    }
+  }, {passive:false});
+  mv.addEventListener("touchend", () => { pinch = null; });
+  function dist(e){ return {d: Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
+                                          e.touches[0].clientY - e.touches[1].clientY) || 1}; }
+  function zoomAt(cx, cy, f){
+    const k = Math.max(.15, Math.min(4, view.k * f)), s = k/view.k;
+    view.x = cx - (cx - view.x)*s; view.y = cy - (cy - view.y)*s; view.k = k; applyCam();
+  }
+  document.getElementById("zin").onclick  = () => zoomAt(svg.clientWidth/2, svg.clientHeight/2, 1.28);
+  document.getElementById("zout").onclick = () => zoomAt(svg.clientWidth/2, svg.clientHeight/2, 1/1.28);
+  document.getElementById("zfit").onclick = fit;
+  document.getElementById("zreset").onclick = () => { userPos = {}; savePos(); renderMap(); updateReset(); };
+})();
+
+/* ---------- shared bits ---------- */
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function para(t){ const p = document.createElement("p"); p.textContent = t; return p; }
+function head(t){ const h = document.createElement("h4"); h.textContent = t; return h; }
+function bullets(arr){ const u = document.createElement("ul");
+  arr.forEach(x => { const li = document.createElement("li"); li.textContent = x; u.appendChild(li); }); return u; }
+function mkbtn(label, fn, cls){ const b = document.createElement("button");
+  b.className = "btn" + (cls ? " " + cls : ""); b.textContent = label; b.onclick = fn; return b; }
+function quote(ev){
+  const q = document.createElement("blockquote");
+  q.textContent = "“" + ev.quote + "”";
+  const who = (ev.speaker === "human" ? "You" : "Claude") + (ev.turn != null ? ", turn " + ev.turn : "");
+  const src = MAP.source || {};
+  const url = ev.url || (src.url ? (src.turn_url && ev.turn != null ? src.turn_url.replace("{turn}", ev.turn) : src.url) : null);
+  if (url){
+    const a = document.createElement("a");
+    a.className = "who"; a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer";
+    a.textContent = who + " · open chat ↗";
+    q.appendChild(a);
+  } else { const w = document.createElement("span"); w.className = "who"; w.textContent = who; q.appendChild(w); }
+  return q;
+}
+function traces(p){
+  const box = document.createElement("div");
+  (p.traces || []).forEach(t => {
+    const url = t.url || (MAP.source || {}).brainstorm;
+    const n = document.createElement(url ? "a" : "span");
+    n.className = "trace"; n.textContent = "↖ " + t.label;
+    if (url){ n.href = url; n.target = "_blank"; n.rel = "noopener noreferrer"; n.style.textDecoration = "none"; }
+    box.appendChild(n);
+  });
+  return box;
+}
+
+/* ---------- outline ---------- */
+function renderOutline(){
+  const host = document.getElementById("outline"); host.textContent = "";
+  const seen = new Set();
+  [...groups.values()].forEach(g => {
+    if (excluded.has(g.id)) return;
+    const ps = liveParts().filter(p => p.group === g.id);
+    if (!ps.length) return;
+    const h = document.createElement("div"); h.className = "grp-h";
+    const sw = document.createElement("span"); sw.className = "swatch"; sw.style.background = g.colour;
+    h.appendChild(sw); h.appendChild(document.createTextNode(g.label));
+    host.appendChild(h);
+    const ul = document.createElement("ul"); ul.className = "plain";
+    ps.forEach(p => { seen.add(p.id); ul.appendChild(partRow(p)); });
+    host.appendChild(ul);
+  });
+  const rest = liveParts().filter(p => !seen.has(p.id));
+  if (rest.length){
+    const h = document.createElement("div"); h.className = "grp-h"; h.textContent = "Ungrouped";
+    host.appendChild(h);
+    const ul = document.createElement("ul"); ul.className = "plain";
+    rest.forEach(p => ul.appendChild(partRow(p))); host.appendChild(ul);
+  }
+  if (!host.children.length) host.innerHTML = '<p class="empty">Everything is pruned. Open “Removed” to put something back.</p>';
+}
+function partRow(p){
+  const li = document.createElement("li");
+  const b = document.createElement("button"); b.className = "row";
+  const S = st(p.status);
+  b.innerHTML = `<span class="glyph" style="color:${p.colour}">${S.glyph}</span><span><b>${esc(p.label)}</b>` +
+                (p.purpose ? `<span class="cl">${esc(p.purpose)}</span>` : "") + `</span>`;
+  b.onclick = () => openPart(p);
+  li.appendChild(b); return li;
+}
+
+/* ---------- doc ---------- */
+function renderDoc(){
+  const host = document.getElementById("doc"); host.textContent = "";
+  if (MAP.summary){ const p = document.createElement("p"); p.className = "lead"; p.textContent = MAP.summary; host.appendChild(p); }
+  liveParts().forEach(p => host.appendChild(partSection(p)));
+  const es = liveEdges().filter(e => e.note || e.label);
+  if (es.length){
+    const h = document.createElement("h2"); h.textContent = "Connections"; host.appendChild(h);
+    es.forEach(e => {
+      const s = document.createElement("section"); s.id = "doc-" + e.id;
+      const h3 = document.createElement("h3");
+      h3.textContent = `${byId.get(e.from).label} → ${byId.get(e.to).label}`;
+      s.appendChild(h3);
+      const lead = document.createElement("p"); lead.className = "lead";
+      lead.textContent = (EDGE[e.kind] || e.kind || "") + (e.label ? " · " + e.label : "");
+      s.appendChild(lead);
+      if (e.note) s.appendChild(para(e.note));
+      (e.evidence || []).forEach(ev => s.appendChild(quote(ev)));
+      host.appendChild(s);
+    });
+  }
+}
+function partSection(p){
+  const S = st(p.status);
+  const s = document.createElement("section"); s.id = "doc-" + p.id;
+  const h = document.createElement("h3");
+  h.innerHTML = `${esc(p.label)} <span class="badge" style="color:${p.colour}">${S.label}</span>`;
+  s.appendChild(h);
+  if (p.purpose){ const l = document.createElement("p"); l.className = "lead"; l.textContent = p.purpose; s.appendChild(l); }
+  if (p.why_here){ const d = document.createElement("p"); d.innerHTML = `<b>Why it is on this map:</b> ${esc(p.why_here)}`; s.appendChild(d); }
+  if ((p.where || []).length){ s.appendChild(para("Where it lives:")); s.appendChild(bullets(p.where)); }
+  if ((p.surface || []).length){ s.appendChild(para("Symbols we touch:")); s.appendChild(surfaceList(p)); }
+  if ((p.responsibilities || []).length){ s.appendChild(para("Responsible for:")); s.appendChild(bullets(p.responsibilities)); }
+  if ((p.not || []).length){ s.appendChild(para("Explicitly not responsible for:")); s.appendChild(bullets(p.not)); }
+  if ((p.interfaces || []).length){ s.appendChild(para("Interfaces:")); s.appendChild(bullets(p.interfaces)); }
+  if ((p.open || []).length){ s.appendChild(para("Unresolved:")); s.appendChild(bullets(p.open)); }
+  (p.evidence || []).forEach(ev => s.appendChild(quote(ev)));
+  if ((p.traces || []).length) s.appendChild(traces(p));
+  return s;
+}
+
+/* The public surface of a part: symbols we call, override or add. Every entry
+   carries a real file and line, and says whether the build step actually found
+   it in the repo. An unverified symbol is a task, not a fact. */
+const USE = {
+  call:     {verb:"we call it",      mode:"use"},
+  read:     {verb:"we read it",      mode:"use"},
+  subclass: {verb:"we subclass it",  mode:"use"},
+  modify:   {verb:"we edit it",      mode:"change"},
+  replace:  {verb:"we replace it",   mode:"change"},
+  add:      {verb:"we write it",     mode:"change"},
+  extend:   {verb:"we edit it",      mode:"change"},   // legacy spelling
+  override: {verb:"we override it",  mode:"change"}
+};
+function surfaceList(p){
+  const box = document.createElement("div");
+  (p.surface || []).forEach(sym => {
+    const mode = ((USE[sym.use] || {}).mode) === "change";
+    const d = document.createElement("div"); d.className = "sym" + (mode ? " changing" : "");
+    const hd = document.createElement("div"); hd.className = "symhead";
+    const nm = document.createElement("code"); nm.textContent = sym.signature || sym.name;
+    hd.appendChild(nm);
+    const u = USE[sym.use] || {verb: sym.use || "", mode:"use"};
+    const tag = document.createElement("span");
+    tag.className = "symtag " + u.mode;
+    tag.textContent = (u.mode === "change" ? "CHANGING" : "USING") + " · " + u.verb;
+    hd.appendChild(tag);
+    if (!sym.verified){
+      const v = document.createElement("span"); v.className = "symtag unver"; v.textContent = "unverified";
+      hd.appendChild(v);
+    }
+    d.appendChild(hd);
+    if (sym.file){
+      const loc = document.createElement("div"); loc.className = "symloc";
+      loc.textContent = sym.file + (sym.line ? ":" + sym.line : "");
+      d.appendChild(loc);
+    }
+    if (sym.change){
+      const c = document.createElement("div"); c.className = "symchange";
+      c.textContent = sym.change; d.appendChild(c);
+    }
+    if (sym.note){ const n = document.createElement("div"); n.className = "symnote"; n.textContent = sym.note; d.appendChild(n); }
+    box.appendChild(d);
+  });
+  return box;
+}
+
+/* ---------- sheet ---------- */
+const sheet = document.getElementById("sheet");
+let current = null;
+function openPart(p){
+  current = p;
+  const S = st(p.status);
+  document.getElementById("sheetTitle").innerHTML =
+    `${esc(p.label)}<small>${S.label}${p.kind ? " · " + p.kind : ""}</small>`;
+  const b = document.getElementById("sheetBody"); b.textContent = "";
+  if (p.purpose){ b.appendChild(head("What it does")); b.appendChild(para(p.purpose)); }
+  if ((p.where || []).length){ b.appendChild(head("Where it lives")); b.appendChild(bullets(p.where)); }
+  if ((p.surface || []).length){
+    const n = p.surface.filter(x => !x.verified).length;
+    b.appendChild(head("Symbols we touch" + (n ? " — " + n + " unverified" : "")));
+    b.appendChild(surfaceList(p));
+  }
+  if (p.why_here){ b.appendChild(head("Why it is on this map")); b.appendChild(para(p.why_here)); }
+  if ((p.responsibilities || []).length){ b.appendChild(head("Responsible for")); b.appendChild(bullets(p.responsibilities)); }
+  if ((p.not || []).length){ b.appendChild(head("Not responsible for")); b.appendChild(bullets(p.not)); }
+  if ((p.interfaces || []).length){ b.appendChild(head("Interfaces")); b.appendChild(bullets(p.interfaces)); }
+  if ((p.open || []).length){ b.appendChild(head("Unresolved")); b.appendChild(bullets(p.open)); }
+  const ins = liveEdges().filter(e => e.to === p.id), outs = liveEdges().filter(e => e.from === p.id);
+  if (ins.length || outs.length){
+    b.appendChild(head("Connections"));
+    const u = document.createElement("ul");
+    outs.forEach(e => { const li = document.createElement("li");
+      li.textContent = `→ ${byId.get(e.to).label}` + (e.label ? ` (${e.label})` : ""); u.appendChild(li); });
+    ins.forEach(e => { const li = document.createElement("li");
+      li.textContent = `← ${byId.get(e.from).label}` + (e.label ? ` (${e.label})` : ""); u.appendChild(li); });
+    b.appendChild(u);
+  }
+  if ((p.evidence || []).length){ b.appendChild(head("From the chat")); p.evidence.forEach(ev => b.appendChild(quote(ev))); }
+  if ((p.traces || []).length){ b.appendChild(head("Came from the brainstorm")); b.appendChild(traces(p)); }
+  cRender(p, b);
+  const acts = document.getElementById("sheetActs"); acts.textContent = "";
+  acts.appendChild(mkbtn("Read in doc", () => { show("doc");
+    const t = document.getElementById("doc-" + p.id); if (t) t.scrollIntoView({block:"start"}); closeSheet(); }));
+  if (editing) acts.appendChild(mkbtn("Remove", () => { excluded.add(p.id); persist(); renderAll(); closeSheet(); }, "danger"));
+  sheet.classList.add("on");
+}
+function openEdge(e){
+  if (!e) return;
+  current = null;
+  const a = byId.get(e.from), b2 = byId.get(e.to);
+  document.getElementById("sheetTitle").innerHTML =
+    `${esc(a.label)} → ${esc(b2.label)}<small>${EDGE[e.kind] || e.kind || "connection"}${back.has(e.id) ? " · cycle" : ""}</small>`;
+  const b = document.getElementById("sheetBody"); b.textContent = "";
+  if (e.label) b.appendChild(para(e.label));
+  if (e.note){ b.appendChild(head("Why")); b.appendChild(para(e.note)); }
+  if (back.has(e.id)){ b.appendChild(head("Note"));
+    b.appendChild(para("This edge closes a loop. It is drawn dashed and left out of the left-to-right ordering.")); }
+  if ((e.evidence || []).length){ b.appendChild(head("From the chat")); e.evidence.forEach(ev => b.appendChild(quote(ev))); }
+  const acts = document.getElementById("sheetActs"); acts.textContent = "";
+  if (editing) acts.appendChild(mkbtn("Remove connection", () => { excluded.add(e.id); persist(); renderAll(); closeSheet(); }, "danger"));
+  sheet.classList.add("on");
+}
+function closeSheet(){ sheet.classList.remove("on"); current = null; }
+document.getElementById("sheetClose").onclick = closeSheet;
+
+const CPREFIX = "fmap:";
+
+/* ---------- comments ----------
+   A viewer can mark a part as wrong, unclear or needing a change, and ask
+   Claude about it from inside the page. Two things to be honest about:
+   the in-page Claude has no repo access and no memory of the chat that
+   produced this map, so its answer is a draft to argue with, never a
+   verified correction. Applying a change goes back through the skill. */
+const CMTKEY = CPREFIX + (MAP.id || "map") + ":comments";
+const CKINDS = {wrong:"wrong", unclear:"unclear", change:"needs change"};
+let COMMENTS = {};          // partId -> [{id, kind, text, reply, ts}]
+let CDB = null, CSAMPLE = null, CKIND = "wrong";
+
+function cLoad(){ try { return JSON.parse(localStorage.getItem(CMTKEY) || "{}"); } catch(e){ return {}; } }
+function cSaveLocal(){ try { localStorage.setItem(CMTKEY, JSON.stringify(COMMENTS)); } catch(e){} }
+function cFor(id){ return COMMENTS[id] || []; }
+function cCount(){ return Object.values(COMMENTS).reduce((n,a)=>n+a.length, 0); }
+
+async function cPersist(c){
+  cSaveLocal();
+  if (!CDB) return;
+  try { await CDB.doc("comments/" + c.id).set(c); }
+  catch(e){ /* shared store unavailable or read-only: the local copy stands */ }
+}
+
+(async function cInit(){
+  COMMENTS = cLoad();
+  cBadge();
+  if (!(window.claude && claude.use)) return;
+  try { CDB = await claude.use("db"); } catch(e){ CDB = null; }
+  try { CSAMPLE = await claude.use("sample"); } catch(e){ CSAMPLE = null; }
+  if (CDB){
+    try {
+      const snap = await CDB.collection("comments").get();
+      const merged = {};
+      snap.docs.forEach(d => {
+        const c = d.data; if (!c || !c.part) return;
+        (merged[c.part] = merged[c.part] || []).push(c);
+      });
+      if (snap.size){
+        Object.keys(merged).forEach(k => merged[k].sort((a,b) => (a.ts||0) - (b.ts||0)));
+        COMMENTS = merged; cSaveLocal();
+      }
+    } catch(e){ /* keep the local copy */ }
+  }
+  cBadge(); renderMap();
+})();
+
+function cBadge(){
+  const b = document.getElementById("cmtN");
+  if (b) b.textContent = cCount();
+}
+
+function cRender(part, host){
+  host.appendChild(head("Comments" + (cFor(part.id).length ? " (" + cFor(part.id).length + ")" : "")));
+  cFor(part.id).forEach(c => {
+    const d = document.createElement("div"); d.className = "cmt";
+    const h = document.createElement("div"); h.className = "cmthead";
+    const tp = document.createElement("span"); tp.className = "tp"; tp.textContent = CKINDS[c.kind] || c.kind;
+    h.appendChild(tp);
+    const when = document.createElement("span");
+    when.textContent = new Date(c.ts || Date.now()).toLocaleDateString();
+    h.appendChild(when);
+    d.appendChild(h);
+    const body = document.createElement("div"); body.className = "cmtbody"; body.textContent = c.text;
+    d.appendChild(body);
+    if (c.reply){
+      const r = document.createElement("div"); r.className = "cmtreply"; r.textContent = c.reply;
+      const note = document.createElement("em");
+      note.textContent = "Draft reply — written without the repo or the original chat. Verify before acting.";
+      r.appendChild(note); d.appendChild(r);
+    }
+    if (!c.reply && CSAMPLE){
+      d.appendChild(mkbtn("Ask Claude", ev => cAsk(part, c, ev.target)));
+    }
+    host.appendChild(d);
+  });
+
+  const f = document.createElement("div"); f.className = "cmtform";
+  const kinds = document.createElement("div"); kinds.className = "kinds";
+  Object.keys(CKINDS).forEach(k => {
+    const b = document.createElement("button");
+    b.textContent = CKINDS[k]; b.setAttribute("aria-pressed", k === CKIND);
+    b.onclick = () => { CKIND = k; kinds.querySelectorAll("button").forEach(x =>
+      x.setAttribute("aria-pressed", x.textContent === CKINDS[k])); };
+    kinds.appendChild(b);
+  });
+  f.appendChild(kinds);
+  const ta = document.createElement("textarea");
+  ta.placeholder = "What is wrong, unclear, or should change?";
+  f.appendChild(ta);
+  f.appendChild(mkbtn("Add comment", async () => {
+    const text = ta.value.trim(); if (!text) return;
+    const c = {id: "c" + Date.now().toString(36), part: part.id, part_label: part.label,
+               kind: CKIND, text, ts: Date.now(), map: MAP.id || ""};
+    (COMMENTS[part.id] = COMMENTS[part.id] || []).push(c);
+    await cPersist(c);
+    ta.value = ""; cBadge(); renderMap(); openPart(part);
+  }));
+  host.appendChild(f);
+}
+
+async function cAsk(part, c, btn){
+  if (!CSAMPLE) return;
+  btn.disabled = true; btn.textContent = "Thinking…";
+  const ctx = {
+    map: {title: MAP.title, summary: MAP.summary},
+    part: {...part, g: undefined, colour: undefined, x: undefined, y: undefined,
+           w: undefined, h: undefined, parent: undefined, _sx: undefined, _sy: undefined},
+    connections: (MAP.edges || []).filter(e => e.from === part.id || e.to === part.id)
+  };
+  const prompt =
+    "You are answering a comment left on one part of a planning diagram.\n\n" +
+    "CONTEXT (JSON):\n" + JSON.stringify(ctx, null, 1) + "\n\n" +
+    "COMMENT (" + (CKINDS[c.kind] || c.kind) + "): " + c.text + "\n\n" +
+    "Answer in under 140 words, plain prose, no headings or bullet lists.\n" +
+    "You do NOT have the codebase or the conversation this diagram came from. " +
+    "If answering properly needs either, say exactly what would have to be checked " +
+    "rather than guessing it.\n" +
+    "If the comment is right that something is wrong, say so plainly and propose the " +
+    "specific field change (which field, what it should say). If you think the diagram " +
+    "is right, say why and what evidence would settle it.";
+  try {
+    let acc = "";
+    const res = await CSAMPLE(prompt, {modelTier:"default", cache:false,
+      onText: u => { acc = u.text; }});
+    c.reply = (res && res.text) || acc || "(no answer)";
+  } catch(e){
+    c.reply = "Could not reach Claude from the page (" + ((e && e.code) || "error") + "). " +
+              "Copy the comments out and ask in chat instead.";
+  }
+  await cPersist(c);
+  renderMap(); openPart(part);
+}
+
+function cPanel(){
+  current = null;
+  document.getElementById("sheetTitle").innerHTML =
+    "Comments<small>" + cCount() + " on this map</small>";
+  const b = document.getElementById("sheetBody"); b.textContent = "";
+  if (!cCount()){
+    b.innerHTML = '<p class="empty">No comments yet. Open any part and add one — mark it ' +
+                  'wrong, unclear, or needing a change.</p>';
+  } else {
+    Object.keys(COMMENTS).forEach(pid => {
+      const p = byId.get(pid); if (!p || !cFor(pid).length) return;
+      const h = document.createElement("h4"); h.textContent = p.label; b.appendChild(h);
+      cFor(pid).forEach(c => {
+        const d = document.createElement("div"); d.className = "cmt";
+        const t = document.createElement("div"); t.className = "cmtbody";
+        t.textContent = (CKINDS[c.kind] || c.kind) + " — " + c.text;
+        d.appendChild(t);
+        if (c.reply){ const r = document.createElement("div"); r.className = "cmtreply";
+          r.textContent = c.reply; d.appendChild(r); }
+        b.appendChild(d);
+      });
+    });
+    b.appendChild(head("Hand back to Claude"));
+    const ta = document.createElement("textarea"); ta.readOnly = true;
+    ta.value = JSON.stringify({map: MAP.id, title: MAP.title,
+      comments: Object.values(COMMENTS).flat()}, null, 2);
+    b.appendChild(ta);
+    const n = document.createElement("p"); n.className = "note";
+    n.textContent = "Paste this into a chat with the map JSON and ask Claude to work through it. " +
+                    "Corrections belong in the source file, not in the page.";
+    b.appendChild(n);
+  }
+  const acts = document.getElementById("sheetActs"); acts.textContent = "";
+  if (cCount()){
+    acts.appendChild(mkbtn("Copy comments", async ev => {
+      const txt = JSON.stringify({map: MAP.id, comments: Object.values(COMMENTS).flat()}, null, 2);
+      try { await navigator.clipboard.writeText(txt); ev.target.textContent = "Copied"; }
+      catch(err){ const t = sheet.querySelector("textarea"); if (t){ t.select(); ev.target.textContent = "Select + copy"; } }
+    }));
+    acts.appendChild(mkbtn("Clear all", async () => {
+      if (CDB){ for (const c of Object.values(COMMENTS).flat()){
+        try { await CDB.doc("comments/" + c.id).delete(); } catch(e){} } }
+      COMMENTS = {}; cSaveLocal(); cBadge(); renderMap(); closeSheet();
+    }, "danger"));
+  }
+  sheet.classList.add("on");
+}
+
+/* ---------- prune ---------- */
+let editing = false;
+const editBtn = document.getElementById("editBtn");
+editBtn.onclick = () => { editing = !editing; editBtn.setAttribute("aria-pressed", editing);
+  editBtn.textContent = editing ? "Done" : "Prune"; if (current) openPart(current); };
+document.getElementById("exBtn").onclick = () => {
+  current = null;
+  document.getElementById("sheetTitle").innerHTML = "Removed<small>Pruned from this map</small>";
+  const b = document.getElementById("sheetBody"); b.textContent = "";
+  if (!excluded.size){
+    b.innerHTML = '<p class="empty">Nothing removed. Turn on <b>Prune</b>, tap a part or a connection, then Remove.</p>';
+  } else {
+    [...excluded].forEach(id => {
+      const p = byId.get(id) || groups.get(id) || edges.find(e => e.id === id);
+      if (!p) return;
+      const r = document.createElement("div");
+      r.style.cssText = "display:flex;gap:8px;align-items:center;margin:7px 0";
+      const s = document.createElement("span"); s.style.cssText = "flex:1;text-decoration:line-through;opacity:.6";
+      s.textContent = p.label || (byId.get(p.from) ? byId.get(p.from).label + " → " + byId.get(p.to).label : id);
+      r.appendChild(s);
+      r.appendChild(mkbtn("Put back", () => { excluded.delete(id); persist(); renderAll(); document.getElementById("exBtn").click(); }));
+      b.appendChild(r);
+    });
+    b.appendChild(head("Cleaned data"));
+    const ta = document.createElement("textarea"); ta.readOnly = true; ta.value = JSON.stringify(clean(), null, 2);
+    b.appendChild(ta);
+    const n = document.createElement("p"); n.className = "note";
+    n.textContent = "Copy this back over your map JSON to make the pruning permanent.";
+    b.appendChild(n);
+  }
+  const acts = document.getElementById("sheetActs"); acts.textContent = "";
+  if (excluded.size){
+    acts.appendChild(mkbtn("Copy cleaned JSON", async ev => {
+      try { await navigator.clipboard.writeText(JSON.stringify(clean(), null, 2)); ev.target.textContent = "Copied"; }
+      catch(err){ const ta = sheet.querySelector("textarea"); if (ta){ ta.select(); ev.target.textContent = "Select + copy"; } }
+    }));
+    acts.appendChild(mkbtn("Restore all", () => { excluded.clear(); persist(); renderAll(); closeSheet(); }));
+  }
+  sheet.classList.add("on");
+};
+function clean(){
+  const pos = {}; Object.keys(userPos).forEach(k => { if (!excluded.has(k)) pos[k] = userPos[k]; });
+  return {...MAP,
+    layout: Object.keys(pos).length ? pos : undefined,
+    groups: (MAP.groups || []).filter(g => !excluded.has(g.id)),
+    parts: (MAP.parts || []).filter(p => !excluded.has(p.id) && !excluded.has(p.group)),
+    edges: (MAP.edges || []).filter((e,i) => {
+      const id = e.id || `e${i}`;
+      return !excluded.has(id) && !excluded.has(e.from) && !excluded.has(e.to);
+    })};
+}
+
+/* ---------- views ---------- */
+function show(v){
+  document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.view === v));
+  document.getElementById("mapview").classList.toggle("on", v === "map");
+  document.getElementById("outlineview").classList.toggle("on", v === "outline");
+  document.getElementById("docview").classList.toggle("on", v === "doc");
+  if (v === "map") requestAnimationFrame(fit);
+}
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => show(b.dataset.view));
+function renderAll(){ renderMap(); renderOutline(); renderDoc();
+  document.getElementById("exN").textContent = excluded.size;
+  if (typeof buildKey === "function") buildKey(); }
+function updateReset(){ const b = document.getElementById("zreset"); if (b) b.style.display = Object.keys(userPos).length ? "" : "none"; }
+
+function buildKey(){
+  const panel = document.getElementById("keyPanel");
+  panel.textContent = "";
+  const KINDNAME = {ui:"interface", service:"service", job:"job",
+                    store:"storage", external:"third-party", data:"data model"};
+  const EDGEDASH = {data:"", depends:"", control:"", event:"6 4"};
+
+  const chip = (svgEl, text, glyph) => {
+    const c = document.createElement("span"); c.className = "kchip";
+    if (svgEl) c.appendChild(svgEl);
+    if (glyph){ const g = document.createElement("span"); g.className = "g"; g.textContent = glyph; c.appendChild(g); }
+    const t = document.createElement("span"); t.textContent = text; c.appendChild(t);
+    panel.appendChild(c);
+  };
+  const sep = () => { const d = document.createElement("span"); d.className = "ksep"; panel.appendChild(d); };
+  // mirror exactly what renderMap draws, so the key matches the boxes
+  const swatch = status => {
+    const B = boxStyle(STATUS[status].fill), w = 15, h = 9.5;
+    const g = el("svg", {width:w, height:h, viewBox:`0 0 ${w} ${h}`});
+    g.appendChild(el("rect", {x:1, y:1, width:w-2, height:h-2, rx:2.8,
+      fill: B.filled ? "var(--ink)" : "none", "fill-opacity": B.fillOp,
+      stroke:"var(--ink)", "stroke-width": B.stroke * 0.62, "stroke-opacity": B.strokeOp,
+      ...(B.dash ? {"stroke-dasharray":"1.2 1.6"} : {})}));
+    return g;
+  };
+  const dot = colour => {
+    const g = el("svg", {width:9, height:9, viewBox:"0 0 9 9"});
+    g.appendChild(el("rect", {x:0, y:0, width:9, height:9, rx:2.5, fill:colour}));
+    return g;
+  };
+  const label = t => { const l = document.createElement("span"); l.className = "klabel"; l.textContent = t; panel.appendChild(l); };
+  const arrow = dash => {
+    const w = 16, h = 8.5;
+    const g = el("svg", {width:w, height:h, viewBox:`0 0 ${w} ${h}`});
+    g.appendChild(el("path", {d:`M0.5,${h/2} L${w-4.5},${h/2}`, stroke:"var(--ink)", "stroke-opacity":.55,
+      "stroke-width":1.1, fill:"none", ...(dash ? {"stroke-dasharray":dash} : {})}));
+    g.appendChild(el("path", {d:`M${w-0.5},${h/2} L${w-5},${h/2-2.4} L${w-5},${h/2+2.4} Z`,
+      fill:"var(--ink)", "fill-opacity":.55}));
+    return g;
+  };
+
+  // describe only what this map uses; group colours are named in the Parts view
+  const used = (arr, dict) => [...new Set(arr)].filter(k => dict[k]);
+  const sts = used(liveParts().map(p => p.status), STATUS);
+  const kds = used(liveParts().map(p => p.kind), KIND);
+  const eks = used(liveEdges().map(e => e.kind), EDGE);
+
+  const grps = [...groups.values()].filter(g => liveParts().some(p => p.group === g.id));
+  if (sts.length){ label("outline"); sts.forEach(k => chip(swatch(k), STATUS[k].label)); }
+  if (grps.length){ sep(); label("colour"); grps.forEach(g => chip(dot(g.colour), g.label)); }
+  if (kds.length){ sep(); label("symbol"); kds.forEach(k => chip(null, KINDNAME[k] || k, KIND[k])); }
+  if (eks.length){ sep(); label("arrows"); eks.forEach(k => chip(arrow(EDGEDASH[k]), EDGE[k])); }
+  if (back.size) chip(arrow("6 4"), "closes a loop");
+  const anyUnver = liveParts().some(p => (p.surface || []).some(x => !x.verified));
+  if (anyUnver || liveParts().some(p => (p.open || []).length)){
+    sep();
+    const d = el("svg", {width:8, height:8, viewBox:"0 0 8 8"});
+    d.appendChild(el("circle", {cx:4, cy:4, r:2.6, fill:"#d9a520"}));
+    chip(d, anyUnver ? "unresolved / unverified" : "unresolved");
+  }
+}
+
+(function(){
+  const s = MAP.source || {};
+  document.getElementById("src").textContent = [s.title, s.turns ? s.turns + " turns" : null, MAP.generated].filter(Boolean).join(" · ");
+})();
+
+renderAll(); updateReset();
+document.getElementById("cmtBtn").onclick = cPanel; buildKey();
+window.addEventListener("resize", () => { if (document.getElementById("mapview").classList.contains("on")) fit(); });
+</script>
+</body>
+</html>

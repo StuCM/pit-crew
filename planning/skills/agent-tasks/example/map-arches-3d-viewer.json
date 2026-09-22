@@ -1,0 +1,463 @@
+{
+  "id": "arches-3d-viewer",
+  "title": "3D viewer for Arches",
+  "centre": "3D viewer for Arches",
+  "summary": "Planning session on getting mesh and point cloud data displayed inside Arches: which viewer libraries, how to handle the format spread, where conversion happens, and what shape the Arches integration takes.",
+  "generated": "2026-09-20",
+  "source": {
+    "title": "3D viewer widget integration for multiple file formats",
+    "url": "https://claude.ai/chat/acd43749-f346-4f34-8f55-6c6d2b041619",
+    "turns": 14
+  },
+  "themes": [
+    {
+      "id": "t-hosting",
+      "label": "Hosting model",
+      "summary": "Where the 3D files actually live. Settled early and never revisited.",
+      "nodes": [
+        {
+          "id": "n-sketchfab",
+          "label": "Sketchfab",
+          "status": "rejected",
+          "claim": "Considered as the viewer, ruled out as primary storage.",
+          "rationale": "It hosts models on their platform and embeds by model ID — it cannot load a file from your Arches instance. For Queensland government heritage data that puts the records on someone else's server, and there is no link between an Arches resource and its model without a sync step.",
+          "detail": "The free tier also caps files at 100MB and constrains visibility. Left open as a possible publishing target later, but not as the store of record.",
+          "evidence": [
+            {"turn": 0, "speaker": "human", "quote": "Can we use sketchfab? Would that load a data file directly? I would guess not"},
+            {"turn": 1, "speaker": "assistant", "quote": "For a heritage platform, this is probably a non-starter for primary storage"}
+          ]
+        },
+        {
+          "id": "n-selfhost",
+          "label": "Self-hosted files",
+          "status": "decided",
+          "claim": "Files stay on your own storage, viewer is client-side JS.",
+          "rationale": "Keeps data sovereignty intact and matches the flat-file instinct running through Starches.",
+          "detail": "Every viewer option evaluated afterwards is client-side, loading from a URL you control.",
+          "evidence": [
+            {"turn": 1, "speaker": "assistant", "quote": "The serious options, all client-side JS"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "t-mesh",
+      "label": "Mesh viewers",
+      "summary": "Four candidates for rendering ordinary mesh files. The format spread did most of the deciding.",
+      "nodes": [
+        {
+          "id": "n-o3dv",
+          "label": "Online 3D Viewer",
+          "status": "decided",
+          "claim": "Chosen as the tier-1 renderer.",
+          "rationale": "Widest format support of anything evaluated — OBJ, STL, FBX, GLTF, PLY, 3DS, DAE, WRL, BIM, IFC, FCStd — with no loaders to write, and MIT licensed so no licensing headache on the Queensland work.",
+          "detail": "Ships its own Three.js. Setup is roughly an afternoon: vendor the dist, point it at a canvas, give it a file URL.\n\nThe cost is an opinionated viewer UI that you fight a little if you want custom controls, and a chunky bundle because it carries loaders for every format.",
+          "evidence": [
+            {"turn": 5, "speaker": "assistant", "quote": "widest format support of anything, no need to write loaders"},
+            {"turn": 5, "speaker": "assistant", "quote": "Online 3D Viewer for the widget"}
+          ],
+          "children": [
+            {
+              "id": "n-o3dv-limit",
+              "label": "Loads whole file",
+              "status": "open",
+              "claim": "No streaming — the entire mesh goes into memory.",
+              "rationale": "This is the constraint that forces a second tier for big scans. It is a property of the library, not a bug to fix.",
+              "detail": "Practical ceiling landed at roughly 50MB / a few million triangles before a second approach is needed.",
+              "evidence": [
+                {"turn": 9, "speaker": "assistant", "quote": "Online 3D Viewer loads the whole file into memory, full stop"}
+              ]
+            }
+          ]
+        },
+        {
+          "id": "n-modelviewer",
+          "label": "model-viewer",
+          "status": "rejected",
+          "claim": "Google's web component. Simplest option, wrong constraint.",
+          "rationale": "GLTF/GLB only. That kills it unless everything is converted at ingest first, which was not something to commit to upfront.",
+          "detail": "Kept explicitly as a later swap: if GLB normalisation at ingest works out, model-viewer becomes attractive for its lighter footprint and genuinely good mobile AR. Noted as not worth optimising for yet.",
+          "evidence": [
+            {"turn": 5, "speaker": "assistant", "quote": "GLTF only — kills it for me unless I commit to converting everything at ingest"}
+          ]
+        },
+        {
+          "id": "n-threejs",
+          "label": "Three.js direct",
+          "status": "rejected",
+          "claim": "Roll your own viewer on raw Three.js.",
+          "rationale": "Means writing and maintaining camera controls, lighting, materials, error handling and loading states — weeks rather than days, to rebuild what Online 3D Viewer already provides.",
+          "detail": "Total control and the smallest bundle if only a few loaders are needed. Every added format is another loader to wire up.",
+          "evidence": [
+            {"turn": 5, "speaker": "assistant", "quote": "I'd basically be rebuilding what Online 3D Viewer already gives me"}
+          ]
+        },
+        {
+          "id": "n-3dhop",
+          "label": "3DHOP",
+          "status": "rejected",
+          "claim": "Heritage-specific framework, recommended to you from outside the chat.",
+          "rationale": "Nexus format lock-in with only PLY and OBJ as converter inputs — a direct clash with needing to support a wide format spread.",
+          "detail": "Genuine strengths: purpose-built for cultural heritage, multiresolution streaming for hundred-million-triangle models, and built-in DOM interconnection for hotspots, annotations, measurement and sectioning.\n\nAgainst it: the Nexus converter ships officially as Windows binaries only, which is painful in a Kubernetes ingest pipeline. It is built on SpiderGL and jQuery, last tagged release around 2020, GPL rather than MIT, and maintained by a CNR-ISTI research team rather than as a product.",
+          "evidence": [
+            {"turn": 6, "speaker": "human", "quote": "just been recommended something called 3DHOP is this a better solution"},
+            {"turn": 8, "speaker": "human", "quote": "I need to support a large amount of file types. Which puts me off 3dhop"}
+          ],
+          "children": [
+            {
+              "id": "n-3dhop-sep",
+              "label": "Streaming is separable",
+              "status": "corrected",
+              "claim": "Rejecting 3DHOP does not mean rejecting multiresolution.",
+              "rationale": "The initial framing treated 3DHOP and Nexus as one package. They are not — Nexus ships a Three.js loader usable without 3DHOP at all.",
+              "detail": "This reframing is what made the two-tier approach possible: keep format breadth for the general case, add Nexus streaming only for the big scans.",
+              "evidence": [
+                {"turn": 9, "speaker": "assistant", "quote": "the multiresolution streaming tech and 3DHOP's viewer UI are actually separable"}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "t-streaming",
+      "label": "High-res streaming",
+      "summary": "How to handle scans too large for a straight load, once 3DHOP was off the table.",
+      "nodes": [
+        {
+          "id": "n-twotier",
+          "label": "Two-tier viewer",
+          "status": "decided",
+          "claim": "One widget picks a renderer based on which derivative files exist.",
+          "rationale": "Gets format breadth for the common case and streaming for the rare heavy case, without forcing every file through a conversion bottleneck.",
+          "detail": "Tier 1 — normal files under roughly 50MB: Online 3D Viewer loads the original directly.\n\nTier 2 — big scans in the tens of millions of triangles: converted at ingest, loaded via a streaming loader. Original is always preserved either way.",
+          "evidence": [
+            {"turn": 9, "speaker": "assistant", "quote": "Two-tier viewer in one widget"}
+          ]
+        },
+        {
+          "id": "n-nexus",
+          "label": "Nexus loader",
+          "status": "decided",
+          "claim": "NexusObject used directly in a Three.js scene, no 3DHOP.",
+          "rationale": "Gives the multiresolution streaming that made 3DHOP attractive while leaving the viewer shell under your control.",
+          "detail": "Requires the nxsbuild conversion step at ingest, which stays as a cost. The Windows-binary problem applies here too and needs solving in the pipeline.",
+          "evidence": [
+            {"turn": 9, "speaker": "assistant", "quote": "Nexus has a Three.js loader built in"}
+          ]
+        },
+        {
+          "id": "n-gltfprog",
+          "label": "gltf-progressive",
+          "status": "explored",
+          "claim": "Needle Tools module for progressive LOD streaming of GLB.",
+          "rationale": "Attractive because it works on GLTF/GLB — the format you would be converting to anyway — rather than a separate lock-in format.",
+          "detail": "A small initial file with embedded low-quality proxies, with higher LOD levels streaming in on demand based on mesh screen density. A 56MB asset reportedly drops to a 300KB initial download.\n\nThe catch is the generation step: LOD files are produced through Needle Cloud, their hosted service. Self-hosting a pipeline with gltf-transform plus mesh decimation is possible but is real work. The cloud dependency also raises the same sovereignty question Sketchfab raised.",
+          "evidence": [
+            {"turn": 9, "speaker": "assistant", "quote": "this is the one that changes the picture"}
+          ]
+        },
+        {
+          "id": "n-adapt-o3dv",
+          "label": "Adapt Online 3D Viewer",
+          "status": "rejected",
+          "claim": "Your idea: bolt multiresolution onto the tier-1 viewer.",
+          "rationale": "Streaming needs a fundamentally different data structure — an octree or pre-generated LOD set — not a different loader. Adding it would mean rebuilding the renderer.",
+          "detail": "Worth having asked, because ruling it out is what justified carrying two renderers instead of one.",
+          "evidence": [
+            {"turn": 8, "speaker": "human", "quote": "Could we adapt online 3d viewer to do this"},
+            {"turn": 9, "speaker": "assistant", "quote": "You can't really bolt multiresolution streaming onto Online 3D Viewer"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "t-pointcloud",
+      "label": "Point clouds",
+      "summary": "A separate problem from meshes — points rather than surfaces, and mesh viewers choke on them.",
+      "nodes": [
+        {
+          "id": "n-potree",
+          "label": "Potree",
+          "status": "decided",
+          "claim": "The standard, and the choice.",
+          "rationale": "Octree streaming means only the points needed for the current view at the current zoom are loaded, so a 10GB scan is viewable in a browser. Its measurement, clipping and annotation tools are directly useful for heritage work.",
+          "detail": "Renders through WebGL via Three.js underneath. Static octree output fits the Starches model well: convert once at ingest, serve as flat files, no runtime processing.",
+          "evidence": [
+            {"turn": 5, "speaker": "assistant", "quote": "the standard for web point cloud viewing"},
+            {"turn": 5, "speaker": "assistant", "quote": "Potree + PotreeConverter 2.x for the obvious path"}
+          ]
+        },
+        {
+          "id": "n-cesium",
+          "label": "CesiumJS / 3D Tiles",
+          "status": "rejected",
+          "claim": "Geo-focused alternative.",
+          "rationale": "Heavier, and overkill unless the work becomes landscape-scale with terrain and a globe.",
+          "detail": "Still relevant as an interop consideration — CesiumJS reads EPT, which is part of why Entwine stayed on the table.",
+          "evidence": [
+            {"turn": 5, "speaker": "assistant", "quote": "Probably overkill unless we're doing landscape-scale heritage stuff"}
+          ]
+        },
+        {
+          "id": "n-deckgl",
+          "label": "deck.gl PointCloudLayer",
+          "status": "rejected",
+          "claim": "Fine for hundreds of thousands of points.",
+          "rationale": "Too thin for serious LiDAR volumes, which is the actual use case.",
+          "detail": "",
+          "evidence": [
+            {"turn": 5, "speaker": "assistant", "quote": "too thin for serious LiDAR"}
+          ]
+        },
+        {
+          "id": "n-itowns",
+          "label": "itowns",
+          "status": "rejected",
+          "claim": "French IGN project in similar territory to Potree.",
+          "rationale": "Stronger georeferencing but less momentum than Potree, and momentum matters for something you will maintain for years.",
+          "detail": "",
+          "evidence": [
+            {"turn": 5, "speaker": "assistant", "quote": "Less momentum than Potree"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "t-conversion",
+      "label": "Conversion pipeline",
+      "summary": "When conversion runs, what does it, and where the compute sits.",
+      "nodes": [
+        {
+          "id": "n-onupload",
+          "label": "Convert on upload",
+          "status": "decided",
+          "claim": "Background task at ingest, not at view time.",
+          "rationale": "nxsbuild on a 50-million-triangle PLY takes minutes to hours. Nobody can wait for that after clicking view.",
+          "detail": "The flow: upload → Arches stores the original on the Digital Object → a background task (Celery or similar) runs conversion → derivatives are written back as additional file nodes → a status field flips to processed.\n\nThere is a window between upload and conversion finishing where a viewer gets the basic renderer instead of the streaming one. That is acceptable — it matches how Arches already defers search indexing and tile generation after edits.",
+          "evidence": [
+            {"turn": 10, "speaker": "human", "quote": "would it convert as a viewer opens it or would it need to convert on upload"},
+            {"turn": 11, "speaker": "assistant", "quote": "On upload, not on view"}
+          ]
+        },
+        {
+          "id": "n-onview",
+          "label": "Convert on view",
+          "status": "rejected",
+          "claim": "The alternative you asked about.",
+          "rationale": "Preprocessing for the multiresolution formats is far too heavy to run in a request cycle.",
+          "detail": "",
+          "evidence": [
+            {"turn": 11, "speaker": "assistant", "quote": "too heavy for real-time"}
+          ]
+        },
+        {
+          "id": "n-where",
+          "label": "Where it runs",
+          "status": "decided",
+          "claim": "Start on the same server in a Celery worker.",
+          "rationale": "Simplest thing that works, and a heritage platform will not see thousands of uploads a day. Split it out only if conversion load becomes a real problem rather than a predicted one.",
+          "detail": "Considered and deferred: a dedicated conversion pod picking jobs off a queue — more Kubernetes-native, scales independently, judged overkill initially. On AKS the worker could sit on a beefier node pool if CPU pressure shows up.\n\nRejected: Needle Cloud as an external conversion service, because it adds a cloud dependency and the same sovereignty question as Sketchfab.",
+          "evidence": [
+            {"turn": 11, "speaker": "assistant", "quote": "I'd start with the same-server Celery approach"}
+          ]
+        },
+        {
+          "id": "n-potreeconv",
+          "label": "PotreeConverter 2.x",
+          "status": "decided",
+          "claim": "The converter for point clouds.",
+          "rationale": "Official, fast, C++, handles LAS/LAZ/PLY/PTX. Output is a directory of octree chunks served as static files, which matches the flat-file approach.",
+          "detail": "PotreeConverter 1.x was ruled out immediately — older, slower, different output format, only relevant for legacy 1.x viewers.",
+          "evidence": [
+            {"turn": 5, "speaker": "assistant", "quote": "This is the default choice"}
+          ]
+        },
+        {
+          "id": "n-entwine",
+          "label": "Entwine / EPT",
+          "status": "explored",
+          "claim": "More interoperable converter output, deliberately not adopted yet.",
+          "rationale": "EPT is readable by Potree via a plugin and by CesiumJS, so the same converted data could feed several viewers. But it converts more slowly, and interop is not yet a real requirement.",
+          "detail": "Explicitly parked rather than dismissed: revisit if feeding another viewer becomes a genuine need. PDAL pipelines were noted as a third route, only worthwhile if Python point cloud processing is happening anyway.",
+          "evidence": [
+            {"turn": 5, "speaker": "assistant", "quote": "I'd not optimise for that upfront"}
+          ]
+        },
+        {
+          "id": "n-dwg",
+          "label": "DWG",
+          "status": "open",
+          "claim": "No browser path exists. Needs its own server-side step.",
+          "rationale": "AutoCAD proprietary, no open spec, no JS loader. Conversion to DWF, IFC or GLTF has to happen before anything can display it.",
+          "detail": "ODA File Converter is free for non-commercial use; commercial use needs a licence, which matters for the Queensland work. Autodesk Forge/APS is the commercial alternative. Not resolved in the session.",
+          "evidence": [
+            {"turn": 1, "speaker": "assistant", "quote": "not viable in browser"},
+            {"turn": 9, "speaker": "assistant", "quote": "DWG still needs its own conversion step regardless"}
+          ]
+        },
+        {
+          "id": "n-storage",
+          "label": "Storage backend",
+          "status": "open",
+          "claim": "Raised at the end, not answered.",
+          "rationale": "Streaming needs HTTP range request support. S3-compatible blob storage handles it natively; serving from local filesystem behind Django needs more thought.",
+          "detail": "Flagged as something to nail down early, and left unresolved when the session ended.",
+          "evidence": [
+            {"turn": 11, "speaker": "assistant", "quote": "what's your storage backend for these files?"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "t-arches",
+      "label": "Arches integration",
+      "summary": "What gets built inside Arches: widget, plugin, or neither.",
+      "nodes": [
+        {
+          "id": "n-widget",
+          "label": "Viewer widget",
+          "status": "decided",
+          "claim": "Build the widget first.",
+          "rationale": "It is the smaller, more contained piece and can be dropped into a resource report immediately for testing.",
+          "detail": "Bound to a Digital Object's file node, rendering one model in its tile context. Arches widgets are Knockout components in v7, Vue on the v8 trajectory. The viewer library stays a vendored asset rather than a Django dependency.",
+          "evidence": [
+            {"turn": 2, "speaker": "human", "quote": "The widget would be the viewer and the plugin a page for us to search through the 3d data"},
+            {"turn": 3, "speaker": "assistant", "quote": "Build the widget first"}
+          ]
+        },
+        {
+          "id": "n-onewidget",
+          "label": "One shell, two renderers",
+          "status": "corrected",
+          "claim": "Reversed from an earlier lean toward separate widgets.",
+          "rationale": "Mid-session the lean was separate widgets, on the grounds that mesh and point cloud interactions differ too much. By the end the resolution was one widget shell with a renderer switch, which keeps the Arches integration code in one place while accepting the renderers do different work.",
+          "detail": "Decision logic inside the widget: a Potree octree derivative means the Potree renderer; an NXZ derivative means the Nexus Three.js loader; neither means Online 3D Viewer on the original.\n\nAll three render into the same canvas slot in the card template. The underlying point stands — meshes are triangles through one WebGL pipeline, point clouds are screen-space sprites with their own camera controls and measurement semantics — so the renderers stay genuinely separate even though the shell is shared.",
+          "evidence": [
+            {"turn": 5, "speaker": "assistant", "quote": "Leaning separate"},
+            {"turn": 12, "speaker": "human", "quote": "could I use the same viewer for nexus stl and potree or does potree need to be separate"},
+            {"turn": 13, "speaker": "assistant", "quote": "one widget component, but with two rendering modes"}
+          ]
+        },
+        {
+          "id": "n-searchfilter",
+          "label": "Search filter first",
+          "status": "decided",
+          "claim": "Extend the existing search page before building a plugin.",
+          "rationale": "Arches search filters are a documented extension point. A 3D facet plus a format filter and thumbnail grid may cover the need, while a plugin means losing permissions, saved searches, export and spatial filter integration.",
+          "detail": "Build order agreed: settle the Digital Object graph, build the widget, add the search filter, and only then reconsider a plugin.",
+          "evidence": [
+            {"turn": 3, "speaker": "assistant", "quote": "If it's \"search but filtered to 3D things with previews\", extend search instead"}
+          ]
+        },
+        {
+          "id": "n-plugin",
+          "label": "3D browser plugin",
+          "status": "explored",
+          "claim": "Your original proposal, deferred rather than dropped.",
+          "rationale": "Justified only if the search page genuinely cannot do the job — side-by-side model comparison, a 3D-specific spatial browser, or a curated gallery distinct from search.",
+          "detail": "A plugin means its own routing, templates and state. Revisit after the search filter route hits a real wall.",
+          "evidence": [
+            {"turn": 2, "speaker": "human", "quote": "Would we build a widget and a plugin"},
+            {"turn": 3, "speaker": "assistant", "quote": "A plugin is a bigger commitment"}
+          ]
+        },
+        {
+          "id": "n-graph",
+          "label": "Digital Object graph",
+          "status": "open",
+          "claim": "Asked twice, never answered.",
+          "rationale": "The widget needs to know which node holds the 3D file — that is the binding point. Until the graph is settled the widget has nothing concrete to bind to.",
+          "detail": "Open sub-questions: is there already a node for the file, one for format, one for the source resource it depicts? Does a Monument link to its Digital Object via a resource-instance node, which would allow viewer reuse without duplicating storage?\n\nAlso unanswered: whether the graph is the standard Arches reference data model or customised.",
+          "evidence": [
+            {"turn": 3, "speaker": "assistant", "quote": "What does the Digital Object model look like?"},
+            {"turn": 3, "speaker": "assistant", "quote": "What does your current Digital Object graph look like"}
+          ]
+        },
+        {
+          "id": "n-filterby",
+          "label": "\"Filter by model\"",
+          "status": "open",
+          "claim": "Ambiguous phrase, flagged but never pinned down.",
+          "rationale": "Three readings with different consequences: filter by format, filter by what the model depicts, or filter by model properties such as poly count, textures or scan date.",
+          "detail": "The third is the most interesting for heritage and the only one that justifies custom UI over generic search — and it decides what metadata the Digital Object graph must capture at ingest, which ties it back to the unresolved graph question.",
+          "evidence": [
+            {"turn": 2, "speaker": "human", "quote": "it might be good to have a selection or a filter by model"},
+            {"turn": 3, "speaker": "assistant", "quote": "is slightly ambiguous"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "t-priorart",
+      "label": "Prior art",
+      "summary": "Existing Arches 3D work — checked, and mostly not reusable.",
+      "nodes": [
+        {
+          "id": "n-arches3d",
+          "label": "arches-3d (GDH)",
+          "status": "rejected",
+          "claim": "Not a base to build on.",
+          "rationale": "It is a full Arches fork with its own Docker setup, not a plugin — the old way of extending Arches, not the widget/plugin pattern you want.",
+          "detail": "Forked from veuncent/arches-3d, around 756 commits, GPL-3.0, supporting 3DHOP, Potree and Virtual Tours.\n\nStill worth reading for how they wired 3DHOP and Potree in — the widget architecture, how the viewer bound to tile data, what the Knockout component looked like.",
+          "evidence": [
+            {"turn": 9, "speaker": "assistant", "quote": "It's a full Arches fork, not a plugin"}
+          ]
+        },
+        {
+          "id": "n-cvast",
+          "label": "CVAST 3DHOP npm",
+          "status": "rejected",
+          "claim": "Customised 3DHOP distribution from University of South Florida.",
+          "rationale": "Around eight years old and the repo is archived. Dead code.",
+          "detail": "",
+          "evidence": [
+            {"turn": 7, "speaker": "assistant", "quote": "The CVAST arches-3d repo is archived"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "t-scope",
+      "label": "Scope and corrections",
+      "summary": "Points where the conversation had something wrong and fixed it.",
+      "nodes": [
+        {
+          "id": "n-months",
+          "label": "\"Months of work\"",
+          "status": "corrected",
+          "claim": "You corrected an overstatement of effort.",
+          "rationale": "A widget wrapping an existing viewer library is not a multi-month build. The estimate was wrong and was withdrawn.",
+          "detail": "Worth keeping visible, because the corrected sizing is what kept the build order small — widget first, search filter next, plugin only if needed.",
+          "evidence": [
+            {"turn": 8, "speaker": "human", "quote": "I don't think this is months of work though"},
+            {"turn": 9, "speaker": "assistant", "quote": "a widget wrapping a viewer isn't months, I was overstating that"}
+          ]
+        },
+        {
+          "id": "n-ply",
+          "label": "PY → PLY",
+          "status": "corrected",
+          "claim": "Format list typo, caught in the first reply.",
+          "rationale": "Minor, but it matters: PLY is common scan output with vertex colour support, and it is one of the two formats the Nexus converter accepts.",
+          "detail": "The working format list is OBJ, STL, FBX, GLTF/GLB, PLY and DWG.",
+          "evidence": [
+            {"turn": 0, "speaker": "human", "quote": "I have multiple formats OBJ STL FBX PY GLTF DWG"},
+            {"turn": 1, "speaker": "assistant", "quote": "I'm assuming you meant PLY, not PY?"}
+          ]
+        },
+        {
+          "id": "n-fbx",
+          "label": "FBX fragility",
+          "status": "explored",
+          "claim": "Supported, but not to be relied on as a delivery format.",
+          "rationale": "Autodesk proprietary with a closed spec — loaders exist but parsing is fragile.",
+          "detail": "Reinforces the normalise-to-GLB-at-ingest approach: accept FBX on upload, serve something else.",
+          "evidence": [
+            {"turn": 1, "speaker": "assistant", "quote": "Avoid as a delivery format if you can"}
+          ]
+        }
+      ]
+    }
+  ]
+}

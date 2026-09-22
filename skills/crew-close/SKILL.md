@@ -79,6 +79,30 @@ Then add a line to the project's `decisionsFile` for anything a human would
 want to read without the graph running. The graph owns the links; the file owns
 the prose; neither restates the other.
 
+### If this task came from a plan
+
+The maps hold outcomes nobody has written down yet — the routes that were
+ruled out and why, and the boundaries each part was given. Those are Patterns
+and Constraints, and they are the writes that pay for themselves:
+
+```sh
+python3 ${CLAUDE_PLUGIN_ROOT}/planning/scripts/graph_propose.py <plan.json>
+```
+
+(The two plugins ship from one repository, so `planning/` sits inside crew's
+plugin root. If crew was installed from npm alone there is no plugin root and
+no planning layer either — skip this step.)
+
+It proposes; it never writes. Read what comes back, keep what is durable, and
+commit it yourself — you are still the only writer.
+
+Only confirmed outcomes qualify. An option that was floated, or a question
+still open, is not a decision, and a graph full of maybes gives bad advice.
+
+**Then the maps are disposable.** Once what was learnt is in the graph, the
+plan has done its job. Leaving both is how you end up with two stores that
+drift, and crew queries one.
+
 ## 5. Deploy, or say why not
 
 ```sh
@@ -90,7 +114,15 @@ deploy, do not diagnose the failure, do not try another way. Report to the user
 that it is merged and waiting. Three agents each solving deployment is the
 problem this gate exists to prevent.
 
-## 6. Next
+## 6. Mirror the close
+
+If the project has `.claude/taiga.json`, use `taiga-mirror` to move the card to
+Done with a closing comment naming the commits and what the gate proved. A
+`pending-<env>` task goes to the ready-for-test status, **never** to Done — a
+mirror that collapsed that distinction would undo the only thing the status
+exists for.
+
+## 7. Next
 
 Tell the user what is now unblocked, and what you would pick up next and why.
 That judgement is the job — it is why the orchestrator is the session they talk

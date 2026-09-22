@@ -36,6 +36,11 @@ without it.
    something is *absent* and so passes on nothing, is a finding.
 4. **Scope creep.** Compare against **Out of scope**. The gate already caught
    stray *files*; you are looking for stray *behaviour* in permitted files.
+   If the task has a `part:`, run `npx crew plan <task-file>` and check the
+   diff against that part's **not** list and its neighbours. Behaviour that
+   belongs in a neighbouring part is a finding even when it sits in a
+   permitted file — that is the drift the boundary was drawn to catch, and
+   it is invisible from the diff alone.
 5. **Standards.** The project brief, the repo's own conventions, and the
    comment rule: one concise line per exported function, no narrated
    reasoning, no restating signatures. Flag comment blocks that are

@@ -1,0 +1,15 @@
+{
+  "name": "claude-crew-planning",
+  "version": "0.1.0",
+  "description": "Plan a piece of work from conversation to agent-ready tasks: brainstorm map, architecture map, feature map against the repo, an interrogation pass on what is unresolved, and task packets that refuse to be generated while anything is unverified. Exports to crew, Taiga or markdown, and proposes memory-graph writes from what was actually decided.",
+  "author": {
+    "name": "Stu"
+  },
+  "keywords": [
+    "planning",
+    "architecture",
+    "diagrams",
+    "tasks",
+    "crew"
+  ]
+}

@@ -1,0 +1,242 @@
+{
+  "id": "brainstorm-mermaid-export",
+  "title": "Mermaid export for brainstorm-map",
+  "summary": "Adding a Mermaid export to the existing brainstorm-map skill. Only the parts we touch or depend on are shown — the rest of the skill is deliberately absent.",
+  "generated": "2026-09-20",
+  "source": {
+    "repo": "brainstorm-map",
+    "architecture": null
+  },
+  "groups": [
+    {
+      "id": "g-build",
+      "label": "Build pipeline",
+      "colour": "#e08033"
+    },
+    {
+      "id": "g-view",
+      "label": "Viewer",
+      "colour": "#14a09a"
+    },
+    {
+      "id": "g-data",
+      "label": "Data",
+      "colour": "#5b7086"
+    }
+  ],
+  "parts": [
+    {
+      "id": "p-schema",
+      "label": "Map JSON",
+      "group": "g-data",
+      "kind": "data",
+      "status": "exists",
+      "purpose": "The map file: themes, nodes, statuses, evidence. Already the single source for both the diagram and the document.",
+      "why_here": "The export reads it directly, so its shape constrains what a Mermaid graph can express. Nothing about it changes.",
+      "where": [
+        "example/map-arches-3d-viewer.json",
+        "references/schema.md"
+      ],
+      "open": [
+        "Mermaid has no equivalent of the status styling — do we encode status in node shape, or lose it?"
+      ]
+    },
+    {
+      "id": "p-validate",
+      "label": "Validator",
+      "group": "g-build",
+      "kind": "service",
+      "status": "exists",
+      "purpose": "Checks ids, labels, statuses and evidence before anything is rendered, and refuses to build on a failure.",
+      "why_here": "The export must run behind it, not beside it. Exporting an unvalidated map would route around the one gate the skill has.",
+      "where": [
+        "scripts/build_map.py"
+      ],
+      "surface": [
+        {
+          "name": "validate",
+          "signature": "validate(data) -> (errs, warns)",
+          "file": "scripts/build_map.py",
+          "use": "call",
+          "note": "Call it first and bail on errs, exactly as main() does. We do not touch it.",
+          "verified": true,
+          "line": 20
+        },
+        {
+          "name": "STATUSES",
+          "file": "scripts/build_map.py",
+          "use": "read",
+          "note": "The status vocabulary our Mermaid classDefs have to cover.",
+          "verified": true,
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "p-build",
+      "label": "Build script",
+      "group": "g-build",
+      "kind": "service",
+      "status": "extend",
+      "purpose": "Reads the map JSON, validates it, injects it into the template and writes the HTML.",
+      "why_here": "This is where the new output format hangs. It gains a flag and a branch; everything else stays.",
+      "where": [
+        "scripts/build_map.py"
+      ],
+      "surface": [
+        {
+          "name": "main",
+          "signature": "main()",
+          "file": "scripts/build_map.py",
+          "use": "modify",
+          "note": "Default stays html, so every existing invocation behaves identically.",
+          "change": "Add a --format {html,mermaid,both} argument and branch on it after validation.",
+          "verified": true,
+          "line": 71
+        },
+        {
+          "name": "build",
+          "signature": "build(data, template) -> str",
+          "file": "scripts/build_map.py",
+          "use": "call",
+          "note": "Untouched. The Mermaid path is a sibling of this call, not a change to it.",
+          "verified": true,
+          "line": 8
+        }
+      ],
+      "open": [
+        "Separate .mmd file, or a ```mermaid block appended to a Markdown export?"
+      ]
+    },
+    {
+      "id": "p-export",
+      "label": "Mermaid writer",
+      "group": "g-build",
+      "kind": "service",
+      "status": "new",
+      "purpose": "Walks the validated map and emits Mermaid flowchart source: one subgraph per theme, one node per item, classDefs for status.",
+      "why_here": "The actual new work.",
+      "where": [
+        "scripts/export_mermaid.py"
+      ],
+      "surface": [
+        {
+          "name": "to_mermaid",
+          "signature": "to_mermaid(data) -> str",
+          "file": "scripts/export_mermaid.py",
+          "use": "add",
+          "note": "No IO, so it is testable without a repo or a browser.",
+          "change": "New pure function: map dict in, Mermaid flowchart source out.",
+          "verified": false
+        }
+      ],
+      "open": [
+        "Node ids in the map contain hyphens, which Mermaid tolerates but some renderers do not — sanitise?",
+        "Do excluded nodes come out? The pruning lives in the browser, so the export only sees the file."
+      ]
+    },
+    {
+      "id": "p-viewer",
+      "label": "Viewer template",
+      "group": "g-view",
+      "kind": "ui",
+      "status": "extend",
+      "purpose": "The self-contained HTML page: radial map, outline, doc, prune and drag.",
+      "why_here": "Pruning and dragging only exist in the browser, so a useful export has to be reachable from here too, not just from the command line.",
+      "where": [
+        "assets/template.html"
+      ],
+      "surface": [
+        {
+          "name": "clean",
+          "signature": "clean()",
+          "file": "assets/template.html",
+          "use": "call",
+          "note": "Already returns the pruned map plus layout. The in-page export feeds on this, not on MAP.",
+          "verified": true,
+          "line": 864
+        },
+        {
+          "name": "renderDoc",
+          "file": "assets/template.html",
+          "use": "read",
+          "note": "Reference only — shows the traversal that honours exclusions. We copy the approach, not the code.",
+          "verified": true,
+          "line": 561
+        }
+      ],
+      "open": [
+        "Copy-to-clipboard only, since downloads are inert inside a published artifact."
+      ]
+    },
+    {
+      "id": "p-skilldoc",
+      "label": "Skill instructions",
+      "group": "g-build",
+      "kind": "data",
+      "status": "extend",
+      "purpose": "Tells Claude how to run the skill and what the output is.",
+      "why_here": "A capability nobody is told about does not exist. The workflow section has to mention the flag.",
+      "where": [
+        "SKILL.md"
+      ],
+      "surface": [
+        {
+          "name": "Workflow",
+          "file": "SKILL.md",
+          "use": "modify",
+          "change": "Document the --format flag in the build step and name the .mmd output.",
+          "note": "A capability nobody is told about does not exist.",
+          "verified": true,
+          "line": 32
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-b-v",
+      "from": "p-build",
+      "to": "p-validate",
+      "kind": "depends",
+      "label": "validates first",
+      "note": "The export must sit behind the gate, not beside it."
+    },
+    {
+      "id": "e-b-e",
+      "from": "p-build",
+      "to": "p-export",
+      "kind": "control",
+      "label": "--format mermaid"
+    },
+    {
+      "id": "e-e-s",
+      "from": "p-export",
+      "to": "p-schema",
+      "kind": "data",
+      "label": "reads"
+    },
+    {
+      "id": "e-v-s",
+      "from": "p-validate",
+      "to": "p-schema",
+      "kind": "data",
+      "label": "checks"
+    },
+    {
+      "id": "e-view-e",
+      "from": "p-viewer",
+      "to": "p-export",
+      "kind": "depends",
+      "label": "same mapping",
+      "note": "The in-page copy and the CLI output must agree, or two Mermaid dialects appear."
+    },
+    {
+      "id": "e-doc-b",
+      "from": "p-skilldoc",
+      "to": "p-build",
+      "kind": "depends",
+      "label": "documents"
+    }
+  ]
+}

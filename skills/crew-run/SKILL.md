@@ -60,7 +60,14 @@ If a tool for spawning a session is available, spawn it there with that prompt
 and record the session id in the task file's `session:`. Otherwise give the
 user the `cd` and the prompt to paste.
 
-## 4. Then stop
+## 4. Mirror it, if the project has a board
+
+If `.claude/taiga.json` exists, use the `taiga-mirror` skill to move the card
+to In progress with a dispatch comment. One way only, and never a blocker: if
+the push fails, say so in a line and carry on. The loop must not stall on a
+reporting layer, for the same reason the graph degrades silently.
+
+## 5. Then stop
 
 The task session owns the loop from here: it implements, runs the gate, opens
 its rounds with `crew review`, spawns `crew-reviewer` itself, and writes its
@@ -69,7 +76,7 @@ own status back into the task file.
 **Do not poll it and do not narrate it.** Re-render the board when the user
 asks where things stand, or when a session reports back.
 
-## 5. When a session reports
+## 6. When a session reports
 
 The task file's `status:` tells you what happened:
 

@@ -13,6 +13,33 @@ and call sites starts writing immediately; a worker given a paragraph spends
 tens of thousands of tokens rediscovering what you already knew.
 **Specificity here is the optimisation, not the ceremony.**
 
+## 0. Is there a plan for this?
+
+```sh
+npx crew plan
+```
+
+If it prints a manifest, this project has a planning layer and the thinking
+upstream of this spec may already be done. Two cases:
+
+- **The spec already exists as a draft.** `agent-tasks` writes
+  `status: draft` specs straight into the shape below, with `files:`,
+  Approach and Out of scope already lifted from the maps. Do not rewrite one
+  from scratch — pick it up at step 2 and do the three things it deliberately
+  did not: collisions, the graph, and approval.
+- **There is a plan but no draft for this work.** Find the part this task
+  builds and read it: `npx crew plan <part-id>`. Put its id in the task's
+  `part:` so the worker and the reviewer can read the same thing.
+
+If it says there is no plan, carry on — the loop does not need one. A one-file
+fix with a known cause never earned a map, and running the planning chain for
+it is overhead. What earns a map is work that crosses a boundary, or a bug
+nobody can yet scope.
+
+**The maps are not a second memory.** They are the working surface for this
+piece of work; the graph is the durable record. Read them here, inline what
+matters, and do not teach the worker to query both.
+
 ## 1. Prime from the graph — you, once, not every agent
 
 ```sh
@@ -52,6 +79,10 @@ Talk it through with the user. Push on:
   section means the reviewer invents its own.
 - **Which model?** The project's `models.default` for well-specified work;
   `models.critical` only for the code the project brief says must not be wrong.
+- **Which part of the plan?** If there is one, set `part:`. An open question
+  on that part is a spec bug: `agent-tasks` would have refused to emit this
+  task, and `npx crew plan` prints the questions. Settle them with
+  `open-threads` before approval, not in code afterwards.
 
 Once `files:` is settled, ask whether the work already exists:
 

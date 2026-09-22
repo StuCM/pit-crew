@@ -13,6 +13,7 @@ const USAGE = `crew — a task loop for agents
   crew graph <what>         read the memory graph: prime, prefs, traps, find
   crew collisions <task>    unmerged branches already touching its files:
   crew preflight [env]      what this machine can and cannot prove
+  crew plan [task|part]     the plan map slice bearing on a task
 
   crew gate <task>          prepare + scope + verify, then stamp the commit
   crew gate --check <task>  has the gate passed on the code that is here?
@@ -39,6 +40,7 @@ const COMMANDS = {
   log: () => import('./commands/log.js'),
   review: () => import('./commands/review.js'),
   graph: () => import('./commands/graph.js'),
+  plan: () => import('./commands/plan.js'),
   init: () => import('./commands/init.js'),
   'spec-template': () => import('./commands/init.js').then((m) => ({ run: m.template })),
 };

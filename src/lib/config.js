@@ -17,6 +17,7 @@ export const DEFAULTS = {
   worktreeDir: '..',
   tasksDir: '.claude/tasks',
   projectBrief: '.claude/crew/project.md',
+  plansDir: '.claude/plans',
   decisionsFile: null,
   backlogFile: null,
   verify: null,
