@@ -11,6 +11,17 @@ import { declaredFiles, readTask, readTasks } from '../lib/task.js';
 
 /** Is this executable on PATH? Resolved without a shell. */
 export const onPath = (bin) => {
+  // A path, not a bare name — CREW_GRAPH_CLI and an environment's `requires`
+  // both accept one, and joining it onto every PATH entry never finds it.
+  if (bin.includes('/') || bin.includes('\\')) {
+    try {
+      accessSync(bin, constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   for (const dir of (process.env.PATH || '').split(delimiter)) {
     if (!dir) continue;
     try {
