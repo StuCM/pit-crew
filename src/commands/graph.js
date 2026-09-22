@@ -37,9 +37,21 @@ ORDER BY DESC(?when) LIMIT ${limit}`;
 // Preferences are the one type that is deliberately cross-project — how this
 // person wants work done travels with them — so scoping them to a repository
 // would hide exactly the ones worth carrying into a spec.
-const TYPE_QUERY = (type, limit) => `SELECT ?name ?desc WHERE {
-  GRAPH ?g { ?n rdf:type mem:${type} ; mem:name ?name .
-             OPTIONAL { ?n mem:description ?desc } } } LIMIT ${limit}`;
+//
+// They are *concepts*, not resources, and concepts carry `label` where a
+// resource carries `name`. Asking for name returned nothing from 234 of them,
+// silently, for as long as this command has existed.
+export const CONCEPT_QUERY = (type, limit) => `SELECT ?label ?desc ?why WHERE {
+  GRAPH ?g { ?n rdf:type mem:${type} ; mem:label ?label .
+             OPTIONAL { ?n mem:description ?desc }
+             OPTIONAL { ?n mem:rationale ?why } } } LIMIT ${limit}`;
+
+// What the project *is*, and nothing else. `recall --depth 1` looks like the
+// right call and is not: a worked-in project accumulates hundreds of links, and
+// coral-arches returned 648KB from 816 of them. The neighbours are what
+// `traps`, `decisions` and `files` are for, each of them bounded.
+const PROJECT_QUERY = (project) => `SELECT ?p ?o WHERE {
+  GRAPH ?g { ?n rdf:type mem:Project ; mem:name ${literal(project)} ; ?p ?o } }`;
 
 /**
  * Patterns anchored at a path that one of these files sits under. anchorPath
@@ -86,9 +98,11 @@ export const run = (cfg, [command = 'prime', ...rest]) => {
     // returned over half a megabyte from a mature store — a briefing nobody
     // can read is the same as no briefing, and it costs the whole budget.
     case 'prime':
-      return call(['recall', 'Project', project, '--depth', '1']);
+      return call(['query', PROJECT_QUERY(project)]);
     case 'prefs':
-      return call(['query', TYPE_QUERY('Preference', limit)]);
+      return call(['query', CONCEPT_QUERY('Preference', limit)]);
+    case 'constraints':
+      return call(['query', CONCEPT_QUERY('Constraint', limit)]);
     case 'traps':
       return call(['query', SCOPED('Pattern', project, limit)]);
     case 'decisions':
@@ -118,7 +132,8 @@ export const run = (cfg, [command = 'prime', ...rest]) => {
     }
     default:
       console.error(
-        'usage: crew graph {prime|prefs|traps|decisions|files <path...>|find <text>|raw <sparql>} [--limit=N]',
+        'usage: crew graph {prime|prefs|constraints|traps|decisions|' +
+          'files <path...>|find <text>|raw <sparql>} [--limit=N]',
       );
       return 2;
   }

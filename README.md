@@ -221,7 +221,7 @@ into tasks". See [Planning](#planning).
 | `crew init --list` | the sections, and how to leave one out |
 | `crew doctor` | is this installation actually wired up? |
 | `crew spec-template` | the task template, for a new spec |
-| `crew graph <what>` | read the memory graph: `prime`, `prefs`, `traps`, `decisions`, `files <path...>`, `find <text>` |
+| `crew graph <what>` | read the memory graph: `prime`, `prefs`, `constraints`, `traps`, `decisions`, `files <path...>`, `find <text>`, all `--limit=N` |
 | `crew collisions <task>` | unmerged branches already touching its `files:` |
 | `crew preflight [env]` | what this machine can and cannot prove |
 | `crew plan [task\|part]` | the plan map slice bearing on a task: its boundaries, symbols and neighbours |
@@ -495,7 +495,18 @@ Uses [claude-memory-graph](https://github.com/StuCM/claude-memory-graph) if it
 is installed, and degrades silently if not.
 
 The orchestrator queries **once**, at spec time, and inlines what matters into
-the spec. Workers never query. That is one query per task instead of one per
+the spec. Workers never query.
+
+Every read is **bounded and scoped to this project**, because the store is one
+graph for every project on the machine — unscoped, `traps` returned 64KB of
+other projects' notes, and priming on the project node returned 648KB. The
+exception is `prefs`: how someone wants work done travels between their
+projects, so scoping it would hide the ones worth carrying.
+
+`crew graph files <path...>` is the sharpest of them. It matches on the
+`anchorPath` recorded against a Pattern, so once a spec's `files:` is settled
+you can ask what is known about those exact paths rather than about the
+subsystem in general. That is one query per task instead of one per
 agent, filtered by judgement, and it keeps workers hermetic — no MCP, no
 network, no dependence on a store that may not exist in CI or a container.
 

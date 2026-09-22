@@ -121,4 +121,10 @@ const main = async (argv) => {
   }
 };
 
-main(process.argv.slice(2)).then((code) => process.exit(code));
+// `process.exit` here truncated every output larger than a pipe buffer:
+// stdout is asynchronous when it is a pipe, so `crew graph prime` delivered
+// exactly 64KiB of a 648KB answer to a caller and nothing reported a fault.
+// Setting the code and returning lets node exit once the stream has drained.
+main(process.argv.slice(2)).then((code) => {
+  process.exitCode = code;
+});

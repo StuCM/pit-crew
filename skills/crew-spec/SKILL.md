@@ -118,11 +118,16 @@ matters, and do not teach the worker to query both.
 ## 1. Prime from the graph — you, once, not every agent
 
 ```sh
-npx crew graph prime
-npx crew graph prefs
-npx crew graph traps
+npx crew graph prime       # what this project is
+npx crew graph prefs       # how this person wants work done
+npx crew graph traps       # this project's Patterns, newest first
+npx crew graph decisions   # and its Decisions
 npx crew graph find <the subsystem this touches>
 ```
+
+Each is bounded and scoped to this project — `--limit=N` if you want more.
+`prefs` is deliberately *not* scoped: how someone wants work done travels
+between their projects.
 
 Read what comes back and keep only what bears on *this* task. Then **inline it
 into the spec's Graph context section**, in your own words, compressed.
