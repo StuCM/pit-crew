@@ -12,12 +12,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/StuCM/claude-crew.git"
+    "url": "git+https://github.com/StuCM/pit-crew.git"
   },
   "bugs": {
-    "url": "https://github.com/StuCM/claude-crew/issues"
+    "url": "https://github.com/StuCM/pit-crew/issues"
   },
-  "homepage": "https://github.com/StuCM/claude-crew#readme",
+  "homepage": "https://github.com/StuCM/pit-crew#readme",
   "type": "module",
   "engines": {
     "node": ">=20.11"

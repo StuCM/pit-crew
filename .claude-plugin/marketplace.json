@@ -1,5 +1,5 @@
 {
-  "name": "claude-crew",
+  "name": "pit-crew",
   "owner": {
     "name": "Stuart Marshall"
   },
@@ -11,7 +11,7 @@
       "version": "0.1.0"
     },
     {
-      "name": "claude-crew-planning",
+      "name": "pit-crew-planning",
       "source": "./planning",
       "description": "Upstream of crew: brainstorm, architecture and feature maps traced to evidence, an interrogation pass on what is unresolved, and gated task packets that refuse to be generated while anything is unverified.",
       "version": "0.1.0"

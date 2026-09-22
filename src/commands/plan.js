@@ -138,7 +138,7 @@ export const run = (cfg, args) => {
   if (!plan) {
     console.log(
       `no plan at ${join(cfg.plansDir, 'plan.json')} — this project has no planning layer.\n` +
-        'Run /claude-crew-planning:plan-init to add one, or carry on without it.',
+        'Run /pit-crew-planning:plan-init to add one, or carry on without it.',
     );
     return 0;
   }

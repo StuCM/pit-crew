@@ -74,15 +74,15 @@ prefers local config. Nothing already installed changes.
 Then the plugins, for the skills:
 
 ```
-/plugin marketplace add StuCM/claude-crew
+/plugin marketplace add StuCM/pit-crew
 ```
 
 ```
-/plugin install crew@claude-crew
+/plugin install crew@pit-crew
 ```
 
 ```
-/plugin install claude-crew-planning@claude-crew
+/plugin install pit-crew-planning@pit-crew
 ```
 
 The second installs on its own — you can plan with it and hand the specs to
@@ -93,6 +93,21 @@ any orchestrator. See [Planning](#planning).
 ```bash
 crew init
 ```
+
+Then, in Claude Code:
+
+```
+/crew:crew-setup
+```
+
+`init` writes the files with `CHANGE-ME` where a value has to be about *your*
+project. `crew-setup` fills them in by reading the repository — the CI
+workflow for `verify`, `git symbolic-ref` for the base branch, your own commit
+history for the convention to match — and asks you only what a repository
+cannot answer, which is essentially just which machine can prove a change is
+done. It runs the verify command once before writing it down, because a
+command that does not run is worse than a placeholder: `crew doctor` goes
+quiet and the failure reappears at a gate three tasks later.
 
 ```bash
 crew doctor
@@ -180,6 +195,7 @@ offered a plan.
 
 | command | who runs it | what it does |
 |---|---|---|
+| `/crew:crew-setup` | you + orchestrator | fill in this project's config and brief by reading the repository; run it once, after `crew init` |
 | `/crew:crew-spec` | you + orchestrator | work out what kind of work this is, offer a plan if it earns one, prime from the graph once, write the spec, **stop for your approval** |
 | `/crew:crew-run` | orchestrator | check collisions, cut the worktree, hand the task to its own session, then stop |
 | `/crew:crew-status` | orchestrator | render the board; what is waiting on you, what is in flight, what to pick up |
@@ -192,7 +208,7 @@ owns its loop from handover to verdict, and the reviewer is spawned by the
 worker, not by you.
 
 With the planning plugin installed there is one more command,
-`/claude-crew-planning:plan-init`, plus six skills that trigger by asking —
+`/pit-crew-planning:plan-init`, plus six skills that trigger by asking —
 "map this conversation", "let's work through the open threads", "turn the plan
 into tasks". See [Planning](#planning).
 
@@ -221,7 +237,14 @@ into tasks". See [Planning](#planning).
 
 ## Configuration
 
-One file, with a schema:
+Two files, and `/crew:crew-setup` writes both from the repository. This is
+what it is filling in.
+
+### `.claude/crew.config.json`
+
+`project` and `verify` are the only required keys; everything else has a
+default that gives a working loop. `crew doctor` validates it and reports
+every fault at once.
 
 ```json
 {
@@ -240,23 +263,55 @@ One file, with a schema:
 }
 ```
 
-`project` and `verify` are the only required keys; everything else has a
-default that gives a working loop. `crew doctor` validates it and reports
-every fault at once.
+The keys worth understanding rather than accepting:
+
+| key | what it decides |
+|---|---|
+| `verify` | the command that proves a task. The gate runs it and **will not stamp without it**, so a wrong one fails at the gate rather than here |
+| `quickVerify` | a faster subset, for iterating mid-task |
+| `prepare` | what the gate runs *before* verify, per worktree — an install, a fixture, a seed. A fresh worktree has none of them |
+| `scopes.fromDir` | source roots. Every directory beneath them becomes a valid commit scope, so pointing this at the repo root makes the convention meaningless |
+| `environments` | where a task can be proven — see below, it is the one with teeth |
+| `reviewRounds` | rounds before a human decides. A round past this is two agents disagreeing, which is a decision |
+| `commit.banned` | substrings rejected anywhere in a message. The default strips attribution footers |
+| `comments.warnAddedRatio` | the comment-to-code ratio that earns a warning, counted on code files only |
+| `plansDir` | where the planning plugin keeps `plan.json`; `crew plan` reads it |
 
 **Statuses are derived, not listed.** Six are intrinsic — `draft`, `approved`,
 `building`, `review`, `blocked`, `done` — and every environment with
 `reachableFromAgents: false` earns one of its own: the config above produces
 `pending-tv`. That is how code-complete work is stopped from calling itself
-done, without the board knowing what a TV is.
+done, without the board knowing what a TV is. It is the one field worth
+getting right by hand, because a wrong one either blocks work that was
+provable or lets unprovable work be closed.
 
-**Prose does not go in the JSON.** `.claude/crew/project.md` holds the rules a
-plausible diff can violate, the files where being wrong is expensive, and what
-this environment cannot prove. The worker skill and the reviewer agent both
-include it, and neither mentions your project by name. That split is not
-tidiness: the old roles had a project's runtime constraints written into them
-and went stale against a migration they could not see, while the generic half
-never would have.
+### `.claude/crew/project.md`
+
+**Prose does not go in the JSON.** This file holds the rules a plausible diff
+can violate, the files where being wrong is expensive, and what this
+environment cannot prove. The worker skill and the reviewer agent both include
+it, and neither mentions your project by name.
+
+That split is not tidiness: the old roles had a project's runtime constraints
+written into them and went stale against a migration they could not see, while
+the generic half never would have.
+
+Four headings, and an empty one beats an invented one:
+
+- **Hard constraints** — rules a diff can violate while looking correct, *and
+  what the violation costs*. Say the consequence; that is what stops an agent
+  fixing its way past the rule.
+- **Where a plausible diff does real damage** — the two or three files, and
+  what to check in each.
+- **What this environment cannot prove** — so those tasks end at
+  `pending-<env>` rather than a false `done`.
+- **Baseline** — what a clean run actually scores, and what must be set up
+  first. An agent that cannot tell its own breakage from the one it inherited
+  will invent an explanation for it.
+
+"Follow good practice" costs tokens in every downstream agent and changes no
+behaviour. `None found yet — add one the first time a diff surprises you.` is
+a better line, and it ages into something real.
 
 ## A first task, end to end
 
@@ -301,7 +356,7 @@ and **stops** for the second approval before it merges.
 
 ## Planning
 
-Upstream of `/crew:crew-spec` is **`claude-crew-planning`**, the second plugin
+Upstream of `/crew:crew-spec` is **`pit-crew-planning`**, the second plugin
 in this marketplace. Six skills that turn a conversation into agent-ready work:
 
 | skill | what it does | needs a repo |
@@ -474,8 +529,10 @@ cost; they are not a way to refuse one.
 - **Taiga status names are conventional guesses.** `New` / `Ready` /
   `In progress` / `Ready for test` / `Done` vary by instance, and a status
   that does not exist fails the push quietly. Check them before the first run.
-- **Nothing is published yet.** `npm publish` for the CLI, and the plugin
-  marketplace assumes `StuCM/claude-crew` is pushed and public.
+- **Nothing is published yet, and the repository is private.** `npm publish`
+  is blocked on npm 2FA; the marketplace works for its owner through their own
+  git auth, but nobody else can `/plugin marketplace add StuCM/pit-crew` until
+  the repository is public.
 
 ## Contributing
 
