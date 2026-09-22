@@ -50,5 +50,9 @@
     "format": "oxfmt --write",
     "format:check": "oxfmt --check",
     "verify": "npm run lint && npm run format:check && npm test"
+  },
+  "devDependencies": {
+    "oxlint": "^1.85.0",
+    "oxfmt": "^0.70.0"
   }
 }

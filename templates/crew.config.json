@@ -9,7 +9,7 @@
   "prepare": [],
 
   "scopes": {
-    "fromDir": ["src"],
+    "fromDir": [],
     "extra": ["docs", "ci", "deps", "crew"]
   },
 

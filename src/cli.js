@@ -57,7 +57,10 @@ const COMMANDS = {
 const main = async (argv) => {
   let [name, ...args] = argv;
 
-  if (!name || name === 'help' || name === '--help' || name === '-h') {
+  // `--help` anywhere means "tell me, do not do it". It used to be read only
+  // in the first position, so `crew init --help` fell through to init and
+  // wrote into a repository the reader was still deciding about.
+  if (!name || name === 'help' || argv.includes('--help') || argv.includes('-h')) {
     console.log(USAGE);
     return name ? 0 : 2;
   }
