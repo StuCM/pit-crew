@@ -6,7 +6,7 @@
 // six that each crash differently.
 
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { branches, git } from '../lib/git.js';
 import { problems, statuses } from '../lib/config.js';
 import { readTasks } from '../lib/task.js';
@@ -20,13 +20,18 @@ export const run = (cfg) => {
 
   for (const problem of problems(cfg)) fails.push(problem);
 
+  // `crew init --global` sets this to an absolute path outside the repo, so
+  // resolving against the root rather than joining to it is the difference
+  // between "wired up" and a spurious failure in every project.
   const hooksPath = (git(['config', '--get', 'core.hooksPath'], cfg.root) || '').trim();
-  if (!hooksPath) {
+  const hooksDir = hooksPath ? resolve(cfg.root, hooksPath) : null;
+  if (!hooksDir) {
     fails.push('git has no core.hooksPath — the commit convention is advice only');
-    notes.push(`  fix: git config core.hooksPath ${HOOKS}`);
-  } else if (!existsSync(join(cfg.root, hooksPath))) {
+    notes.push(`  fix: crew init --global   (once, for every repo)`);
+    notes.push(`   or: git config core.hooksPath ${HOOKS}`);
+  } else if (!existsSync(hooksDir)) {
     fails.push(`core.hooksPath is "${hooksPath}", which does not exist`);
-  } else if (!existsSync(join(cfg.root, hooksPath, 'commit-msg'))) {
+  } else if (!existsSync(join(hooksDir, 'commit-msg'))) {
     fails.push(`core.hooksPath is "${hooksPath}" but has no commit-msg hook`);
   }
 

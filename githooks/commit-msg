@@ -1,8 +1,22 @@
 #!/bin/sh
-# The commit convention. Enable with:
-#   git config core.hooksPath .claude/crew/githooks
+# The commit convention.
+#   per repo:    git config core.hooksPath .claude/crew/githooks
+#   per machine: crew init --global
 ROOT=$(git rev-parse --show-toplevel) || exit 0
+
+# A hooksPath switches off .git/hooks entirely, so anything already installed
+# there would vanish the moment this went global. Run it first, and honour its
+# verdict — crew is the addition, not the replacement.
+if [ -x "$ROOT/.git/hooks/commit-msg" ]; then
+  "$ROOT/.git/hooks/commit-msg" "$@" || exit $?
+fi
+
+# Silence in a repository that does not use crew. This hook runs everywhere
+# once core.hooksPath is global, and a hook that fails there gets switched off.
+[ -f "$ROOT/.claude/crew.config.json" ] || exit 0
+
 if [ -x "$ROOT/node_modules/.bin/crew" ]; then
   exec "$ROOT/node_modules/.bin/crew" commit-msg "$1"
 fi
+command -v crew >/dev/null 2>&1 && exec crew commit-msg "$1"
 exec npx --no-install crew commit-msg "$1"

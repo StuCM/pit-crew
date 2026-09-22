@@ -37,50 +37,38 @@ reads the board; it does not watch, poll, or narrate.
 
 ## Install
 
-There are two halves, and you can run either without the other. The **npm
-package** is the CLI that the git hooks and CI call — it works with no Claude
-Code at all. The **plugin** adds the four skills and the reviewer agent.
+Two scopes. **Once on this machine**, then **one command per project** — and
+that per-project command writes only the two files that are genuinely about
+that project.
 
-### 1. The CLI, into a repository
+### Once, on this machine
+
+The CLI is not on npm yet, so link it from a clone:
 
 ```bash
-npm install --save-dev @stucm/crew
+git clone https://github.com/StuCM/claude-crew && cd claude-crew && npm link
 ```
 
 ```bash
-npx crew init --hook
+crew init --global
 ```
 
-```bash
-npx crew doctor
-```
+That writes the git hooks to `$XDG_CONFIG_HOME/crew/githooks` and points
+`git config --global core.hooksPath` at them, so no repository needs its own
+copy. Two things make a machine-wide hooks path safe to accept:
 
-`init` writes, and never overwrites, the files you may have edited:
+- **Silent where crew is not used.** No `.claude/crew.config.json` in the repo
+  and both hooks exit 0 without a word. A hook that fails in unrelated
+  repositories is a hook you switch off within the week.
+- **It chains to `.git/hooks`.** Setting `core.hooksPath` otherwise disables a
+  repository's own hooks outright, so husky and friends would vanish the
+  moment you went global. Crew's hooks run yours first and honour your
+  verdict — crew is the addition, not the replacement.
 
-| path | what it is |
-|---|---|
-| `.claude/crew.config.json` | the mechanics — project, verify, scopes, environments |
-| `.claude/crew/project.md` | the rules a plausible diff can violate |
-| `.claude/crew/templates/task.md` | the spec template, yours to edit |
-| `.claude/tasks/` | where specs and the board live |
+A repository that sets its own `core.hooksPath` still wins, because git
+prefers local config. Nothing already installed changes.
 
-and refreshes the files crew owns on every run — the config schema and the git
-hooks in `.claude/crew/githooks/`, with `core.hooksPath` pointed at them. That
-split is what makes `init` the upgrade path as well as the installer: re-run it
-after `npm update` and your edits survive.
-
-`--hook` adds the `PreToolUse` scope hook to `.claude/settings.json`. If crew
-is installed as a plugin you can skip it — the plugin ships its own copy.
-
-> **Check `.gitignore` before you trust the scope hook.** A repo that ignores
-> `.claude/*` with an allowlist keeps `settings.json` local, so the hook never
-> reaches the worktree where it matters — and `crew doctor` cannot tell the
-> difference between that and a hook that is working.
-
-If `core.hooksPath` is already set to something else, `init` says so and leaves
-it alone rather than taking over.
-
-### 2. The plugin, for the skills
+Then the plugins, for the skills:
 
 ```
 /plugin marketplace add StuCM/claude-crew
@@ -90,27 +78,85 @@ it alone rather than taking over.
 /plugin install crew@claude-crew
 ```
 
-To try it before committing to it:
-
-```bash
-claude --plugin-dir /path/to/claude-crew
-```
-
-### 3. Optional: the planning layer
-
 ```
 /plugin install claude-crew-planning@claude-crew
 ```
 
-```
-/claude-crew-planning:plan-init
+The second installs on its own — you can plan with it and hand the specs to
+any orchestrator. See [Planning](#planning).
+
+### Then, in each project
+
+```bash
+crew init
 ```
 
-The second plugin in this marketplace, and it installs on its own — you can
-plan with it and hand the specs to any orchestrator. See
-[Planning](#planning).
+```bash
+crew doctor
+```
 
-### 4. Optional: the memory graph
+With machine-wide hooks in place, that leaves behind:
+
+| path | what it is | yours to edit |
+|---|---|---|
+| `.claude/crew.config.json` | what this project is, and how to prove it | **yes** |
+| `.claude/crew/project.md` | the rules a plausible diff can violate | **yes** |
+| `.claude/tasks/` | where specs and the board live | state |
+| `.claude/plans/` | the planning manifest and its maps | state |
+| `.claude/crew/crew.config.schema.json` | so an editor resolves `$schema` | no, refreshed |
+| `.claude/settings.json` | the `PreToolUse` scope hook | merged into |
+
+**Two files are the whole per-project setup.** Everything else is state or a
+refreshed copy. `project.md` is where a project stops being generic: the
+worker skill and the reviewer agent both include it, and neither mentions your
+project by name.
+
+`init` never overwrites a file you may have edited, so it is also the upgrade
+path — re-run it after a `git pull` and your edits survive.
+
+### Leaving parts out
+
+```bash
+crew init --list
+```
+
+```
+config     .claude/crew.config.json — what this project is, and how to prove it
+brief      .claude/crew/project.md — the rules a plausible diff can violate
+tasks      .claude/tasks/ — where specs and the board live
+schema     a local copy of the config schema, so an editor resolves $schema
+hooks      the git hooks, and core.hooksPath
+scope      the PreToolUse scope hook in .claude/settings.json
+plans      the planning layer: .claude/plans/ and its manifest
+template   a local copy of the task template, to edit for this project   [off by default]
+```
+
+```bash
+crew init --without hooks,scope
+```
+
+```bash
+crew init --only config,brief
+```
+
+`hooks` is skipped automatically when a global `core.hooksPath` already covers
+the repository — `--only hooks` forces a local copy anyway. `plans` is skipped
+when the planning plugin is not installed alongside crew. Use
+`--without scope` if crew is installed as a plugin: the plugin ships its own
+copy of that hook, and two copies means it runs twice for the same verdict.
+
+> **Check `.gitignore` before you trust the scope hook.** A repo that ignores
+> `.claude/*` with an allowlist keeps `settings.json` local, so the hook never
+> reaches the worktree where it matters — and `crew doctor` cannot tell the
+> difference between that and a hook that is working.
+
+### Without the global step
+
+`crew init` on a machine with no global hooks path writes the hooks into
+`.claude/crew/githooks` and points the repository's `core.hooksPath` at them,
+exactly as before. Nothing about the global scope is required.
+
+### Optional: the memory graph
 
 [claude-memory-graph](https://github.com/StuCM/claude-memory-graph) is used if
 it is installed and degrades silently if it is not. See
@@ -144,7 +190,9 @@ into tasks". See [Planning](#planning).
 
 | | |
 |---|---|
-| `crew init [--hook]` | install into a repository; safe to re-run |
+| `crew init` | install into a repository; safe to re-run |
+| `crew init --global` | the git hooks once, for every repository on the machine |
+| `crew init --list` | the sections, and how to leave one out |
 | `crew doctor` | is this installation actually wired up? |
 | `crew spec-template` | the task template, for a new spec |
 | `crew graph <what>` | read the memory graph: `prime`, `prefs`, `traps`, `find` |
@@ -203,7 +251,7 @@ never would have.
 ## A first task, end to end
 
 ```bash
-npx crew doctor            # everything wired?
+crew doctor                # everything wired?
 ```
 
 Then, in Claude Code:
@@ -408,10 +456,7 @@ cost; they are not a way to refuse one.
 - **Taiga status names are conventional guesses.** `New` / `Ready` /
   `In progress` / `Ready for test` / `Done` vary by instance, and a status
   that does not exist fails the push quietly. Check them before the first run.
-- **`crew init` does not scaffold the plans directory** —
-  `/claude-crew-planning:plan-init` does, and it prints the `plansDir` line to
-  add to `crew.config.json`. Two installers for one thing is worse than one
-  extra command.
+- **The CLI is not published.** `npm link` from a clone is the only install.
 
 ## Contributing
 

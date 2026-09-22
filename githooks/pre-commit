@@ -1,7 +1,15 @@
 #!/bin/sh
 # Format and lint the staged files, in milliseconds. The full gate is CI.
 ROOT=$(git rev-parse --show-toplevel) || exit 0
+
+if [ -x "$ROOT/.git/hooks/pre-commit" ]; then
+  "$ROOT/.git/hooks/pre-commit" "$@" || exit $?
+fi
+
+[ -f "$ROOT/.claude/crew.config.json" ] || exit 0
+
 if [ -x "$ROOT/node_modules/.bin/crew" ]; then
   exec "$ROOT/node_modules/.bin/crew" pre-commit
 fi
+command -v crew >/dev/null 2>&1 && exec crew pre-commit
 exec npx --no-install crew pre-commit

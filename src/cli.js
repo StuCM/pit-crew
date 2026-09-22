@@ -1,12 +1,20 @@
 #!/usr/bin/env node
 // One entry point. Everything crew knows how to do without a model.
 
-import { loadConfig } from './lib/config.js';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { CONFIG_PATH, loadConfig } from './lib/config.js';
 import { repoRoot } from './lib/git.js';
+
+// The two commands git calls. They run wherever git runs them, so they are
+// the only ones allowed to do nothing at all.
+const HOOKS = new Set(['commit-msg', 'pre-commit']);
 
 const USAGE = `crew — a task loop for agents
 
-  crew init [--hook]        install crew into this repository
+  crew init                 install crew into this repository
+  crew init --global        install the git hooks once, for every repository
+  crew init --list          the sections, and how to leave one out
   crew doctor               is this installation actually wired up?
 
   crew spec-template        print the task template, for a new spec
@@ -77,18 +85,33 @@ const main = async (argv) => {
     return 2;
   }
 
+  const { run } = await load();
+
+  if (name === 'init') {
+    // The machine-wide install and the section list are about this machine,
+    // not about any one repository, so neither needs to be inside one.
+    if (args.includes('--global') || args.includes('--list')) return run(null, args);
+    const target = repoRoot();
+    if (!target) {
+      console.error('crew: not a git work tree');
+      return 2;
+    }
+    return run(target, args);
+  }
+
   const root = repoRoot();
   if (!root) {
     console.error('crew: not a git work tree');
     return 2;
   }
 
-  const { run } = await load();
-  if (name === 'init') return run(root, args);
-
   try {
     return run(loadConfig(root), args);
   } catch (error) {
+    // A git hook runs in every repository once core.hooksPath is global.
+    // In one that does not use crew there is nothing to enforce, and a hook
+    // that fails there is a hook the user turns off.
+    if (error.crew && HOOKS.has(name) && !existsSync(join(root, CONFIG_PATH))) return 0;
     if (error.crew) {
       console.error(`crew: ${error.message}`);
       return 2;
