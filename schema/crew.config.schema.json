@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/StuCM/crew/schema/crew.config.schema.json",
+  "$id": "https://raw.githubusercontent.com/StuCM/pit-crew/main/schema/crew.config.schema.json",
   "title": "crew.config.json",
   "description": "Everything crew needs to know about one project. Prose belongs in projectBrief, not here.",
   "type": "object",

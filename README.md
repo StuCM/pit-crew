@@ -121,7 +121,6 @@ With machine-wide hooks in place, that leaves behind:
 | `.claude/crew/project.md` | the rules a plausible diff can violate | **yes** |
 | `.claude/tasks/` | where specs and the board live | state |
 | `.claude/plans/` | the planning manifest and its maps | state |
-| `.claude/crew/crew.config.schema.json` | editor autocomplete only — crew never reads it | no, refreshed |
 | `.claude/settings.json` | the `PreToolUse` scope hook | merged into |
 
 **Two files are the whole per-project setup.** Everything else is state or a
@@ -142,7 +141,6 @@ crew init --list
 config     .claude/crew.config.json — what this project is, and how to prove it
 brief      .claude/crew/project.md — the rules a plausible diff can violate
 tasks      .claude/tasks/ — where specs and the board live
-schema     a local copy of the config schema, so an editor resolves $schema
 hooks      the git hooks, and core.hooksPath
 scope      the PreToolUse scope hook in .claude/settings.json
 plans      the planning layer: .claude/plans/ and its manifest
@@ -156,12 +154,6 @@ crew init --without hooks,scope
 ```bash
 crew init --only config,brief
 ```
-
-`schema` is the one you can drop without losing anything crew does: nothing
-reads it, `crew doctor` validates by hand, and it exists so an editor resolves
-the config's `$schema` and offers completion while you fill it in. Leaving it
-out removes the `$schema` line too, rather than leaving a reference to a file
-that is not there.
 
 `hooks` is skipped automatically when a global `core.hooksPath` already covers
 the repository — `--only hooks` forces a local copy anyway. `plans` is skipped
@@ -250,11 +242,12 @@ what it is filling in.
 
 `project` and `verify` are the only required keys; everything else has a
 default that gives a working loop. `crew doctor` validates it and reports
-every fault at once.
+every fault at once — the `$schema` line is for your editor, and crew never
+reads it.
 
 ```json
 {
-  "$schema": "./crew/crew.config.schema.json",
+  "$schema": "https://raw.githubusercontent.com/StuCM/pit-crew/main/schema/crew.config.schema.json",
   "project": "Reflex",
   "verify": "npm run verify",
   "prepare": ["npm run fixture"],
@@ -546,10 +539,8 @@ cost; they are not a way to refuse one.
 - **Taiga status names are conventional guesses.** `New` / `Ready` /
   `In progress` / `Ready for test` / `Done` vary by instance, and a status
   that does not exist fails the push quietly. Check them before the first run.
-- **Nothing is published yet, and the repository is private.** `npm publish`
-  is blocked on npm 2FA; the marketplace works for its owner through their own
-  git auth, but nobody else can `/plugin marketplace add StuCM/pit-crew` until
-  the repository is public.
+- **The CLI is not on npm yet.** `npm publish` is blocked on npm 2FA. The
+  plugins install from the marketplace already.
 
 ## Contributing
 

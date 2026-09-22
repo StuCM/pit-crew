@@ -171,20 +171,25 @@ const installPlans = (root) => {
   console.log(`  updated .claude/crew.config.json (plansDir)`);
 };
 
+const SCHEMA_URL =
+  'https://raw.githubusercontent.com/StuCM/pit-crew/main/schema/crew.config.schema.json';
+
 /**
- * Without the local schema copy, the config's `$schema` points at a file that
- * was deliberately not written, and an editor reports the config as broken.
+ * Repoints a config still aimed at the per-project schema copy crew used to
+ * install. The copy went stale silently — the schema is `additionalProperties:
+ * false`, so a key added after the copy was taken reads as an error in the
+ * editor it was there to help.
  */
-const dropSchemaRef = (root) => {
+const upgradeSchemaRef = (root) => {
   const path = join(root, '.claude', 'crew.config.json');
   if (!existsSync(path)) return;
   const raw = JSON.parse(readFileSync(path, 'utf8'));
-  if (!raw.$schema?.includes('crew.config.schema.json')) return;
-  if (existsSync(join(root, '.claude', 'crew', 'crew.config.schema.json'))) return;
+  if (!raw.$schema?.startsWith('./')) return;
 
-  delete raw.$schema;
+  raw.$schema = SCHEMA_URL;
   writeFileSync(path, `${JSON.stringify(raw, null, 2)}\n`);
-  console.log('  updated .claude/crew.config.json (dropped $schema — no local copy)');
+  console.log('  updated .claude/crew.config.json ($schema now points at the published one)');
+  console.log('          .claude/crew/crew.config.schema.json is no longer used; safe to delete');
 };
 
 // Order matters: this is the order they run and the order `--list` prints.
@@ -206,18 +211,6 @@ const SECTIONS = [
       mkdirSync(join(root, '.claude', 'tasks'), { recursive: true });
       console.log('  ready   .claude/tasks/');
     },
-  },
-  {
-    name: 'schema',
-    // Nothing in crew reads this: `crew doctor` validates by hand. It is here
-    // so an editor resolves the config's `$schema` and offers completion
-    // while you fill it in — which is also why leaving it out has to take the
-    // `$schema` line with it.
-    what: 'a local copy of the config schema, so an editor resolves $schema',
-    run: (root) =>
-      place(root, 'schema/crew.config.schema.json', '.claude/crew/crew.config.schema.json', {
-        overwrite: true,
-      }),
   },
   { name: 'hooks', what: 'the git hooks, and core.hooksPath', run: installRepoHooks },
   { name: 'scope', what: 'the PreToolUse scope hook in .claude/settings.json', run: addScopeHook },
@@ -321,7 +314,7 @@ export const run = (root, args) => {
 
   for (const section of sections) section.run(root);
 
-  if (!sections.some((s) => s.name === 'schema')) dropSchemaRef(root);
+  upgradeSchemaRef(root);
 
   if (globalHooks && !sections.some((s) => s.name === 'hooks')) {
     console.log('  skipped hooks (a global core.hooksPath already covers this repo)');

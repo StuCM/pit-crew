@@ -1,5 +1,5 @@
 {
-  "$schema": "./crew/crew.config.schema.json",
+  "$schema": "https://raw.githubusercontent.com/StuCM/pit-crew/main/schema/crew.config.schema.json",
   "project": "CHANGE-ME",
   "graphProject": "CHANGE-ME",
 
