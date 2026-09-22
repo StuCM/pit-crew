@@ -219,12 +219,18 @@ and **stops** for the second approval before it merges.
 
 ## Planning
 
-Upstream of `/crew:crew-spec` is a
-[planning plugin](https://github.com/StuCM/stu-tools): evidence-traced maps of
-a piece of work — a brainstorm map from the conversation, an architecture map
-of parts and connections, a feature map whose symbols are verified against real
-files — and a gate that refuses to emit a task while a question on it is still
-open.
+Upstream of `/crew:crew-spec` is **`claude-crew-planning`**, the second plugin
+in this marketplace: evidence-traced maps of a piece of work — a brainstorm map
+from the conversation, an architecture map of parts and connections, a feature
+map whose symbols are verified against real files — and a gate that refuses to
+emit a task while a question on it is still open.
+
+```
+/plugin install claude-crew-planning@claude-crew
+```
+
+It installs on its own. You can plan with it and hand the specs to any
+orchestrator, or run crew with no planning layer at all.
 
 It is one-directional by design. The maps are the working surface for a piece
 of work; the memory graph is the durable record. Confirmed decisions and dead
