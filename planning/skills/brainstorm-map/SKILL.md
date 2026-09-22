@@ -39,8 +39,10 @@ Read the source conversation in full before writing anything.
   it. Page through to the end — the last turns usually hold the decisions.
   Note: chats inside a project are only searchable from inside that project.
 - **A pasted or uploaded transcript**: read the file.
-- **A share link** (`claude.ai/share/...`): these render client-side and cannot
-  be fetched. Say so and ask for the title or the text.
+- **A share link** (`claude.ai/share/...`): these render client-side, so a
+  plain fetch returns an empty shell. A real browser renders them fine — in
+  Claude Code, open it in the browser pane and read the page text. Only ask
+  the user to paste it if you have no browser.
 
 Number the turns. You need turn numbers for evidence.
 
@@ -89,8 +91,13 @@ Read it before writing the file.
 ### 6. Build
 
 ```bash
-python3 scripts/build_map.py map.json -o /mnt/user-data/outputs/<name>.html
+python3 scripts/build_map.py map.json -o <name>.html
 ```
+
+Write the HTML next to the JSON. With a crew planning layer present that is
+`.claude/plans/maps/`, which is where `plan-init` puts maps and where
+`crew plan` reads them; otherwise put it wherever the repo keeps generated
+docs.
 
 The script validates first and refuses to build on missing evidence, unknown
 statuses, duplicate ids, or a rejected node with no stated reason. Fix the JSON
@@ -101,6 +108,19 @@ rather than passing `--skip-validation`.
 Publish the HTML as an artifact if the Artifact tool is available — that gives a
 link that works on the phone. Otherwise present the file. Keep the JSON
 alongside it; it is the editable source.
+
+**Publish it with the capabilities its page actually asks for**, or the
+comment thread is dead on arrival:
+
+```
+capabilities: {"db": {}, "sample": {}}
+```
+
+`db` is the shared store the comments are written to, so they survive a reload
+and your colleagues see them; `sample` is what lets Claude answer a comment
+inside the page. The template calls both and falls back to `null` when they
+are absent, so a map published without them looks fine and silently drops
+every comment on the floor.
 
 Then say, briefly: how many sections and nodes, which sections hold the rejected
 and open material, and anything you deliberately left out.
@@ -125,8 +145,10 @@ which is how pruning is made permanent.
 **Sizing.** 5–10 sections, 3–8 nodes each. Under about 15 nodes the map is not
 worth the format — say so and give a written summary instead. Node count drives
 the map's height rather than crowding it, so large maps stay legible but get
-tall; past about 60 nodes, tighten by merging near-duplicates, not by dropping
-rejected ones.
+tall; past about 60 nodes, look for near-duplicates to merge — but only merge
+what is genuinely duplicated. A long session legitimately produces a big map:
+22 turns of real back-and-forth came out at 75 distinct nodes with nothing
+worth merging. Never drop rejected ones to get under a number.
 
 **Balance the sections.** Wedge size follows leaf count, so one section holding
 half the nodes squeezes every other section into a narrow slice. That is a

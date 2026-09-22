@@ -104,7 +104,7 @@ checked is far more useful than one that looks uniformly confident.
    part, record `where` (paths) and the `surface` symbols with their files.
 5. **Build with the repo:**
    ```bash
-   python3 scripts/build_feature.py feature.json --repo . -o /mnt/user-data/outputs/<name>.html
+   python3 scripts/build_feature.py feature.json --repo . --write-back -o <name>.html
    ```
    The summary line reports `N/M symbols verified`. If that ratio is poor, go
    back to step 3 rather than shipping it.
@@ -115,6 +115,24 @@ checked is far more useful than one that looks uniformly confident.
    has to assume nothing was checked.
 6. **Deliver** and lead with what is unverified and unknown. That is the part
    the reader needs.
+
+**Publish it with the capabilities its page actually asks for**, or the
+comment thread is dead on arrival:
+
+```
+capabilities: {"db": {}, "sample": {}}
+```
+
+`db` is the shared store the comments are written to, so they survive a reload
+and your colleagues see them; `sample` is what lets Claude answer a comment
+inside the page. The template calls both and falls back to `null` when they
+are absent, so a map published without them looks fine and silently drops
+every comment on the floor.
+
+Write the HTML next to the JSON. With a crew planning layer present that is
+`.claude/plans/maps/`, which is where `plan-init` puts maps and where
+`crew plan` reads them; otherwise put it wherever the repo keeps generated
+docs.
 
 ## Judgement calls
 

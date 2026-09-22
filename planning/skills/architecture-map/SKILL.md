@@ -68,11 +68,29 @@ and the map is more useful with it than with a confident invention.
    chat does not answer these, that is an `open` entry, not a gap to fill in.
 5. **Build:**
    ```bash
-   python3 scripts/build_arch.py arch.json -o /mnt/user-data/outputs/<name>.html
+   python3 scripts/build_arch.py arch.json -o <name>.html
    ```
 6. **Deliver.** Publish as an artifact if available; keep the JSON as the
    editable source. Then say what is unresolved — that is the most useful part
    of the handover.
+
+**Publish it with the capabilities its page actually asks for**, or the
+comment thread is dead on arrival:
+
+```
+capabilities: {"db": {}, "sample": {}}
+```
+
+`db` is the shared store the comments are written to, so they survive a reload
+and your colleagues see them; `sample` is what lets Claude answer a comment
+inside the page. The template calls both and falls back to `null` when they
+are absent, so a map published without them looks fine and silently drops
+every comment on the floor.
+
+Write the HTML next to the JSON. With a crew planning layer present that is
+`.claude/plans/maps/`, which is where `plan-init` puts maps and where
+`crew plan` reads them; otherwise put it wherever the repo keeps generated
+docs.
 
 ## Judgement calls
 
