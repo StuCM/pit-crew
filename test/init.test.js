@@ -26,6 +26,18 @@ test('--only can ask for a section that is off by default', () => {
   assert.deepEqual(names(['--only=template']), ['template']);
 });
 
+// The README documents the space-separated form. A flag that parses one
+// spelling and silently ignores the other installs everything when you asked
+// for two sections.
+test('both --only a,b and --only=a,b are understood', () => {
+  assert.deepEqual(names(['--only', 'config,brief']), names(['--only=config,brief']));
+  assert.deepEqual(names(['--without', 'hooks,scope']), names(['--without=hooks,scope']));
+});
+
+test('a flag with nothing after it does not eat the next flag', () => {
+  assert.deepEqual(names(['--only', '--list']), names([]));
+});
+
 // The whole point of --global: a repo should not get a second copy of hooks
 // that a machine-wide hooksPath already delivers.
 test('a global hooks path drops the hooks section, and nothing else', () => {

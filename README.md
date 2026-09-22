@@ -43,11 +43,13 @@ that project.
 
 ### Once, on this machine
 
-The CLI is not on npm yet, so link it from a clone:
-
 ```bash
-git clone https://github.com/StuCM/claude-crew && cd claude-crew && npm link
+npm install --global pit-crew
 ```
+
+The package is `pit-crew`; the command it installs is `crew`. To put it in one
+project rather than on the machine, `npm install --save-dev pit-crew` — the
+git hooks and CI both prefer a local copy when there is one.
 
 ```bash
 crew init --global
@@ -456,7 +458,8 @@ cost; they are not a way to refuse one.
 - **Taiga status names are conventional guesses.** `New` / `Ready` /
   `In progress` / `Ready for test` / `Done` vary by instance, and a status
   that does not exist fails the push quietly. Check them before the first run.
-- **The CLI is not published.** `npm link` from a clone is the only install.
+- **Nothing is published yet.** `npm publish` for the CLI, and the plugin
+  marketplace assumes `StuCM/claude-crew` is pushed and public.
 
 ## Contributing
 

@@ -212,12 +212,20 @@ const SECTIONS = [
 
 /** `--without a,b` / `--only a,b`, as a set of section names. */
 export const chosen = (args, { globalHooks = false } = {}) => {
-  const list = (flag) =>
-    args
-      .filter((a) => a.startsWith(`${flag}=`))
-      .flatMap((a) => a.slice(flag.length + 1).split(','))
-      .map((s) => s.trim())
+  // Both spellings: `--only=a,b` and `--only a,b`. Accepting one and
+  // silently ignoring the other installs everything when you asked for two
+  // sections, which is the worst way for a flag to fail.
+  const list = (flag) => {
+    const out = [];
+    for (const [i, arg] of args.entries()) {
+      if (arg.startsWith(`${flag}=`)) out.push(arg.slice(flag.length + 1));
+      else if (arg === flag && args[i + 1] && !args[i + 1].startsWith('-')) out.push(args[i + 1]);
+    }
+    return out
+      .flatMap((value) => value.split(','))
+      .map((name) => name.trim())
       .filter(Boolean);
+  };
 
   const only = list('--only');
   const without = new Set(list('--without'));
