@@ -121,7 +121,7 @@ With machine-wide hooks in place, that leaves behind:
 | `.claude/crew/project.md` | the rules a plausible diff can violate | **yes** |
 | `.claude/tasks/` | where specs and the board live | state |
 | `.claude/plans/` | the planning manifest and its maps | state |
-| `.claude/crew/crew.config.schema.json` | so an editor resolves `$schema` | no, refreshed |
+| `.claude/crew/crew.config.schema.json` | editor autocomplete only — crew never reads it | no, refreshed |
 | `.claude/settings.json` | the `PreToolUse` scope hook | merged into |
 
 **Two files are the whole per-project setup.** Everything else is state or a
@@ -156,6 +156,12 @@ crew init --without hooks,scope
 ```bash
 crew init --only config,brief
 ```
+
+`schema` is the one you can drop without losing anything crew does: nothing
+reads it, `crew doctor` validates by hand, and it exists so an editor resolves
+the config's `$schema` and offers completion while you fill it in. Leaving it
+out removes the `$schema` line too, rather than leaving a reference to a file
+that is not there.
 
 `hooks` is skipped automatically when a global `core.hooksPath` already covers
 the repository — `--only hooks` forces a local copy anyway. `plans` is skipped

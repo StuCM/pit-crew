@@ -171,6 +171,22 @@ const installPlans = (root) => {
   console.log(`  updated .claude/crew.config.json (plansDir)`);
 };
 
+/**
+ * Without the local schema copy, the config's `$schema` points at a file that
+ * was deliberately not written, and an editor reports the config as broken.
+ */
+const dropSchemaRef = (root) => {
+  const path = join(root, '.claude', 'crew.config.json');
+  if (!existsSync(path)) return;
+  const raw = JSON.parse(readFileSync(path, 'utf8'));
+  if (!raw.$schema?.includes('crew.config.schema.json')) return;
+  if (existsSync(join(root, '.claude', 'crew', 'crew.config.schema.json'))) return;
+
+  delete raw.$schema;
+  writeFileSync(path, `${JSON.stringify(raw, null, 2)}\n`);
+  console.log('  updated .claude/crew.config.json (dropped $schema — no local copy)');
+};
+
 // Order matters: this is the order they run and the order `--list` prints.
 const SECTIONS = [
   {
@@ -193,6 +209,10 @@ const SECTIONS = [
   },
   {
     name: 'schema',
+    // Nothing in crew reads this: `crew doctor` validates by hand. It is here
+    // so an editor resolves the config's `$schema` and offers completion
+    // while you fill it in — which is also why leaving it out has to take the
+    // `$schema` line with it.
     what: 'a local copy of the config schema, so an editor resolves $schema',
     run: (root) =>
       place(root, 'schema/crew.config.schema.json', '.claude/crew/crew.config.schema.json', {
@@ -300,6 +320,8 @@ export const run = (root, args) => {
   console.log(`      sections: ${sections.map((s) => s.name).join(', ')}\n`);
 
   for (const section of sections) section.run(root);
+
+  if (!sections.some((s) => s.name === 'schema')) dropSchemaRef(root);
 
   if (globalHooks && !sections.some((s) => s.name === 'hooks')) {
     console.log('  skipped hooks (a global core.hooksPath already covers this repo)');
