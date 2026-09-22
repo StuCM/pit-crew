@@ -45,12 +45,14 @@ that project.
 ### Once, on this machine
 
 ```bash
-npm install --global pit-crew
+npm install --global @stucm/pit-crew
 ```
 
-The package is `pit-crew`; the command it installs is `crew`. To put it in one
-project rather than on the machine, `npm install --save-dev pit-crew` — the
-git hooks and CI both prefer a local copy when there is one.
+The package is `@stucm/pit-crew`; the command it installs is `crew`. It is
+scoped because npm refuses `pit-crew` as too close to an existing `pitcrew`.
+To put it in one project rather than on the machine,
+`npm install --save-dev @stucm/pit-crew` — the git hooks and CI both prefer a
+local copy when there is one.
 
 ```bash
 crew init --global
