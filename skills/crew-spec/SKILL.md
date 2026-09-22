@@ -13,28 +13,73 @@ and call sites starts writing immediately; a worker given a paragraph spends
 tens of thousands of tokens rediscovering what you already knew.
 **Specificity here is the optimisation, not the ceremony.**
 
-## 0. Is there a plan for this?
+## 0. What does this work already know about itself?
 
 ```sh
 npx crew plan
 ```
 
-If it prints a manifest, this project has a planning layer and the thinking
-upstream of this spec may already be done. Two cases:
+Four states. Only the first two go straight to writing a spec.
 
-- **The spec already exists as a draft.** `agent-tasks` writes
-  `status: draft` specs straight into the shape below, with `files:`,
-  Approach and Out of scope already lifted from the maps. Do not rewrite one
-  from scratch — pick it up at step 2 and do the three things it deliberately
-  did not: collisions, the graph, and approval.
-- **There is a plan but no draft for this work.** Find the part this task
-  builds and read it: `npx crew plan <part-id>`. Put its id in the task's
-  `part:` so the worker and the reviewer can read the same thing.
+**A draft already exists.** `agent-tasks` writes `status: draft` specs in the
+shape below, with `files:`, Approach and Out of scope already lifted from the
+maps. Do not rewrite one from scratch — pick it up at step 2 and do the three
+things it deliberately did not: collisions, the graph, and approval.
 
-If it says there is no plan, carry on — the loop does not need one. A one-file
-fix with a known cause never earned a map, and running the planning chain for
-it is overhead. What earns a map is work that crosses a boundary, or a bug
-nobody can yet scope.
+**A plan with a part covering this work.** Read it — `npx crew plan <part-id>`
+— and put its id in the task's `part:`, so the worker and the reviewer read
+the same thing. If that part still carries open questions, or its symbols are
+unverified, it is not ready: treat it as the fourth state.
+
+**No plan at all**, or **a plan with nothing covering this work.** Decide
+whether this work earns a map, and route on blast radius rather than on the
+word "bug" or "feature":
+
+- One file, cause known, nothing surprising → **no map**. Go to step 1. Running
+  the planning chain for a one-line fix is overhead, and a map nobody needed is
+  a map nobody maintains.
+- It crosses a boundary, it touches code you have not read, or nobody can yet
+  say where it goes → **build the map before the spec.** This is the cheapest
+  moment there will ever be to be wrong.
+
+### Building one yourself
+
+**Say what you are doing and why, in one line, before you start.** A map is
+minutes, not seconds. A spec the user expected in one message must not
+silently become a planning session.
+
+These take inputs and write files, so you may run them without being asked:
+
+- **feature-map** — the usual case: an existing codebase gaining or changing
+  something. Run it against the actual repository, and persist what it proved:
+
+  ```sh
+  python3 ${CLAUDE_PLUGIN_ROOT}/planning/skills/feature-map/scripts/build_feature.py \
+      <map>.json --repo . --write-back -o <out>.html
+  ```
+
+  **Never build one from recollection.** A framework you know well is exactly
+  where a confidently wrong signature is most likely and hardest to spot, and
+  without `--write-back` the verification lives only in the HTML, so every
+  downstream task blocks as unverified.
+
+- **architecture-map** — several new parts and the boundaries between them,
+  when the question is what the pieces are rather than where they go in an
+  existing tree.
+
+- **agent-tasks** — once a map holds, it emits the draft specs. Then you are in
+  the first state, and pick up at step 2.
+
+### What you must not do yourself
+
+These are conversations with the user, and running them alone wastes them:
+
+- **brainstorm-map** — when nobody can yet say what the thing *is*. Say so and
+  offer it. Do not map a conversation that has not happened.
+- **open-threads** — when a map comes back carrying open questions.
+  `agent-tasks` refuses to emit a task for a part with one, and that refusal is
+  the entire point of the pipeline. Put the questions to the user. Do not answer
+  them yourself, and do not reach for `--force`.
 
 **The maps are not a second memory.** They are the working surface for this
 piece of work; the graph is the durable record. Read them here, inline what

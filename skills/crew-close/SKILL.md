@@ -99,6 +99,14 @@ commit it yourself — you are still the only writer.
 Only confirmed outcomes qualify. An option that was floated, or a question
 still open, is not a decision, and a graph full of maybes gives bad advice.
 
+Before you do, compare what was built against what the part said. The
+worker's write-up says what the spec got wrong; the reviewer checked the diff
+against the part's `not` list. **Where the code and the map diverged, the map
+was wrong, and why it was wrong is the most valuable thing this task
+produced** — a boundary drawn in the wrong place, or a symbol that was not
+where the map said. Write that as a Pattern. A map that was simply right
+teaches nothing and needs no entry.
+
 **Then the maps are disposable.** Once what was learnt is in the graph, the
 plan has done its job. Leaving both is how you end up with two stores that
 drift, and crew queries one.

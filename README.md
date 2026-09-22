@@ -316,8 +316,19 @@ or a symbol claimed without a real `file:line`.
 from the maps, and deliberately does not run `crew collisions`, prime the
 graph, or choose `model:`. It removes the blank-page work, not the gate.
 
-**The orchestrator reads the plan at spec time** and records which part a task
-builds in the spec's `part:`.
+**The orchestrator reads the plan at spec time**, records which part a task
+builds in the spec's `part:` — and **builds a map when there is none**, rather
+than specifying blind. It routes on blast radius: one file with a known cause
+gets no map, but work that crosses a boundary or touches code nobody has read
+gets a `feature-map` against the real repository before a line of spec is
+written.
+
+That split follows the planning plugin's own two tiers. `architecture-map`,
+`feature-map` and `agent-tasks` take inputs and write files, so the
+orchestrator may run them unasked. `brainstorm-map` and `open-threads` are
+conversations with you, so it offers them and stops — a map of a conversation
+that never happened is worth nothing, and an open question answered by the
+orchestrator alone is the exact failure the gate exists to catch.
 
 **The worker and the reviewer read the same part**, through `crew plan`:
 
