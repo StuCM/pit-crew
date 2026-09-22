@@ -26,7 +26,7 @@ Which backlog item or decision this serves. One line.
      knows the question was asked. -->
 
 ## Graph context
-<!-- Inlined by /crew-spec from the memory graph. Workers must NOT re-query:
+<!-- Inlined by /crew:crew-spec from the memory graph. Workers must NOT re-query:
      if something is missing here, the spec is wrong — say so, don't go digging. -->
 
 ## The part this builds

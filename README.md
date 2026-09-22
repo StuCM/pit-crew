@@ -15,7 +15,8 @@ owns — `.claude/crew.config.json` for the mechanics and
                       agent-tasks → draft specs, refusing anything unresolved
                          │
 YOU + ORCHESTRATOR (the main session — not an agent)
-  /crew:crew-spec    read the plan → query the graph once → write the spec → YOU APPROVE
+  /crew:crew-spec    what kind of work is this? → offer a plan, or not
+                     → query the graph once → write the spec → YOU APPROVE
   /crew:crew-run     hand the task to its own session in its own worktree
                          │
                          ├─ TASK SESSION (the crew-worker skill)
@@ -170,9 +171,16 @@ Plugin skills are namespaced by the plugin, so the four orchestrator skills are
 `/crew:<name>`. They also trigger from their descriptions — asking "spec this"
 or "where do things stand" reaches the same place without typing a command.
 
+**Installing this does not turn every session into an orchestrator.** Nothing
+here fires on a question about how existing code works; `crew-spec` is scoped
+to the moment a piece of *work* starts, and its first job is to decide what
+kind of work it is. Exploration gets answered. A typo gets fixed inline, out
+loud. Only a real task reaches a spec, and only a task that earns one is
+offered a plan.
+
 | command | who runs it | what it does |
 |---|---|---|
-| `/crew:crew-spec` | you + orchestrator | discuss the task, prime from the graph once, write the spec, **stop for your approval** |
+| `/crew:crew-spec` | you + orchestrator | work out what kind of work this is, offer a plan if it earns one, prime from the graph once, write the spec, **stop for your approval** |
 | `/crew:crew-run` | orchestrator | check collisions, cut the worktree, hand the task to its own session, then stop |
 | `/crew:crew-status` | orchestrator | render the board; what is waiting on you, what is in flight, what to pick up |
 | `/crew:crew-close` | orchestrator | verify the gate stamp, **stop for your approval**, merge, write the graph, deploy or queue |
@@ -316,19 +324,16 @@ or a symbol claimed without a real `file:line`.
 from the maps, and deliberately does not run `crew collisions`, prime the
 graph, or choose `model:`. It removes the blank-page work, not the gate.
 
-**The orchestrator reads the plan at spec time**, records which part a task
-builds in the spec's `part:` — and **builds a map when there is none**, rather
-than specifying blind. It routes on blast radius: one file with a known cause
-gets no map, but work that crosses a boundary or touches code nobody has read
-gets a `feature-map` against the real repository before a line of spec is
-written.
+**The orchestrator reads the plan at spec time** and records which part a
+task builds in the spec's `part:`. When there is no plan it does not silently
+start one — it decides whether the work earns a map and **offers**, in a line.
 
-That split follows the planning plugin's own two tiers. `architecture-map`,
-`feature-map` and `agent-tasks` take inputs and write files, so the
-orchestrator may run them unasked. `brainstorm-map` and `open-threads` are
-conversations with you, so it offers them and stops — a map of a conversation
-that never happened is worth nothing, and an open question answered by the
-orchestrator alone is the exact failure the gate exists to catch.
+Once you have agreed to a plan, `architecture-map`, `feature-map` and
+`agent-tasks` run without asking again between each — they take inputs and
+write files. `brainstorm-map` and `open-threads` stay offers even mid-plan,
+because they are conversations with you: a map of a conversation that never
+happened is worth nothing, and an open question the orchestrator answers alone
+is the exact failure the gate exists to catch.
 
 **The worker and the reviewer read the same part**, through `crew plan`:
 
