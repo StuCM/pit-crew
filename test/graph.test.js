@@ -116,3 +116,17 @@ test("only the store's own IRIs go back into a query", () => {
   assert.equal(iriRef('mem:resource/x> } DELETE {'), null);
   assert.equal(iriRef('https://evil.example/x'), null);
 });
+
+test('a chain says when it ran out of depth rather than out of links', () => {
+  const seed = node('p1', 'Pattern', 'trap');
+  const next = node('d1', 'Decision', 'the fix');
+  const store = fakeStore([seed], [edge('p1', 'resolves', 'in', next)]);
+  assert.ok(chain('trap', { depth: 1 }, store).includes('not expanded, depth 1 reached: the fix'));
+  assert.ok(!chain('trap', { depth: 2 }, store).some((l) => l.startsWith('not expanded')));
+});
+
+test('a query failing part-way is reported, not passed off as the whole chain', () => {
+  const seed = node('p1', 'Pattern', 'trap');
+  const ask = (sparql) => (sparql.includes('VALUES ?me') ? null : [seed]);
+  assert.ok(chain('trap', {}, ask).some((l) => l.startsWith('stopped early')));
+});

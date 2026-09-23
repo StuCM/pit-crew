@@ -56,9 +56,19 @@ No conversation summary, no context dump. If the session needs something, it
 belongs in the spec — that is the artifact that gets reused, and re-explaining
 in a prompt is exactly the cost this system exists to remove.
 
-If a tool for spawning a session is available, spawn it there with that prompt
-and record the session id in the task file's `session:`. Otherwise give the
-user the `cd` and the prompt to paste.
+**Start it on the task's `model:`.** The spec chose it — `models.default` for
+well-specified work, `models.critical` for the code the brief says must not be
+wrong — and nothing else carries that choice to the session. A session that
+starts on whatever the machine defaults to spends the critical model on a
+rename, or the cheap one on the code that must not be wrong.
+
+If a tool for spawning a session is available, spawn it there with that
+prompt and that model, and record the session id in the task file's
+`session:`. Otherwise give the user one line to paste:
+
+```sh
+cd <worktreeDir>/<project>-<id> && claude --model <model> "Use the crew-worker skill for task .claude/tasks/<id>-<slug>.md. You are in a worktree; the spec is the brief."
+```
 
 ## 4. Mirror it, if the project has a board
 

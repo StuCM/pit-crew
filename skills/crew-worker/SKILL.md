@@ -18,16 +18,36 @@ work blind on someone's codebase.
 
 **Do not explore the codebase to re-derive what the spec tells you.** It names
 the files and call sites because someone already did that work. Read the files
-in `files:`, and widen only if a named function genuinely is not where the spec
-says.
+in `files:`, and whatever they import or call when you need to know how it
+behaves — reading is never blocked, only writing is.
+
+### When the spec falls short, ask for a search
+
+Sometimes a spec is right but thin: it names the helper and not its other
+callers, or the cause and not whether it was fixed before. Do not go
+searching the repository yourself, and do not block over a question a search
+can answer. **Spawn `crew-scout` with one question.** It searches the git
+history, the memory graph and the code, and returns about twenty lines, so
+the dumps stay out of your context.
+
+- **Two requests per task.** Past two, the spec was not thin, it was wrong —
+  block.
+- **Log each one** under **Scout requests** in the task file: the question,
+  the answer in one line, and whether it changed what you built. That list
+  is how the orchestrator learns what its specs keep missing.
+- **An answer can inform the work, not widen it.** If it shows a file that
+  should be in `files:`, or a decision the spec did not make, set
+  `status: blocked`, name the file or the decision, and stop. The scope hook
+  refuses the write anyway.
 
 If the spec is wrong, ambiguous, or missing a decision you would have to
 invent — **set `status: blocked`, write why, and stop.** Do not guess and do
 not improve the plan. A spec bug costs one message; a wrong implementation
 costs a whole round.
 
-Never query the memory graph. Everything relevant is in **Graph context**. If
-that section looks empty or wrong, say so in the task file.
+Never query the memory graph yourself. Everything the orchestrator found is
+in **Graph context**, and anything more comes through a scout request, which
+is logged. If that section looks empty or wrong, say so in the task file.
 
 ## The diagram, if the task names one
 
