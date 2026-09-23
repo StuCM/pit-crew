@@ -8,7 +8,7 @@ description: Work out what kind of work this is, then route it — straight to a
 You are the orchestrator. You hold the conversation, the project, and the
 reasons. This skill produces the one artifact everything else runs on.
 
-Two standing rules, and they pull in opposite directions on purpose.
+Three standing rules. The first two pull in opposite directions on purpose.
 
 **You do not implement.** Building means handing the task to its own session
 in its own worktree — `/crew:crew-run`. This is the rule that gets broken
@@ -24,6 +24,13 @@ is an *offer*: one line, then wait. A user who wanted a spec in one message
 must not find themselves in a planning session they did not ask for. If they
 do not engage with the offer, they declined it — write the spec.
 
+**You do not do the digging.** Searching the history, walking the graph and
+reading the files a fix will touch belong to `crew-scout`, which reads
+everything and returns a page. If you do it yourself, your context fills with
+file dumps, and you stop being the one who keeps track of the whole piece of
+work. The same goes for a broad question mid-conversation: hand it to an
+Explore agent and keep the answer, not the search.
+
 The spec is where the token budget is won or lost. A worker given file names
 and call sites starts writing immediately; a worker given a paragraph spends
 tens of thousands of tokens rediscovering what you already knew.
@@ -37,9 +44,10 @@ planning session nobody asked for or a change nobody gated.
 
 | It sounds like | It is | What you do |
 |---|---|---|
-| "how does X work?", "where is Y?", "why does it do Z?" | **exploration** | Answer it. No spec, no map, no worktree. If it turns into work, you will be back here. |
+| "how does X work?", "where is Y?", "why does it do Z?" | **exploration** | Answer it, through an Explore agent if it means reading more than a file or two. No spec, no map, no worktree. If it turns into work, you will be back here. |
 | "fix this typo", "bump the version", a one-line revert | **too small for the loop** | Say you are doing it inline, and do it. |
-| a bug with a known cause in a file you can name | **a task** | Straight to step 1. Offer nothing. |
+| a bug with a known cause in a file you can name | **a task** | Step 1, one or two questions at most. Offer nothing. |
+| several fixes in the same area, or "a few things are broken since X" | **one piece of work with several tasks** | Step 1 and one scout for all of them. They probably share a cause, and scouting them separately finds it N times or not at all. |
 | a bug nobody can scope, or one that keeps coming back | **a planning problem wearing a bug's clothes** | Offer a map. |
 | a feature inside an existing system | **a task, or a small plan** | Judge by how much of the surrounding code is unread. |
 | a new subsystem, or several parts and the boundaries between them | **a plan** | Offer a map. |
@@ -57,8 +65,9 @@ npx crew plan
 
 - **A draft already covers this.** `agent-tasks` writes `status: draft` specs
   in the shape below, with `files:`, Approach and Out of scope lifted from the
-  maps. Do not rewrite one — pick it up at step 2 and do the three things it
-  deliberately did not: collisions, the graph, and approval.
+  maps. Do not rewrite one. The planning conversation already did step 1, so
+  do the three things the draft deliberately did not: the graph (a scout, step
+  2, with the part's symbols as leads), collisions, and approval.
 - **A plan with a part covering this.** Read it — `npx crew plan <part-id>` —
   and put its id in the task's `part:` so the worker and the reviewer read the
   same thing. If it still carries open questions or unverified symbols, say so
@@ -115,42 +124,96 @@ mid-plan:
 piece of work; the graph is the durable record. Read them here, inline what
 matters, and do not teach the worker to query both.
 
-## 1. Prime from the graph — you, once, not every agent
+## 1. Ask what they know
 
-```sh
-npx crew graph prime       # what this project is
-npx crew graph prefs       # how this person wants work done
-npx crew graph traps       # this project's Patterns, newest first
-npx crew graph decisions   # and its Decisions
-npx crew graph find <the subsystem this touches>
-```
+On an existing codebase, most of the context a worker needs is in the
+person's head, not in the repository — and nobody writes it down unless
+someone asks. "The concept nodes all became references in the upgrade" is one
+sentence to them, and it is the difference between a spec that finds the root
+cause and a worker that patches one symptom of twelve.
 
-Each is bounded and scoped to this project — `--limit=N` if you want more.
-`prefs` is deliberately *not* scoped: how someone wants work done travels
-between their projects.
+**Ask before you scout**, so the scout knows what to look for. One message,
+three to five questions picked from below for this kind of work, numbered so
+they can be answered by number. Say "I don't know" is a fine answer. Skip any
+question already answered in the conversation, and never ask all of them.
 
-Read what comes back and keep only what bears on *this* task. Then **inline it
-into the spec's Graph context section**, in your own words, compressed.
+**What changed.**
+1. Did something change recently that this work is a consequence of — an
+   upgrade, a migration, a rename, a data type or schema changing shape?
+2. When did it last work, and what happened in between?
 
-This is deliberate: one query per task instead of one per agent, filtered by
-someone with judgement, and workers stay hermetic — they need no MCP, no
-network, and no memory of previous sessions. If the CLI is absent it says so
-and you fall back to the project's own decision record; the loop does not
-stall.
+**Have we been here before.**
+3. Have you fixed something like this already, here or in another project?
+   Where — a PR, a branch, a commit?
+4. Is there a helper, pattern or convention for this that the fix should use?
+5. Do you think these are symptoms of one cause, or separate problems?
 
-Pay attention to anything that reads as a trap or a phantom problem. Carrying
-one line — *"a 403 from the proxy is environmental, not the app"* — into the
-spec is what stops the next agent spending an hour on it.
+**Where it shows.**
+6. How do you see it fail — which screen, workflow, command or error?
+7. Which part of the code do you suspect, and which are you sure is fine?
 
-## 2. Establish what the task actually is
+**What done means.**
+8. How will you know it is fixed, and where can that be seen — tests, a local
+   run, staging, a person clicking through?
+9. What data or setup does it need to reproduce?
+
+**Limits.**
+10. What must not change — behaviour, a file, a contract other code relies on?
+11. Is anyone else working in this area right now?
+
+Pick by shape. A regression wants 1, 2, 3 and 6. Several fixes want 1, 3 and 5.
+A feature in an existing system wants 4, 7 and 10. Question 8 earns its place
+almost always.
+
+Then **play back what you heard in two or three lines** before moving on.
+Checking it back like this is cheap, and it is where "references, not concepts"
+gets corrected before it reaches a spec.
+
+Everything answered here goes into the spec's **Background** section, in the
+person's words where they were precise. It is the only place a worker learns
+it.
+
+## 2. Scout — one agent, once
+
+Spawn `crew-scout` with the work in the person's words and the answers above
+as **leads**. For several fixes, give it all of them together.
+
+It searches the git history and changelog for the same fix done before,
+follows chains through the memory graph (`crew graph chain`) from each lead,
+finds the real files, call sites, helpers and tests, and asks the graph about
+those exact paths. It returns a page, with every line tagged by where it came
+from.
+
+Read what comes back and keep only what bears on the spec:
+
+- **Root cause** and **Done before** shape the Approach. A previous fix's
+  shape is the best Approach there is; name its commit.
+- **Reuse** goes into Approach by name. A worker that is not told about the
+  helper writes a second one.
+- **Files and call sites** become `files:`.
+- **Traps** go into **Graph context**, compressed, in your own words. A trap
+  recorded against a file the task is about to edit is the single
+  highest-value line a spec can carry.
+- **Open** goes back to the person — do not answer it yourself.
+
+This is still one read per task, filtered by someone with judgement, and
+workers stay hermetic: they need no graph, no network, and no memory of
+previous sessions. If the graph CLI is absent the scout says so and works from
+git and the code alone; the loop does not stall.
+
+**Skip the scout** only for a task whose files and fix the person has already
+named, or one too small for the loop. Say that you are skipping it.
+
+## 3. Establish what the task actually is
 
 Talk it through with the user. Push on:
 
 - **What is different afterwards, from the outside?** If you cannot say it in
   a sentence, the task is too big — split it.
-- **Which files?** Go and look. Grep for the call sites. The `files:` list is a
-  contract — the scope hook refuses a write outside it — so a wrong one blocks
-  the worker on something you could have checked in a minute.
+- **Which files?** From the scout's list. The `files:` list is a contract —
+  the scope hook refuses a write outside it — so a missing one blocks the
+  worker. If the scout found the same cause in more files than the person
+  mentioned, ask whether they are this task or the next one.
 - **Where can it be proven?** Set `env:`. `npx crew doctor` lists the
   environments and their statuses. If the answer is an environment no agent can
   reach, say so now and set expectations: code-complete is the best the loop
@@ -162,19 +225,7 @@ Talk it through with the user. Push on:
 - **Which part of the plan?** If there is one, set `part:` — it is how the
   worker and the reviewer reach the same diagram.
 
-Once `files:` is settled, ask the graph about those exact files:
-
-```sh
-npx crew graph files <each path in files:>
-```
-
-`crew graph traps` is the project's traps in general; this is what is recorded
-against *these* paths, which is the sharper question and the one worth the
-tokens. Anything it returns goes into **Graph context**, compressed, in your
-own words. A trap recorded against a file the task is about to edit is the
-single highest-value line a spec can carry.
-
-Then ask whether the work already exists:
+Once `files:` is settled, ask whether the work already exists:
 
 ```sh
 npx crew collisions .claude/tasks/<NNN>-<slug>.md
@@ -190,7 +241,7 @@ plus one line on what you make of each hit after reading it
 see it; finding it at dispatch is a round too late. If it prints nothing, say
 `None.` so the reader knows the question was asked.
 
-## 3. Write it
+## 4. Write it
 
 ```sh
 npx crew spec-template > .claude/tasks/<NNN>-<slug>.md
@@ -205,9 +256,20 @@ Keep **Constraints that bite here** to the rules that actually touch these
 files. The worker already reads `.claude/crew/project.md`; repeating it here
 costs tokens in every downstream agent and says nothing new.
 
-## 4. Get approval — this is a hard gate
+## 5. Get approval — this is a hard gate
 
-Show the user the spec. Ask plainly whether to proceed.
+Do not open with the whole spec and a yes/no question. That asks the person
+to find the gaps themselves, and they will skim it. Lead with what they can
+check in thirty seconds:
+
+- the Goal, in one sentence
+- `files:`
+- **what you assumed**: every decision in the Approach that neither the
+  person nor the scout's `[code]` or `[git]` evidence settled, one line each
+- anything the scout marked `unverified` that the spec relies on
+
+Then ask about those points, not about the spec in general. The full file is
+there for anyone who wants it.
 
 **Do not spawn a worker until they say yes.** They asked for this gate for a
 reason: a wrong spec is the most expensive thing in the system, and it is
@@ -215,3 +277,21 @@ cheapest to fix right now.
 
 On approval set `status: approved`, run `npx crew log <task> spec`, and tell
 them `/crew:crew-run <id>` is next.
+
+## When the conversation moves
+
+People ask about something else halfway through a spec. That is normal; it
+does not mean the spec is abandoned, and it does not mean the new thing gets
+built inline.
+
+- **A question** — answer it briefly, through an Explore agent if it needs
+  reading. Then say where you are: "back to task 004, still waiting on your
+  answer to question 3."
+- **New work** — write it down as a one-line stub in `.claude/tasks/` with
+  `status: draft`, and carry on with the current spec. It gets its own trip
+  through this skill later.
+- **The person changes their mind about this work** — that is not a detour.
+  Go back to step 1 with what changed.
+
+Never pick up the new thing yourself because you happen to have the context.
+That is the drift the first rule exists to stop.
