@@ -7,6 +7,7 @@ model: sonnet
 env: laptop
 rounds: 0
 part: <part id in the plan maps, or delete this line>
+work: <slug of .claude/crew/work/<slug>.json, or delete this line>
 files:
   - src/example.ts
   - test/example.test.ts

@@ -170,3 +170,43 @@ export const fileSides = (cfg, changes, path) => {
     : (git(['show', `${changes.branch}:${path}`], cfg.root) ?? '');
   return { before, after, afterIsPath: Boolean(changes.worktree) };
 };
+
+const commitInfo = (cfg, sha) => {
+  const out = git(['show', '--no-patch', '--format=%H%x09%h%x09%s', sha], cfg.root);
+  if (!out) return null;
+  const [full, short, subject] = out.trim().split('\t');
+  return { sha: full, short, subject };
+};
+
+/**
+ * Which commit a suggested change belongs in, so the fix can be folded into
+ * it and the history stays as if it had been right the first time.
+ *
+ * A line the task added is blamed to the commit that added it. A removed
+ * line, or one that was already there before the task, goes to the last
+ * commit on the branch that touched the file. A line still uncommitted in
+ * the worktree has no commit yet, and a file the branch never touched gets
+ * a commit of its own.
+ */
+export const suggestionTarget = (cfg, changes, path, line, side = 'new') => {
+  if (side === 'new' && line) {
+    const where = changes.worktree ?? cfg.root;
+    const args = ['blame', '--porcelain', '-L', `${line},${line}`];
+    if (!changes.worktree) args.push(changes.branch);
+    const sha = git([...args, '--', path], where)?.split(' ')[0];
+    if (sha && /^0+$/.test(sha)) return { kind: 'uncommitted' };
+    // Blame cannot see a file git does not track yet: it is the worker's
+    // uncommitted work, whatever its lines.
+    if (!sha && changes.files?.find((f) => f.path === path)?.uncommitted) {
+      return { kind: 'uncommitted' };
+    }
+    const before =
+      sha && git(['merge-base', '--is-ancestor', sha, changes.base], cfg.root) !== null;
+    if (sha && !before) return { kind: 'fixup', ...commitInfo(cfg, sha) };
+  }
+  const last = git(
+    ['log', '-1', '--format=%H', `${changes.base}..${changes.branch}`, '--', path],
+    cfg.root,
+  )?.trim();
+  return last ? { kind: 'fixup', ...commitInfo(cfg, last) } : { kind: 'new' };
+};
