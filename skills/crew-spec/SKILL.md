@@ -184,7 +184,7 @@ finds the real files, call sites, helpers and tests, and asks the graph about
 those exact paths. It returns a page, with every line tagged by where it came
 from.
 
-Then **record it for the pit wall** in `.claude/crew/work.json`, so the
+Then **record it for the pit wall** in `.claude/crew/work/<slug>.json`, so the
 person can read it, answer it and open the files from `crew serve` rather
 than scrolling back through this conversation:
 
@@ -207,7 +207,12 @@ than scrolling back through this conversation:
 
 Every question that is about code carries its `refs`. `stage` is one of
 `ask`, `scout`, `spec`, `approve`, `build`, `review`, `close`; move it on as
-the work does. Overwrite the file for each new piece of work.
+the work does.
+
+One file per piece of work, named for it, so several can be in flight in one
+repository without overwriting each other. Every task you write for it gets
+`work: <slug>` in its frontmatter; that is how the page groups them.
+Answers and gap decisions in `wall.json` are keyed `<slug>:<question id>`.
 
 Read what comes back and keep only what bears on the spec:
 

@@ -1054,6 +1054,69 @@
         color: var(--ink-3);
       }
 
+      .pick {
+        background: transparent;
+        color: var(--bar-ink);
+        border: 1px solid color-mix(in srgb, var(--bar-ink) 25%, transparent);
+        border-radius: 7px;
+        padding: 4px 8px;
+        font: 600 13.5px/1.2 var(--body);
+        max-width: 16rem;
+        width: auto;
+        min-width: 0;
+      }
+      .pick option {
+        color: var(--ink);
+        background: var(--surface);
+      }
+      .pick[hidden] {
+        display: none;
+      }
+      .dcode td.n button {
+        all: unset;
+        cursor: pointer;
+        display: block;
+        width: 100%;
+        text-align: right;
+      }
+      .dcode td.n button:hover,
+      .dcode td.n button:focus-visible {
+        color: var(--accent);
+        text-decoration: underline;
+        outline: none;
+      }
+      .dcode tr.sg td {
+        box-shadow: inset 3px 0 0 var(--wait);
+      }
+      .sugs {
+        display: grid;
+        gap: 10px;
+        padding: 14px;
+      }
+      .sug {
+        display: grid;
+        gap: 4px;
+        font-size: 14px;
+        padding-top: 10px;
+        border-top: 1px solid var(--rule);
+      }
+      .sug:first-of-type {
+        border-top: 0;
+        padding-top: 0;
+      }
+      .sug .where {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .sug q {
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--ink-2);
+        font-style: normal;
+      }
+
       /* ---- task subtabs and diffs ---- */
       .subtabs {
         display: flex;
@@ -1240,6 +1303,8 @@
         <div class="brand">
           <span class="mark" aria-hidden="true"></span>
           <span class="name">Pit Wall</span>
+          <select class="pick" id="project" aria-label="Project"></select>
+          <select class="pick" id="work" aria-label="Piece of work"></select>
           <span class="ctx" id="ctx"></span>
           <span class="spacer"></span>
           <button class="iconbtn" type="button" id="refresh" title="Read the task files again">
@@ -1273,10 +1338,42 @@
       </div>
     </form>
 
+    <form class="sheet" id="suggester" hidden>
+      <h3>Suggest a change</h3>
+      <div class="label" id="sg-where"></div>
+      <q id="sg-quote"></q>
+      <label class="field" for="sg-note"
+        >What should change?
+        <textarea
+          id="sg-note"
+          placeholder="e.g. Use reference_label here, not the raw value"
+        ></textarea>
+      </label>
+      <label class="field" for="sg-replace"
+        >Replace the line with <small>optional — leave it as it is to let the fixer write it</small>
+        <textarea
+          id="sg-replace"
+          spellcheck="false"
+          style="font-family: var(--mono); font-size: 13px"
+        ></textarea>
+      </label>
+      <div class="actions">
+        <button type="submit" class="btn primary">Save suggestion</button>
+        <button type="button" class="btn" id="sg-cancel">Cancel</button>
+      </div>
+    </form>
+
     <div class="toast" id="toast" hidden role="status"></div>
 
     <script>
       const TOKEN = '__CREW_TOKEN__';
+      const HOME = '__CREW_HOME__';
+      const params = new URLSearchParams(location.search);
+      const P = params.get('p') || HOME;
+      const WANTED = params.get('w');
+      const withProject = (path) =>
+        `${path}${path.includes('?') ? '&' : '?'}p=${encodeURIComponent(P)}`;
+      let projectList = [];
       const STAGES = [
         ['ask', 'Ask'],
         ['scout', 'Scout'],
@@ -1289,8 +1386,8 @@
 
       let data = {
         tasks: [],
-        work: null,
-        state: { answers: {}, gaps: {}, marks: [], requests: {}, scout: [] },
+        works: [],
+        state: { answers: {}, gaps: {}, marks: [], requests: {}, scout: {}, suggestions: [] },
       };
       const drafts = {};
       const commands = {};
@@ -1320,9 +1417,9 @@
           n.hidden = true;
         }, 2600);
       };
-      const get = async (path) => (await fetch(path)).json();
+      const get = async (path) => (await fetch(withProject(path))).json();
       const post = async (path, body = {}) => {
-        const res = await fetch(path, {
+        const res = await fetch(withProject(path), {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-crew-token': TOKEN },
           body: JSON.stringify(body),
@@ -1344,7 +1441,25 @@
         ['TEXTAREA', 'INPUT', 'SELECT'].includes(document.activeElement?.tagName);
 
       // ---------- derived ----------
-      const W = () => data.work ?? {};
+      // Several pieces of work can be in flight in one repository. The page
+      // shows one at a time; `?w=all` shows every task regardless.
+      const currentWork = () =>
+        WANTED === 'all'
+          ? null
+          : (data.works.find((w) => w.slug === WANTED) ?? data.works[0] ?? null);
+      const W = () => currentWork() ?? {};
+      const wk = () => currentWork()?.slug ?? 'current';
+      const tasksHere = () => {
+        const w = currentWork();
+        if (!w) return data.tasks;
+        return data.tasks.filter((t) => t.work === w.slug || (!t.work && data.works.length <= 1));
+      };
+      const answerOf = (id) => data.state.answers[`${wk()}:${id}`];
+      const gapOf = (id) => data.state.gaps[`${wk()}:${id}`];
+      const chat = () => {
+        const all = data.state.scout;
+        return all && !Array.isArray(all) ? (all[wk()]?.turns ?? []) : [];
+      };
       const questions = () => W().questions ?? [];
       const gaps = () => W().gaps ?? [];
       const statusOf = (t) =>
@@ -1378,8 +1493,8 @@
       const openMarks = (id) =>
         data.state.marks.filter((m) => m.task === id && m.status !== 'resolved').length;
       const unanswered = () =>
-        questions().filter((q) => !data.state.answers[q.id]).length +
-        gaps().filter((g) => !data.state.gaps[g.id]).length;
+        questions().filter((q) => !answerOf(q.id)).length +
+        gaps().filter((g) => !gapOf(g.id)).length;
 
       // ---------- code links ----------
       const codeHref = (path, line) => `#code/${path}${line ? `:${line}` : ''}`;
@@ -1462,16 +1577,65 @@
       const pageOf = (r) =>
         /^t\d+/.test(r) ? 'tasks' : r.startsWith('code/') || r.startsWith('dir/') ? 'files' : r;
 
+      // Switching project or piece of work is a new address, so each tab of
+      // the browser can sit on a different one.
+      const go = (p, w) => {
+        const q = new URLSearchParams({ p });
+        if (w) q.set('w', w);
+        location.search = q.toString();
+      };
+      function renderPickers() {
+        const project = $('#project');
+        if (document.activeElement !== project) {
+          project.replaceChildren(
+            ...projectList.map((p) =>
+              el(
+                'option',
+                { value: p.key, selected: p.key === P },
+                p.waiting ? `${p.name} (${p.waiting} waiting)` : p.name,
+              ),
+            ),
+          );
+        }
+        project.hidden = projectList.length < 2;
+        const work = $('#work');
+        if (document.activeElement !== work) {
+          const current = currentWork()?.slug ?? 'all';
+          work.replaceChildren(
+            ...data.works.map((w) =>
+              el('option', { value: w.slug, selected: w.slug === current }, w.title ?? w.slug),
+            ),
+            el('option', { value: 'all', selected: current === 'all' }, 'All tasks'),
+          );
+        }
+        work.hidden = data.works.length < 2;
+      }
+      $('#project').addEventListener('change', (e) => go(e.target.value));
+      $('#work').addEventListener('change', (e) => go(P, e.target.value));
+      async function loadProjects() {
+        try {
+          projectList = await (await fetch('/api/projects')).json();
+        } catch {
+          projectList = [];
+        }
+        renderPickers();
+      }
+
       function renderTabs() {
         const current = pageOf(route());
-        $('#ctx').textContent = [data.project, W().title].filter(Boolean).join(' · ');
+        renderPickers();
+        const shown = [
+          $('#project').hidden ? data.project : null,
+          $('#work').hidden ? W().title : null,
+        ];
+        $('#ctx').textContent = shown.filter(Boolean).join(' · ');
         $('#tabs').replaceChildren(
           ...PAGES.map(([id, name]) => {
             const n =
               id === 'questions'
                 ? unanswered()
                 : id === 'tasks'
-                  ? data.tasks.filter((t) => t.status === 'draft').length
+                  ? tasksHere().filter((t) => t.status === 'draft').length
                   : 0;
             return el(
               'a',
@@ -1495,7 +1659,7 @@
       function viewOverview() {
         const w = W();
         const at = STAGES.findIndex(([k]) => k === w.stage);
-        const toApprove = data.tasks.filter((t) => t.status === 'draft');
+        const toApprove = tasksHere().filter((t) => t.status === 'draft');
         const marks = data.state.marks.filter((m) => m.status !== 'resolved').length;
         const need = (n, text, sub, href) =>
           el(
@@ -1506,7 +1670,7 @@
             el('small', {}, sub),
           );
         const cols = { needs: [], ready: [], running: [], done: [] };
-        for (const t of data.tasks) cols[columnOf(t)].push(t);
+        for (const t of tasksHere()) cols[columnOf(t)].push(t);
         const col = (key, name) =>
           el(
             'div',
@@ -1632,7 +1796,7 @@
             },
             name,
           );
-        const shown = data.tasks.filter((t) => filter === 'all' || columnOf(t) === filter);
+        const shown = tasksHere().filter((t) => filter === 'all' || columnOf(t) === filter);
         return [
           pagehead(
             'Tasks',
@@ -1957,15 +2121,34 @@
                   {},
                   file.hunks.map((h) => [
                     el('tr', { class: 'hh' }, el('td', { colspan: 3 }, h.header)),
-                    h.lines.map((l) =>
-                      el(
+                    h.lines.map((l) => {
+                      const side = l.kind === '-' ? 'old' : 'new';
+                      const line = side === 'old' ? l.a : l.b;
+                      const suggested = suggestionsOn(t.id).some(
+                        (x) => x.path === file.path && x.line === line && x.side === side,
+                      );
+                      const num = (n, mine) =>
+                        withScope && mine && n
+                          ? el(
+                              'button',
+                              {
+                                type: 'button',
+                                title: 'Suggest a change to this line',
+                                onclick: () => openSuggester(t, file.path, n, side, l.text),
+                              },
+                              n,
+                            )
+                          : (n ?? '');
+                      return el(
                         'tr',
-                        { class: l.kind === '+' ? 'ad' : l.kind === '-' ? 'rm' : '' },
-                        el('td', { class: 'n' }, l.a ?? ''),
-                        el('td', { class: 'n' }, l.b ?? ''),
+                        {
+                          class: `${l.kind === '+' ? 'ad' : l.kind === '-' ? 'rm' : ''} ${suggested ? 'sg' : ''}`,
+                        },
+                        el('td', { class: 'n' }, num(l.a, side === 'old')),
+                        el('td', { class: 'n' }, num(l.b, side === 'new')),
                         el('td', {}, `${l.kind === ' ' ? ' ' : l.kind}${l.text}`),
-                      ),
-                    ),
+                      );
+                    }),
                   ]),
                 ),
               ),
@@ -1975,6 +2158,137 @@
       }
 
       const sum = (files, k) => files.reduce((n, f) => n + f[k], 0);
+
+      // ---------- suggestions: edits you want made, folded into their commit ----------
+      const suggestionsOn = (id) => (data.state.suggestions ?? []).filter((x) => x.task === id);
+      const targetLabel = (target) =>
+        target?.kind === 'fixup'
+          ? `folds into ${target.short} ${target.subject}`
+          : target?.kind === 'uncommitted'
+            ? 'edits uncommitted work'
+            : 'a commit of its own';
+      const SUG_PILL = {
+        open: ['wait', 'Open'],
+        applying: ['run', 'Applying'],
+        applied: ['go-t', 'Applied'],
+        failed: ['stop', 'Not applied'],
+      };
+
+      let suggesting = null;
+      function openSuggester(t, path, line, side, textLine) {
+        suggesting = { task: t.id, path, line, side, quote: textLine.trim() };
+        $('#sg-where').textContent =
+          `Task ${t.id} · ${path}:${line}${side === 'old' ? ' (removed line)' : ''}`;
+        $('#sg-quote').textContent = textLine;
+        $('#sg-note').value = '';
+        $('#sg-replace').value = side === 'old' ? '' : textLine;
+        $('#suggester').hidden = false;
+        $('#sg-note').focus();
+      }
+      $('#sg-cancel').addEventListener('click', () => {
+        $('#suggester').hidden = true;
+      });
+      $('#suggester').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!suggesting) return;
+        const replacement = $('#sg-replace').value;
+        const out = await post('/api/suggest', {
+          ...suggesting,
+          note: $('#sg-note').value,
+          replacement: replacement === suggesting.quote ? '' : replacement,
+        });
+        if (out.suggestions) {
+          const made = out.suggestions.at(-1);
+          $('#suggester').hidden = true;
+          toast(`Saved. It ${targetLabel(made.target)}.`);
+          load();
+        }
+      });
+
+      function suggestionPanel(t) {
+        const list = suggestionsOn(t.id);
+        if (!list.length) return null;
+        const open = list.filter((x) => x.status === 'open');
+        const applying = list.some((x) => x.status === 'applying');
+        const fix = data.state.fixes?.[t.id];
+        const blocked =
+          t.status === 'building' ? 'The worker is still building. Apply once it stops.' : null;
+        return el(
+          'section',
+          { class: 'panel sugs', 'aria-label': 'Your suggestions' },
+          el(
+            'div',
+            { class: 'sechead' },
+            el('h2', { class: 'sec' }, `Your suggestions (${list.length})`),
+            el(
+              'span',
+              { class: 'actions' },
+              blocked ? el('span', { class: 'hint' }, blocked) : null,
+              el(
+                'button',
+                {
+                  type: 'button',
+                  class: 'btn small primary',
+                  disabled: Boolean(blocked) || !open.length || applying,
+                  onclick: async () => {
+                    const out = await post('/api/apply', { id: t.id });
+                    if (out.ok) {
+                      toast(`The fixer is applying ${out.started}. This takes a minute or two.`);
+                      load();
+                    }
+                  },
+                },
+                applying ? 'Applying…' : `Apply ${open.length || ''} and fold into commits`,
+              ),
+            ),
+          ),
+          list.map((x) => {
+            const [tone, label] = SUG_PILL[x.status] ?? ['idle', x.status];
+            return el(
+              'div',
+              { class: 'sug' },
+              el(
+                'div',
+                { class: 'where' },
+                el('span', { class: `pill ${tone}` }, label),
+                el(
+                  'a',
+                  { class: 'ref', href: codeHref(x.path, x.line) },
+                  `${x.path}:${x.line ?? ''}`,
+                ),
+                el('span', { class: 'hint' }, targetLabel(x.target)),
+                x.status === 'open'
+                  ? el(
+                      'button',
+                      {
+                        type: 'button',
+                        class: 'lk',
+                        onclick: async () => {
+                          await post('/api/suggestion/delete', { id: x.id });
+                          load();
+                        },
+                      },
+                      'Remove',
+                    )
+                  : null,
+              ),
+              x.quote ? el('q', {}, x.quote) : null,
+              x.note ? el('div', {}, x.note) : null,
+              x.replacement
+                ? el('div', { class: 'note' }, 'Replace with: ', el('code', {}, x.replacement))
+                : null,
+              x.reply ? el('div', { class: 'note' }, `Fixer: ${x.reply}`) : null,
+            );
+          }),
+          fix
+            ? el(
+                'p',
+                { class: 'note' },
+                `Last run: ${fix.rebased ? 'folded into their commits' : 'not folded in'} · gate ${fix.gate}.`,
+              )
+            : null,
+        );
+      }
 
       async function viewChanges(id) {
         const t = data.tasks.find((x) => x.id === id);
@@ -2038,6 +2352,10 @@
             : c.files.length
               ? el('p', { class: 'okline' }, 'Every changed file is one the spec allowed.')
               : null,
+          suggestionPanel(t),
+          c.files.length
+            ? el('p', { class: 'hint' }, 'Click a line number to suggest a change to that line.')
+            : null,
           c.commits.length
             ? el(
                 'section',
@@ -2103,7 +2421,7 @@
             ),
           ];
         const qs = questions().map((q) => {
-          const saved = data.state.answers[q.id];
+          const saved = answerOf(q.id);
           const box = el('textarea', {
             id: `a-${q.id}`,
             'aria-label': q.q,
@@ -2138,7 +2456,8 @@
                   onclick: async () => {
                     if (
                       box.value.trim() &&
-                      (await post('/api/answer', { id: q.id, text: box.value })).answers
+                      (await post('/api/answer', { id: `${wk()}:${q.id}`, text: box.value }))
+                        .answers
                     ) {
                       delete drafts[q.id];
                       toast('Answer saved');
@@ -2162,7 +2481,7 @@
           );
         });
         const gs = gaps().map((g) => {
-          const pick = data.state.gaps[g.id]?.choice;
+          const pick = gapOf(g.id)?.choice;
           const opt = (c, name) =>
             el(
               'button',
@@ -2171,7 +2490,7 @@
                 class: 'btn small',
                 'aria-pressed': pick === c ? 'true' : 'false',
                 onclick: async () => {
-                  if ((await post('/api/gap', { id: g.id, choice: c })).gaps) load();
+                  if ((await post('/api/gap', { id: `${wk()}:${g.id}`, choice: c })).gaps) load();
                 },
               },
               name,
@@ -2223,7 +2542,7 @@
         const msgs = el(
           'div',
           { class: 'msgs', id: 'msgs' },
-          (data.state.scout ?? []).map((m) =>
+          chat().map((m) =>
             el(
               'div',
               { class: `msg ${m.role === 'you' ? 'you' : m.error ? 'scout err' : 'scout'}` },
@@ -2232,7 +2551,7 @@
             ),
           ),
         );
-        if (!data.state.scout?.length)
+        if (!chat().length)
           msgs.append(
             el(
               'p',
@@ -2257,7 +2576,7 @@
           if (!message || scoutBusy) return;
           scoutBusy = true;
           render();
-          await post('/api/scout', { message, session: data.state.scoutSession });
+          await post('/api/scout', { message, work: wk() });
           scoutBusy = false;
           drafts.scout = '';
           await load();
@@ -2269,14 +2588,14 @@
             'div',
             { class: 'sechead' },
             el('h2', { class: 'sec' }, 'Talk to the scout'),
-            data.state.scout?.length
+            chat().length
               ? el(
                   'button',
                   {
                     type: 'button',
                     class: 'btn small',
                     onclick: async () => {
-                      await post('/api/scout/new');
+                      await post('/api/scout/new', { work: wk() });
                       load();
                     },
                   },
@@ -2374,7 +2693,7 @@
           if (id) row.tasks.add(id);
           byPath.set(path, row);
         };
-        for (const t of data.tasks) {
+        for (const t of tasksHere()) {
           for (const f of t.files) add(f.path, null, f.exists ? 'Changed' : 'New', t.id, f.exists);
           for (const m of t.mentions) add(m.path, m.line, 'Mentioned', t.id);
         }
@@ -2571,7 +2890,10 @@
         render();
         if (!route().startsWith('code/')) scrollTo(0, 0);
       });
-      $('#refresh').addEventListener('click', load);
+      $('#refresh').addEventListener('click', () => {
+        loadProjects();
+        load();
+      });
 
       async function copyText(text) {
         try {
@@ -2669,17 +2991,22 @@
       addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
           $('#composer').hidden = true;
+          $('#suggester').hidden = true;
           selbar.hidden = true;
         }
       });
 
       // Task files change under us as workers report, so read them again every
       // few seconds while the page is in front of someone.
+      loadProjects();
       load();
       setInterval(() => {
         if (document.visibilityState === 'visible' && !scoutBusy && pageOf(route()) !== 'files')
           load();
       }, 5000);
+      setInterval(() => {
+        if (document.visibilityState === 'visible') loadProjects();
+      }, 30000);
     </script>
   </body>
 </html>

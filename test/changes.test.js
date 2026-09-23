@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { commitChanges, parseDiff, taskChanges } from '../src/lib/changes.js';
+import { commitChanges, parseDiff, suggestionTarget, taskChanges } from '../src/lib/changes.js';
 import { readTask } from '../src/lib/task.js';
 import { config, sandbox, task, writeTask } from './helpers.js';
 
@@ -88,4 +88,21 @@ test('a diff keeps both sides of the line numbers', () => {
   );
   assert.equal(file.added, 1);
   assert.equal(file.removed, 1);
+});
+
+test('a suggested line goes to the commit that wrote it, or the last one to touch its file', () => {
+  const { root, tree, task: t } = fixture();
+  const cfg = config(root, { baseBranch: 'main' });
+  const c = taskChanges(cfg, t);
+  // src/a.ts: line 3 "three" was committed by "feat: three"; line 4 is uncommitted.
+  assert.equal(suggestionTarget(cfg, c, 'src/a.ts', 3).subject, 'feat: three');
+  assert.equal(suggestionTarget(cfg, c, 'src/a.ts', 4).kind, 'uncommitted');
+  // Line 1 was there before the task, so it folds into the task's last commit on the file.
+  assert.equal(suggestionTarget(cfg, c, 'src/a.ts', 1).subject, 'feat: three');
+  // A removed line has no line on the new side; same rule.
+  assert.equal(suggestionTarget(cfg, c, 'src/b.ts', 1, 'old').subject, 'chore: stray');
+  // A file the branch never committed needs a commit of its own.
+  assert.equal(suggestionTarget(cfg, c, 'src/new.ts', 1).kind, 'uncommitted');
+  sh(tree, 'stash', '-u');
+  assert.equal(suggestionTarget(cfg, taskChanges(cfg, t), 'src/c.ts', null).kind, 'new');
 });

@@ -167,6 +167,19 @@ hook rejects them and will reject you.
 
 Commit in your worktree as you go. Never push.
 
+**Fix a review finding in the commit that introduced it**, not in a new
+commit on top. Commit the fix with `git commit --fixup=<sha>`, then fold it in
+before re-running the gate:
+
+```sh
+GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <base>
+```
+
+The person reads this branch commit by commit; a history of mistakes and
+their corrections is noise they have to read past. If the rebase conflicts,
+`git rebase --abort` and leave the fixup commit. A clean history is not
+worth a broken one. The rebase rewrites commits, so re-run the gate after it.
+
 ## Finishing
 
 Set `status:`:

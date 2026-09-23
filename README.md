@@ -499,16 +499,27 @@ shape that works.
 crew serve            # http://localhost:4747
 ```
 
-One local page for the piece of work in flight, meant to sit open in the
-Claude desktop browser pane. It reads the task files and
-`.claude/crew/work.json`, which `/crew:crew-spec` writes after the scout
-runs, and reads them again every few seconds while the page is in front of you.
+One local page for everything in flight on this machine, meant to sit open
+in the Claude desktop browser pane. It reads the task files and
+`.claude/crew/work/<slug>.json`, which `/crew:crew-spec` writes after the
+scout runs, and reads them again every few seconds while the page is in
+front of you.
+
+**One server, every project.** Run `crew serve` in a second repository and it
+joins the server already running instead of starting another: it prints the
+address and exits. The header gets a project picker, with how many tasks are
+waiting on you in each. Within a project, each piece of work has its own
+file and the tasks say which one they belong to with `work:`, so two things
+in flight in one repository do not overwrite each other. Switching is part of
+the address (`?p=coral-arches&w=v8-lists`), so two browser tabs can sit on
+two different pieces of work. The registry is
+`$XDG_CONFIG_HOME/crew/projects.json`.
 
 | tab | what it is for |
 |---|---|
 | Overview | the stage, what is waiting on you, and the tasks by state |
 | Tasks | each spec, starting with what it assumed. Select any text to mark it wrong, ask for a change or ask a question. Approve and Run are here |
-| Tasks → Changes | what the worker has actually done, live from its worktree: every commit, uncommitted edits and new files, with any file outside `files:` flagged at the top |
+| Tasks → Changes | what the worker has actually done, live from its worktree: every commit, uncommitted edits and new files, with any file outside `files:` flagged at the top. Click a line number to suggest a change |
 | Questions | the scout's questions, each with the files it is about, and where it stopped short |
 | Scout | what it found, and a chat with the scout itself |
 | Files | everything the work touches, a code viewer, and a browser for the repository |
@@ -524,6 +535,20 @@ opens `code --diff` with the base version on the left and the live
 worktree file on the right. **Open worktree in editor** opens the whole
 worktree, for VS Code's Source Control view, and **Copy lazygit command**
 gives `lazygit -p <worktree>`. Each commit opens on its own.
+
+**Suggest a change, and keep the history clean.** Click a line number in a
+task's diff and say what should change, optionally with the replacement
+line. The page works out which commit the line belongs to (the commit that
+wrote it, or the last one on the branch to touch that file) and shows it.
+**Apply and fold into commits** hands the open suggestions to the
+`crew-fixer` agent in the task's worktree. It makes each edit as a
+`--fixup` of that commit, runs `git rebase -i --autosquash`, and re-runs the
+gate. The branch ends up with the same commits, each as if it had been right
+the first time. It refuses while the worker is still building, and while
+the worktree has uncommitted edits a fixup would sweep in. If a fix cannot
+fold in cleanly, because a later commit changed the lines next to it, the
+rebase is undone and the fix stays as a `fixup!` commit, reported as not
+applied.
 
 **The scout chat is the real agent.** It runs `claude -p` with
 `agents/crew-scout.md` as the agent: read-only tools, and `--resume` so it
