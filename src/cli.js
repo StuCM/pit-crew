@@ -19,7 +19,8 @@ const USAGE = `crew — a task loop for agents
 
   crew spec-template        print the task template, for a new spec
   crew graph <what>         read the memory graph: prime, prefs, traps,
-                            decisions, files <path...>, find <text>
+                            decisions, files <path...>, find <text>,
+                            chain <text>
   crew collisions <task>    unmerged branches already touching its files:
   crew preflight [env]      what this machine can and cannot prove
   crew plan [task|part]     the plan map slice bearing on a task
@@ -29,6 +30,7 @@ const USAGE = `crew — a task loop for agents
   crew scope <task> [base]  changed files against the spec's files:
   crew review <task>        open a review round, refusing one past the limit
   crew board                render BOARD.md from the task files
+  crew serve [--port=N]     the pit wall: a local page for the work in flight
   crew log <task> <event>   append one line to the cost log
 
   crew commit-msg <file>    the commit convention (git hook)
@@ -50,6 +52,7 @@ const COMMANDS = {
   review: () => import('./commands/review.js'),
   graph: () => import('./commands/graph.js'),
   plan: () => import('./commands/plan.js'),
+  serve: () => import('./commands/serve.js'),
   init: () => import('./commands/init.js'),
   'spec-template': () => import('./commands/init.js').then((m) => ({ run: m.template })),
 };

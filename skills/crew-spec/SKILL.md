@@ -184,6 +184,31 @@ finds the real files, call sites, helpers and tests, and asks the graph about
 those exact paths. It returns a page, with every line tagged by where it came
 from.
 
+Then **record it for the pit wall** in `.claude/crew/work.json`, so the
+person can read it, answer it and open the files from `crew serve` rather
+than scrolling back through this conversation:
+
+```json
+{
+  "title": "Controlled-list comparisons after the v8 upgrade",
+  "summary": "One or two sentences: what is wrong, and the cause if known.",
+  "stage": "scout",
+  "questions": [
+    { "id": "q-other-callers", "q": "The question, as the scout put it.",
+      "why": "Why the answer changes the spec.",
+      "refs": [{ "path": "coral/functions/notify_smm.py", "line": 45, "name": "post_save" }] }
+  ],
+  "gaps": [{ "id": "n-hub", "text": "Where it stopped short.", "next": "What it would run next." }],
+  "findings": [
+    { "title": "Root cause", "rows": [{ "src": "git", "text": "…", "refs": [{ "path": "…", "line": 1 }] }] }
+  ]
+}
+```
+
+Every question that is about code carries its `refs`. `stage` is one of
+`ask`, `scout`, `spec`, `approve`, `build`, `review`, `close`; move it on as
+the work does. Overwrite the file for each new piece of work.
+
 Read what comes back and keep only what bears on the spec:
 
 - **Root cause** and **Done before** shape the Approach. A previous fix's
@@ -261,6 +286,19 @@ files. The worker already reads `.claude/crew/project.md`; repeating it here
 costs tokens in every downstream agent and says nothing new.
 
 ## 5. Get approval — this is a hard gate
+
+If `crew serve` is running, the person may answer and approve there instead.
+Before you write or revise a spec, read `.claude/crew/wall.json`:
+
+- `answers` — replies to the scout's questions, by id. They go into
+  Background, as if given here.
+- `gaps` — `follow` or `accept` for each place the scout stopped short.
+- `marks` — text they selected in a spec and called wrong, asked to change,
+  or asked about. Deal with each, then set its `status` to `resolved` and
+  give it a one-line `reply`, so the page shows it was read.
+
+A task the page approved already says `status: approved` and has its `spec`
+log line; do not ask again.
 
 Do not open with the whole spec and a yes/no question. That asks the person
 to find the gaps themselves, and they will skim it. Lead with what they can

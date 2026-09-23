@@ -12,6 +12,10 @@ Each task gets **its own session and its own worktree**. The orchestrator does
 not implement, does not review, and does not watch. It hands over, then reads
 the board.
 
+A task can also be queued from `crew serve`: its id appears under `requests`
+in `.claude/crew/wall.json`. Treat that as the person saying "run task N",
+and remove the entry once it is dispatched.
+
 ## 1. Check it can run alongside what is already in flight
 
 Read the board. If another in-flight task declares any of the same `files:`,

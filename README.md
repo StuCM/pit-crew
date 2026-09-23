@@ -232,6 +232,7 @@ into tasks". See [Planning](#planning).
 | `crew scope <task> [base]` | changed files against the spec's `files:` |
 | `crew review <task>` | open a round, refusing one past the limit |
 | `crew board` | render `BOARD.md` from the task files |
+| `crew serve [--port=N]` | the pit wall: a local page for the work in flight |
 | `crew log <task> <event>` | append one line to the cost log |
 | `crew commit-msg <file>` | the commit convention (git hook) |
 | `crew pre-commit` | staged-file format and lint (git hook) |
@@ -491,6 +492,44 @@ badly — the context fills and the early decisions are compressed away. State
 lives in the task files, the board and the graph, all of which survive a new
 session. A chat per feature or bug, primed from the repo and the graph, is the
 shape that works.
+
+## The pit wall
+
+```bash
+crew serve            # http://localhost:4747
+```
+
+One local page for the piece of work in flight, meant to sit open in the
+Claude desktop browser pane. It reads the task files and
+`.claude/crew/work.json`, which `/crew:crew-spec` writes after the scout
+runs, and reads them again every few seconds while the page is in front of you.
+
+| tab | what it is for |
+|---|---|
+| Overview | the stage, what is waiting on you, and the tasks by state |
+| Tasks | each spec, starting with what it assumed. Select any text to mark it wrong, ask for a change or ask a question. Approve and Run are here |
+| Questions | the scout's questions, each with the files it is about, and where it stopped short |
+| Scout | what it found, and a chat with the scout itself |
+| Files | everything the work touches, a code viewer, and a browser for the repository |
+
+**Files open in your editor.** Every file has View, which shows it in the
+page at the right line, and Editor, which runs `code -g path:line` on your
+machine. Set `CREW_EDITOR=cursor` (or any editor taking `-g`) to change it.
+
+**The scout chat is the real agent.** It runs `claude -p` with
+`agents/crew-scout.md` as the agent: read-only tools, and `--resume` so it
+remembers the conversation until you start a new one. Set `CREW_CLAUDE` if
+`claude` is not on the server's `PATH`.
+
+**What the page writes.** Approve sets `status: approved` and logs it, the
+same as approving in the conversation. Everything else goes into
+`.claude/crew/wall.json`: answers, marks, decisions on the scout's gaps, and
+Run requests. The orchestrator reads it back. Run queues the task; it does
+not start a worker from the page yet.
+
+It listens on 127.0.0.1 only, refuses any request whose Host is not
+localhost, and refuses every write without a token that exists only in the
+page it served. A site open in another tab can reach the port; it cannot act.
 
 ## The memory graph
 

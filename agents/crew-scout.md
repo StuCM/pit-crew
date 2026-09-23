@@ -119,7 +119,9 @@ From the graph and git, each one checked against the code or marked unverified.
 
 ## Open
 What you could not settle and the person probably can. Phrase each as a
-question to put to them.
+question to put to them, and **list the files it is about**, with
+`path:line` for each one. "The scout found four" with no list makes the
+person go and find them; the list lets them open each one and answer.
 
 ## Needed more
 Where the search stopped before it ran out: a chain cut at a depth or a hub,
