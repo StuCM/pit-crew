@@ -1,0 +1,2335 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pit Wall</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    />
+    <style>
+      :root {
+        --ground: #eef0ec;
+        --surface: #ffffff;
+        --sunk: #e4e7e1;
+        --ink: #172024;
+        --ink-2: #48535a;
+        --ink-3: #78848a;
+        --rule: #d4d9d1;
+        --bar: #172024;
+        --bar-ink: #e9eeec;
+        --bar-dim: #8e9ba0;
+        --accent: #0c6a69;
+        --accent-ink: #ffffff;
+        --accent-soft: #d5ebe8;
+        --go: #2d7a39;
+        --go-soft: #dbeedb;
+        --wait: #9a6200;
+        --wait-soft: #f8eacb;
+        --run: #28589e;
+        --run-soft: #dce6f5;
+        --stop: #b0271f;
+        --stop-soft: #f6dbd8;
+        --mark: #f9e08a;
+        --lift: 0 1px 2px rgb(23 32 36 / 0.06), 0 6px 18px rgb(23 32 36 / 0.08);
+        --display: 'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif;
+        --body: 'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme='light']) {
+          color-scheme: dark;
+          --ground: #121719;
+          --surface: #1b2225;
+          --sunk: #232b2f;
+          --ink: #e5eae8;
+          --ink-2: #b1bbbe;
+          --ink-3: #859197;
+          --rule: #2f383d;
+          --bar: #0b0f10;
+          --bar-ink: #e5eae8;
+          --bar-dim: #7f8b91;
+          --accent: #5ac0ba;
+          --accent-ink: #0b1717;
+          --accent-soft: #163332;
+          --go: #7bcd84;
+          --go-soft: #1b3120;
+          --wait: #eeb63c;
+          --wait-soft: #37290e;
+          --run: #8cb3ee;
+          --run-soft: #1a2940;
+          --stop: #ef8b81;
+          --stop-soft: #41201c;
+          --mark: #6a5816;
+          --lift: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 18px rgb(0 0 0 / 0.4);
+        }
+      }
+      :root[data-theme='dark'] {
+        color-scheme: dark;
+        --ground: #121719;
+        --surface: #1b2225;
+        --sunk: #232b2f;
+        --ink: #e5eae8;
+        --ink-2: #b1bbbe;
+        --ink-3: #859197;
+        --rule: #2f383d;
+        --bar: #0b0f10;
+        --bar-ink: #e5eae8;
+        --bar-dim: #7f8b91;
+        --accent: #5ac0ba;
+        --accent-ink: #0b1717;
+        --accent-soft: #163332;
+        --go: #7bcd84;
+        --go-soft: #1b3120;
+        --wait: #eeb63c;
+        --wait-soft: #37290e;
+        --run: #8cb3ee;
+        --run-soft: #1a2940;
+        --stop: #ef8b81;
+        --stop-soft: #41201c;
+        --mark: #6a5816;
+        --lift: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 18px rgb(0 0 0 / 0.4);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      body {
+        background: var(--ground);
+        color: var(--ink);
+        font: 15px/1.55 var(--body);
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      h1,
+      h2,
+      h3 {
+        text-wrap: balance;
+      }
+      a {
+        color: var(--accent);
+      }
+      button {
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+      }
+      :is(a, button, textarea, input, select, summary):focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      code,
+      .mono {
+        font-family: var(--mono);
+        font-size: 0.86em;
+      }
+      .label {
+        font: 600 12.5px/1.1 var(--display);
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+      }
+
+      /* ---- shell ---- */
+      .top {
+        position: sticky;
+        top: env(safe-area-inset-top, 0px);
+        z-index: 5;
+        background: var(--bar);
+        color: var(--bar-ink);
+      }
+      .top-in {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding-inline: 16px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding-block: 12px 4px;
+      }
+      .brand .mark {
+        width: 22px;
+        height: 16px;
+        flex: none;
+        background: conic-gradient(
+            var(--bar-ink) 25%,
+            transparent 0 50%,
+            var(--bar-ink) 0 75%,
+            transparent 0
+          )
+          0 0 / 8px 8px;
+        border-radius: 2px;
+        opacity: 0.9;
+      }
+      .brand .name {
+        white-space: nowrap;
+        font: 700 19px/1 var(--display);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .brand .ctx {
+        font-size: 13.5px;
+        color: var(--bar-dim);
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .brand .spacer {
+        flex: 1;
+      }
+      .iconbtn {
+        background: transparent;
+        border: 1px solid color-mix(in srgb, var(--bar-ink) 25%, transparent);
+        color: var(--bar-ink);
+        border-radius: 7px;
+        padding: 5px 10px;
+        font-size: 13.5px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .iconbtn:hover {
+        border-color: var(--bar-ink);
+      }
+      nav.tabs {
+        display: flex;
+        gap: 2px;
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+      nav.tabs::-webkit-scrollbar {
+        display: none;
+      }
+      nav.tabs a {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 10px 12px 11px;
+        color: var(--bar-dim);
+        text-decoration: none;
+        font: 600 16px/1 var(--display);
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        border-bottom: 3px solid transparent;
+        white-space: nowrap;
+      }
+      nav.tabs a:hover {
+        color: var(--bar-ink);
+      }
+      nav.tabs a[aria-current='page'] {
+        color: var(--bar-ink);
+        border-bottom-color: var(--wait);
+      }
+      .count {
+        font: 700 12px/1 var(--body);
+        letter-spacing: 0;
+        background: var(--wait);
+        color: var(--bar);
+        border-radius: 999px;
+        padding: 3px 7px;
+      }
+
+      main {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding-inline: 16px;
+        padding-block: 22px 96px;
+        display: grid;
+        gap: 26px;
+      }
+      .example {
+        font-size: 13.5px;
+        color: var(--ink-2);
+        border: 1px dashed var(--rule);
+        border-radius: 8px;
+        padding: 8px 12px;
+      }
+      .example b {
+        font-weight: 700;
+        color: var(--ink);
+      }
+
+      .pagehead {
+        display: grid;
+        gap: 10px;
+      }
+      .pagehead h1 {
+        font: 700 clamp(28px, 4.4vw, 38px)/1.05 var(--display);
+        letter-spacing: 0.01em;
+      }
+      .pagehead .sub {
+        color: var(--ink-2);
+        max-width: 70ch;
+      }
+      .crumb {
+        font-size: 14px;
+      }
+      .crumb a {
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      h2.sec {
+        font: 700 21px/1.1 var(--display);
+        letter-spacing: 0.03em;
+      }
+      .sechead {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .hint {
+        font-size: 13.5px;
+        color: var(--ink-3);
+      }
+
+      /* ---- bits ---- */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--rule);
+        background: var(--surface);
+        border-radius: 8px;
+        padding: 7px 13px;
+        font-size: 14.5px;
+        font-weight: 700;
+        text-decoration: none;
+        color: var(--ink);
+        white-space: nowrap;
+      }
+      .btn:hover {
+        border-color: var(--ink-3);
+      }
+      .btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--accent-ink);
+      }
+      .btn.go {
+        background: var(--go);
+        border-color: var(--go);
+        color: var(--surface);
+      }
+      .btn.small {
+        padding: 4px 9px;
+        font-size: 13.5px;
+      }
+      .btn[disabled] {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .btn[aria-pressed='true'] {
+        background: var(--ink);
+        color: var(--surface);
+        border-color: var(--ink);
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font: 700 12px/1 var(--display);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        border-radius: 999px;
+        padding: 5px 9px;
+        white-space: nowrap;
+      }
+      .pill::before {
+        content: '';
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+      .wait {
+        color: var(--wait);
+        background: var(--wait-soft);
+      }
+      .run {
+        color: var(--run);
+        background: var(--run-soft);
+      }
+      .go-t {
+        color: var(--go);
+        background: var(--go-soft);
+      }
+      .stop {
+        color: var(--stop);
+        background: var(--stop-soft);
+      }
+      .idle {
+        color: var(--ink-3);
+        background: var(--sunk);
+      }
+      .chip {
+        font: 500 12px/1 var(--mono);
+        color: var(--ink-2);
+        background: var(--sunk);
+        border-radius: 5px;
+        padding: 4px 7px;
+        white-space: nowrap;
+      }
+      .src {
+        font: 600 11px/1 var(--mono);
+        color: var(--accent);
+        background: var(--accent-soft);
+        border-radius: 4px;
+        padding: 3px 5px;
+      }
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--rule);
+        border-radius: 12px;
+      }
+      textarea,
+      input[type='text'],
+      select {
+        width: 100%;
+        font: 15px/1.45 var(--body);
+        color: var(--ink);
+        background: var(--ground);
+        border: 1px solid var(--rule);
+        border-radius: 8px;
+        padding: 8px 10px;
+      }
+      textarea {
+        min-height: 70px;
+        resize: vertical;
+      }
+
+      /* ---- overview ---- */
+      .track {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 4px;
+      }
+      .step {
+        display: grid;
+        gap: 6px;
+      }
+      .step i {
+        height: 5px;
+        border-radius: 3px;
+        background: var(--rule);
+      }
+      .step span {
+        font: 600 13px/1 var(--display);
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+      }
+      .step.done i {
+        background: var(--go);
+      }
+      .step.done span {
+        color: var(--ink-2);
+      }
+      .step.now i {
+        background: var(--wait);
+      }
+      .step.now span {
+        color: var(--ink);
+      }
+      @media (max-width: 560px) {
+        .track {
+          grid-template-columns: repeat(4, 1fr);
+          row-gap: 12px;
+        }
+      }
+
+      .needs {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 10px;
+      }
+      .need {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 2px 12px;
+        align-items: center;
+        padding: 14px;
+        text-decoration: none;
+        color: var(--ink);
+        background: var(--wait-soft);
+        border-radius: 10px;
+        border: 1px solid transparent;
+      }
+      .need:hover {
+        border-color: var(--wait);
+      }
+      .need b {
+        grid-row: span 2;
+        font: 700 34px/1 var(--display);
+        color: var(--wait);
+        font-variant-numeric: tabular-nums;
+      }
+      .need span {
+        font-weight: 700;
+      }
+      .need small {
+        color: var(--ink-2);
+        font-size: 13.5px;
+      }
+      .need.clear {
+        background: var(--sunk);
+      }
+      .need.clear b {
+        color: var(--ink-3);
+      }
+
+      .board {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        align-items: start;
+      }
+      @media (max-width: 900px) {
+        .board {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 520px) {
+        .board {
+          grid-template-columns: 1fr;
+        }
+      }
+      .col {
+        display: grid;
+        gap: 8px;
+        background: var(--sunk);
+        border-radius: 12px;
+        padding: 10px;
+      }
+      .col h3 {
+        display: flex;
+        justify-content: space-between;
+        font: 700 15px/1 var(--display);
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+        padding: 4px 4px 2px;
+      }
+      .col .empty {
+        font-size: 13.5px;
+        color: var(--ink-3);
+        padding: 6px 4px;
+      }
+      .card {
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+        text-decoration: none;
+        color: var(--ink);
+        background: var(--surface);
+        border: 1px solid var(--rule);
+        border-radius: 10px;
+      }
+      .card:hover {
+        border-color: var(--ink-3);
+        box-shadow: var(--lift);
+      }
+      .card .top-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+      .card .id {
+        font: 700 15px/1 var(--display);
+        color: var(--ink-3);
+        font-variant-numeric: tabular-nums;
+      }
+      .card .t {
+        font-weight: 700;
+        line-height: 1.3;
+      }
+      .card .foot {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+        font-size: 13px;
+        color: var(--ink-3);
+      }
+
+      .two {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        gap: 22px;
+        align-items: start;
+      }
+      @media (max-width: 900px) {
+        .two {
+          grid-template-columns: 1fr;
+        }
+      }
+      .feed {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+      }
+      .feed li {
+        display: grid;
+        grid-template-columns: 52px 1fr;
+        gap: 10px;
+        padding: 10px 0;
+        border-top: 1px solid var(--rule);
+        font-size: 14px;
+      }
+      .feed li:first-child {
+        border-top: 0;
+      }
+      .feed time {
+        color: var(--ink-3);
+        font-variant-numeric: tabular-nums;
+        font-size: 13px;
+        padding-top: 1px;
+      }
+      .feed a {
+        font-weight: 700;
+        text-decoration: none;
+      }
+
+      /* ---- task list ---- */
+      .filters {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .rows {
+        display: grid;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 48px minmax(0, 1fr) auto auto;
+        gap: 12px;
+        align-items: center;
+        padding: 12px 14px;
+        text-decoration: none;
+        color: var(--ink);
+        border-top: 1px solid var(--rule);
+      }
+      .row:first-child {
+        border-top: 0;
+      }
+      .row:hover {
+        background: var(--ground);
+      }
+      .row .id {
+        font: 700 16px/1 var(--display);
+        color: var(--ink-3);
+        font-variant-numeric: tabular-nums;
+      }
+      .row .t {
+        font-weight: 700;
+      }
+      .row .f {
+        font-size: 13px;
+        color: var(--ink-3);
+        font-family: var(--mono);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      @media (max-width: 560px) {
+        .row {
+          grid-template-columns: 40px minmax(0, 1fr);
+        }
+        .row > :nth-child(n + 3) {
+          grid-column: 2;
+          justify-self: start;
+        }
+      }
+
+      /* ---- task page ---- */
+      .facts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      .spec {
+        display: grid;
+        gap: 22px;
+        padding: 20px;
+      }
+      .part {
+        display: grid;
+        gap: 7px;
+      }
+      .part > .body {
+        max-width: 68ch;
+      }
+      .part ol,
+      .part ul {
+        margin: 0;
+        padding-left: 1.3em;
+        display: grid;
+        gap: 5px;
+      }
+      .assume {
+        background: var(--wait-soft);
+        border-radius: 10px;
+        padding: 14px 16px;
+      }
+      .assume .label {
+        color: var(--wait);
+      }
+      mark.m {
+        background: var(--mark);
+        color: inherit;
+        border-radius: 2px;
+        padding: 0 1px;
+      }
+      .side {
+        display: grid;
+        gap: 14px;
+      }
+      .side .panel {
+        padding: 14px;
+        display: grid;
+        gap: 10px;
+      }
+      .runbox pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-all;
+        font: 12.5px/1.5 var(--mono);
+        background: var(--sunk);
+        border-radius: 8px;
+        padding: 10px;
+      }
+      .note {
+        font-size: 13.5px;
+        color: var(--ink-2);
+      }
+
+      .file {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 4px 8px;
+        align-items: center;
+      }
+      .file .p {
+        font: 500 13px/1.35 var(--mono);
+        overflow-wrap: anywhere;
+      }
+      .file .open {
+        display: flex;
+        gap: 4px;
+      }
+      .file .tag {
+        grid-column: 1;
+        font-size: 12px;
+        color: var(--ink-3);
+      }
+      .lk {
+        font: 700 12px/1 var(--body);
+        text-decoration: none;
+        border: 1px solid var(--rule);
+        border-radius: 6px;
+        padding: 5px 7px;
+        color: var(--ink);
+        background: var(--surface);
+        white-space: nowrap;
+      }
+      .lk:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .lk.code {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--accent-ink);
+      }
+      .lk.code:hover {
+        color: var(--accent-ink);
+        filter: brightness(1.08);
+      }
+      .ref {
+        font: 500 13px/1.4 var(--mono);
+        text-decoration: none;
+        border-bottom: 1px dotted currentColor;
+      }
+
+      .markrow {
+        display: grid;
+        gap: 4px;
+        font-size: 14px;
+        padding-top: 10px;
+        border-top: 1px solid var(--rule);
+      }
+      .markrow:first-of-type {
+        border-top: 0;
+        padding-top: 0;
+      }
+      .markrow q {
+        color: var(--ink-2);
+        font-style: italic;
+      }
+      .markrow .st {
+        font-size: 12.5px;
+        color: var(--ink-3);
+      }
+
+      /* ---- questions / scout / files ---- */
+      .qlist {
+        display: grid;
+        gap: 12px;
+      }
+      .q {
+        padding: 16px;
+        display: grid;
+        gap: 8px;
+      }
+      .q .qt {
+        font-weight: 700;
+        font-size: 16px;
+      }
+      .q .why {
+        font-size: 14px;
+        color: var(--ink-2);
+        max-width: 70ch;
+      }
+      .q .foot {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .done-note {
+        font-size: 13px;
+        color: var(--go);
+        font-weight: 700;
+      }
+      .finding {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+      }
+      .finding li {
+        display: grid;
+        grid-template-columns: 56px 1fr;
+        gap: 10px;
+        padding: 11px 16px;
+        border-top: 1px solid var(--rule);
+      }
+      .finding li:first-child {
+        border-top: 0;
+      }
+      .finding li > .src {
+        justify-self: start;
+        align-self: start;
+        margin-top: 3px;
+      }
+      .finding .refs {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 4px;
+      }
+      .scoutgrid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+      @media (max-width: 760px) {
+        .scoutgrid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .scoutgrid .panel > h3 {
+        font: 700 16px/1 var(--display);
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+        padding: 14px 16px 4px;
+      }
+      .tablewrap {
+        overflow-x: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      th {
+        text-align: left;
+        font: 600 12.5px/1 var(--display);
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--rule);
+      }
+      td {
+        padding: 10px 14px;
+        border-top: 1px solid var(--rule);
+        vertical-align: middle;
+      }
+      tr:first-child td {
+        border-top: 0;
+      }
+      td.path {
+        font: 500 13px/1.35 var(--mono);
+        overflow-wrap: anywhere;
+        min-width: 220px;
+      }
+      td a.tl {
+        font-weight: 700;
+        text-decoration: none;
+        margin-right: 8px;
+      }
+
+      /* ---- floating ---- */
+      .selbar {
+        position: fixed;
+        z-index: 10;
+        display: flex;
+        gap: 2px;
+        background: var(--ink);
+        border-radius: 10px;
+        padding: 4px;
+        box-shadow: var(--lift);
+      }
+      .selbar button {
+        background: transparent;
+        border: 0;
+        color: var(--ground);
+        font-size: 13.5px;
+        font-weight: 700;
+        padding: 6px 10px;
+        border-radius: 7px;
+      }
+      .selbar button:hover {
+        background: color-mix(in srgb, var(--ground) 18%, transparent);
+      }
+      .sheet {
+        position: fixed;
+        z-index: 11;
+        left: 50%;
+        bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+        transform: translateX(-50%);
+        width: min(560px, calc(100% - 32px));
+        background: var(--surface);
+        border: 1px solid var(--rule);
+        border-radius: 14px;
+        box-shadow: var(--lift);
+        padding: 16px;
+        display: grid;
+        gap: 10px;
+      }
+      .sheet q {
+        font-style: italic;
+        color: var(--ink-2);
+        max-height: 5.5em;
+        overflow: auto;
+        display: block;
+      }
+      .sheet h3 {
+        font: 700 18px/1 var(--display);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .kinds {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .field {
+        display: grid;
+        gap: 5px;
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .field small {
+        font-weight: 400;
+        color: var(--ink-3);
+      }
+      .toast {
+        position: fixed;
+        z-index: 12;
+        left: 50%;
+        bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+        transform: translateX(-50%);
+        background: var(--ink);
+        color: var(--ground);
+        border-radius: 8px;
+        padding: 9px 14px;
+        font-size: 14px;
+        font-weight: 700;
+      }
+      /* ---- code viewer ---- */
+      .codehead {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .pathcrumbs {
+        font: 500 13.5px/1.4 var(--mono);
+        overflow-wrap: anywhere;
+      }
+      .pathcrumbs a {
+        text-decoration: none;
+      }
+      .code {
+        overflow-x: auto;
+        padding-block: 8px;
+      }
+      .code table {
+        font: 13px/1.6 var(--mono);
+        border-collapse: collapse;
+        width: 100%;
+      }
+      .code td {
+        border: 0;
+        padding: 0 12px;
+        vertical-align: top;
+        white-space: pre;
+      }
+      .code td.n {
+        width: 1%;
+        text-align: right;
+        color: var(--ink-3);
+        user-select: none;
+        padding-right: 10px;
+        border-right: 1px solid var(--rule);
+      }
+      .code td.n a {
+        color: inherit;
+        text-decoration: none;
+      }
+      .code tr.hl td {
+        background: var(--mark);
+      }
+      .dirlist {
+        display: grid;
+      }
+      .dirlist a {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding: 8px 14px;
+        border-top: 1px solid var(--rule);
+        text-decoration: none;
+        color: var(--ink);
+        font: 500 13.5px/1.3 var(--mono);
+      }
+      .dirlist a:first-child {
+        border-top: 0;
+      }
+      .dirlist a:hover {
+        background: var(--ground);
+      }
+      .dirlist .kind {
+        width: 34px;
+        font: 600 11px/1 var(--display);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+      }
+
+      /* ---- scout chat ---- */
+      .chat {
+        display: grid;
+        gap: 12px;
+        padding: 16px;
+      }
+      .msgs {
+        display: grid;
+        gap: 10px;
+        max-height: 60vh;
+        overflow-y: auto;
+      }
+      .msg {
+        padding: 10px 12px;
+        border-radius: 10px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font-size: 14.5px;
+      }
+      .msg.you {
+        background: var(--accent-soft);
+        justify-self: end;
+        max-width: 85%;
+      }
+      .msg.scout {
+        background: var(--sunk);
+      }
+      .msg.err {
+        background: var(--stop-soft);
+        color: var(--stop);
+      }
+      .msg .who {
+        display: block;
+        margin-bottom: 4px;
+      }
+      .working {
+        font-size: 14px;
+        color: var(--ink-2);
+      }
+      .empty-state {
+        padding: 18px;
+        display: grid;
+        gap: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <style>
+      body {
+        margin: 0;
+      }
+    </style>
+    <header class="top">
+      <div class="top-in">
+        <div class="brand">
+          <span class="mark" aria-hidden="true"></span>
+          <span class="name">Pit Wall</span>
+          <span class="ctx" id="ctx"></span>
+          <span class="spacer"></span>
+          <button class="iconbtn" type="button" id="refresh" title="Read the task files again">
+            Refresh
+          </button>
+        </div>
+        <nav class="tabs" id="tabs" aria-label="Pages"></nav>
+      </div>
+    </header>
+
+    <main id="view"><p class="note">Loading…</p></main>
+
+    <div class="selbar" id="selbar" hidden role="toolbar" aria-label="Mark the selected text">
+      <button type="button" data-kind="wrong">Wrong</button>
+      <button type="button" data-kind="change">Change</button>
+      <button type="button" data-kind="question">Ask</button>
+    </div>
+
+    <form class="sheet" id="composer" hidden>
+      <div class="label" id="composer-where"></div>
+      <q id="composer-quote"></q>
+      <div class="kinds" id="composer-kinds">
+        <button type="button" class="btn small" data-kind="wrong">Wrong</button>
+        <button type="button" class="btn small" data-kind="change">Change</button>
+        <button type="button" class="btn small" data-kind="question">Ask</button>
+      </div>
+      <textarea id="composer-note" aria-label="Your note"></textarea>
+      <div class="actions">
+        <button type="submit" class="btn primary">Save mark</button>
+        <button type="button" class="btn" id="composer-cancel">Cancel</button>
+      </div>
+    </form>
+
+    <div class="toast" id="toast" hidden role="status"></div>
+
+    <script>
+      const TOKEN = '__CREW_TOKEN__';
+      const STAGES = [
+        ['ask', 'Ask'],
+        ['scout', 'Scout'],
+        ['spec', 'Spec'],
+        ['approve', 'Approve'],
+        ['build', 'Build'],
+        ['review', 'Review'],
+        ['close', 'Close'],
+      ];
+
+      let data = {
+        tasks: [],
+        work: null,
+        state: { answers: {}, gaps: {}, marks: [], requests: {}, scout: [] },
+      };
+      const drafts = {};
+      const commands = {};
+      let filter = 'all';
+      let scoutBusy = false;
+
+      // ---------- plumbing ----------
+      const $ = (s, r = document) => r.querySelector(s);
+      const el = (tag, attrs = {}, ...kids) => {
+        const n = document.createElement(tag);
+        for (const [k, v] of Object.entries(attrs)) {
+          if (v === false || v == null) continue;
+          if (k === 'class') n.className = v;
+          else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+          else n.setAttribute(k, v === true ? '' : v);
+        }
+        for (const kid of kids.flat(Infinity))
+          if (kid != null && kid !== false) n.append(kid.nodeType ? kid : String(kid));
+        return n;
+      };
+      const toast = (t) => {
+        const n = $('#toast');
+        n.textContent = t;
+        n.hidden = false;
+        clearTimeout(toast.h);
+        toast.h = setTimeout(() => {
+          n.hidden = true;
+        }, 2600);
+      };
+      const get = async (path) => (await fetch(path)).json();
+      const post = async (path, body = {}) => {
+        const res = await fetch(path, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-crew-token': TOKEN },
+          body: JSON.stringify(body),
+        });
+        const out = await res.json().catch(() => ({ error: 'no answer from crew serve' }));
+        if (out.error) toast(out.error);
+        return out;
+      };
+      async function load() {
+        try {
+          data = await get('/api/state');
+        } catch {
+          toast('crew serve is not answering');
+        }
+        if (!typing()) render();
+        else renderTabs();
+      }
+      const typing = () =>
+        ['TEXTAREA', 'INPUT', 'SELECT'].includes(document.activeElement?.tagName);
+
+      // ---------- derived ----------
+      const W = () => data.work ?? {};
+      const questions = () => W().questions ?? [];
+      const gaps = () => W().gaps ?? [];
+      const statusOf = (t) =>
+        t.status === 'approved' && data.state.requests?.[t.id] ? 'queued' : t.status;
+      const PILL = {
+        draft: ['wait', 'Needs approval'],
+        approved: ['go-t', 'Ready to run'],
+        queued: ['run', 'Queued'],
+        building: ['run', 'Building'],
+        review: ['run', 'In review'],
+        done: ['go-t', 'Done'],
+        blocked: ['stop', 'Blocked'],
+      };
+      const COLUMN = {
+        draft: 'needs',
+        blocked: 'needs',
+        approved: 'ready',
+        queued: 'ready',
+        building: 'running',
+        review: 'running',
+        done: 'done',
+      };
+      const columnOf = (t) =>
+        COLUMN[statusOf(t)] ?? (String(t.status).startsWith('pending-') ? 'needs' : 'running');
+      const pill = (t) => {
+        const s = statusOf(t);
+        const [tone, label] =
+          PILL[s] ?? (s.startsWith('pending-') ? ['wait', `Check on ${s.slice(8)}`] : ['idle', s]);
+        return el('span', { class: `pill ${tone}` }, label);
+      };
+      const openMarks = (id) =>
+        data.state.marks.filter((m) => m.task === id && m.status !== 'resolved').length;
+      const unanswered = () =>
+        questions().filter((q) => !data.state.answers[q.id]).length +
+        gaps().filter((g) => !data.state.gaps[g.id]).length;
+
+      // ---------- code links ----------
+      const codeHref = (path, line) => `#code/${path}${line ? `:${line}` : ''}`;
+      const openInEditor = async (path, line) => {
+        const out = await post('/api/open', { path, line });
+        if (out.ok) toast('Opened in your editor');
+      };
+      function fileLinks(path, line, exists = true) {
+        const box = el('span', { class: 'open' });
+        if (exists) {
+          box.append(el('a', { class: 'lk', href: codeHref(path, line) }, 'View'));
+          box.append(
+            el(
+              'button',
+              { class: 'lk code', type: 'button', onclick: () => openInEditor(path, line) },
+              'Editor',
+            ),
+          );
+        }
+        return box;
+      }
+      const fileRow = (path, line, tag, exists = true) =>
+        el(
+          'div',
+          { class: 'file' },
+          el(
+            'a',
+            {
+              class: 'p',
+              href: exists ? codeHref(path, line) : null,
+              style: exists ? 'text-decoration:none' : null,
+            },
+            path + (line ? `:${line}` : ''),
+          ),
+          fileLinks(path, line, exists),
+          tag ? el('span', { class: 'tag' }, tag) : null,
+        );
+
+      // Turn `path/file.ext:12` in free text into links to the viewer.
+      const PATHISH = /((?:[\w.-]+\/)+[\w.-]+\.[A-Za-z0-9]+)(?::(\d+))?/g;
+      function linkify(text) {
+        const out = [];
+        let last = 0;
+        for (const m of text.matchAll(PATHISH)) {
+          out.push(text.slice(last, m.index));
+          out.push(el('a', { class: 'ref', href: codeHref(m[1], m[2]) }, m[0]));
+          last = m.index + m[0].length;
+        }
+        out.push(text.slice(last));
+        return out;
+      }
+
+      // ---------- markable text ----------
+      function markable(task, section, text) {
+        const n = el('span', { 'data-task': task, 'data-section': section }, text);
+        for (const m of data.state.marks)
+          if (m.task === task && m.section === section && m.status !== 'resolved')
+            highlight(n, m.quote);
+        return n;
+      }
+      function highlight(n, quote) {
+        const t = n.firstChild;
+        if (!quote || !t || t.nodeType !== 3) return;
+        const at = t.data.indexOf(quote);
+        if (at < 0) return;
+        const hit = t.splitText(at);
+        hit.splitText(quote.length);
+        hit.replaceWith(el('mark', { class: 'm' }, hit.data));
+      }
+
+      // ---------- pages ----------
+      const PAGES = [
+        ['overview', 'Overview'],
+        ['tasks', 'Tasks'],
+        ['questions', 'Questions'],
+        ['scout', 'Scout'],
+        ['files', 'Files'],
+      ];
+      const route = () => decodeURIComponent(location.hash.slice(1)) || 'overview';
+      const pageOf = (r) =>
+        /^t\d+$/.test(r) ? 'tasks' : r.startsWith('code/') || r.startsWith('dir/') ? 'files' : r;
+
+      function renderTabs() {
+        const current = pageOf(route());
+        $('#ctx').textContent = [data.project, W().title].filter(Boolean).join(' · ');
+        $('#tabs').replaceChildren(
+          ...PAGES.map(([id, name]) => {
+            const n =
+              id === 'questions'
+                ? unanswered()
+                : id === 'tasks'
+                  ? data.tasks.filter((t) => t.status === 'draft').length
+                  : 0;
+            return el(
+              'a',
+              { href: `#${id}`, 'aria-current': current === id ? 'page' : false },
+              name,
+              n ? el('span', { class: 'count' }, n) : null,
+            );
+          }),
+        );
+      }
+      const pagehead = (title, sub, crumb) =>
+        el(
+          'div',
+          { class: 'pagehead' },
+          crumb ?? null,
+          el('h1', {}, title),
+          sub ? el('p', { class: 'sub' }, sub) : null,
+        );
+      const back = (href, text) => el('div', { class: 'crumb' }, el('a', { href }, `← ${text}`));
+
+      function viewOverview() {
+        const w = W();
+        const at = STAGES.findIndex(([k]) => k === w.stage);
+        const toApprove = data.tasks.filter((t) => t.status === 'draft');
+        const marks = data.state.marks.filter((m) => m.status !== 'resolved').length;
+        const need = (n, text, sub, href) =>
+          el(
+            'a',
+            { class: `need ${n ? '' : 'clear'}`, href },
+            el('b', {}, n),
+            el('span', {}, text),
+            el('small', {}, sub),
+          );
+        const cols = { needs: [], ready: [], running: [], done: [] };
+        for (const t of data.tasks) cols[columnOf(t)].push(t);
+        const col = (key, name) =>
+          el(
+            'div',
+            { class: 'col' },
+            el('h3', {}, name, el('span', {}, cols[key].length)),
+            cols[key].length ? cols[key].map(card) : el('div', { class: 'empty' }, 'Nothing here'),
+          );
+        const cause = (w.findings ?? []).find((f) => /cause/i.test(f.title));
+        const reuse = (w.findings ?? []).find((f) => /reuse/i.test(f.title));
+
+        return [
+          pagehead(
+            w.title ?? 'Tasks',
+            w.summary ??
+              (data.work
+                ? null
+                : 'No piece of work recorded yet. /crew:crew-spec writes .claude/crew/work.json after the scout runs; until then this shows the task files alone.'),
+          ),
+          at >= 0
+            ? el(
+                'div',
+                { class: 'track', 'aria-label': 'Stage' },
+                STAGES.map(([, n], i) =>
+                  el(
+                    'div',
+                    {
+                      class: `step ${i < at ? 'done' : i === at ? 'now' : ''}`,
+                      'aria-current': i === at ? 'step' : false,
+                    },
+                    el('i'),
+                    el('span', {}, n),
+                  ),
+                ),
+              )
+            : null,
+          el(
+            'section',
+            { class: 'needs', 'aria-label': 'Waiting on you' },
+            need(
+              toApprove.length,
+              toApprove.length === 1 ? 'spec to approve' : 'specs to approve',
+              toApprove.length ? toApprove.map((t) => t.id).join(', ') : 'Nothing waiting',
+              toApprove[0] ? `#t${toApprove[0].id}` : '#tasks',
+            ),
+            need(unanswered(), 'questions for you', 'From the scout', '#questions'),
+            need(
+              marks,
+              marks === 1 ? 'open mark' : 'open marks',
+              'Not read by Claude yet',
+              '#tasks',
+            ),
+          ),
+          el(
+            'section',
+            { class: 'board', 'aria-label': 'Tasks by state' },
+            col('needs', 'Needs you'),
+            col('ready', 'Ready'),
+            col('running', 'Running'),
+            col('done', 'Done'),
+          ),
+          cause || reuse
+            ? el(
+                'section',
+                { class: 'panel', style: 'padding:16px;display:grid;gap:10px' },
+                el(
+                  'div',
+                  { class: 'sechead' },
+                  el('h2', { class: 'sec' }, 'What the scout found'),
+                  el('a', { href: '#scout', class: 'hint' }, 'All findings and chat'),
+                ),
+                cause
+                  ? cause.rows.map((r) =>
+                      el('p', {}, el('span', { class: 'src' }, r.src), ' ', linkify(r.text)),
+                    )
+                  : null,
+                reuse
+                  ? [
+                      el('div', { class: 'label' }, 'Reuse'),
+                      reuse.rows.flatMap((r) =>
+                        (r.refs ?? []).map((x) => fileRow(x.path, x.line, x.name ?? null)),
+                      ),
+                    ]
+                  : null,
+              )
+            : null,
+        ];
+      }
+
+      function card(t) {
+        const m = openMarks(t.id);
+        return el(
+          'a',
+          { class: 'card', href: `#t${t.id}` },
+          el(
+            'div',
+            { class: 'top-row' },
+            el('span', { class: 'id' }, t.id),
+            t.model ? el('span', { class: 'chip' }, t.model) : null,
+          ),
+          el('div', { class: 't' }, t.title),
+          el(
+            'div',
+            { class: 'foot' },
+            pill(t),
+            el('span', {}, `${t.files.length} ${t.files.length === 1 ? 'file' : 'files'}`),
+            m ? el('span', {}, `· ${m} ${m === 1 ? 'mark' : 'marks'}`) : null,
+          ),
+        );
+      }
+
+      function viewTasks() {
+        const pick = (id, name) =>
+          el(
+            'button',
+            {
+              type: 'button',
+              class: 'btn small',
+              'aria-pressed': filter === id ? 'true' : 'false',
+              onclick: () => {
+                filter = id;
+                render();
+              },
+            },
+            name,
+          );
+        const shown = data.tasks.filter((t) => filter === 'all' || columnOf(t) === filter);
+        return [
+          pagehead(
+            'Tasks',
+            'Read from .claude/tasks. Open one to read its spec, mark it, approve it or run it.',
+          ),
+          el(
+            'div',
+            { class: 'filters' },
+            pick('all', 'All'),
+            pick('needs', 'Needs you'),
+            pick('ready', 'Ready'),
+            pick('running', 'Running'),
+            pick('done', 'Done'),
+          ),
+          el(
+            'div',
+            { class: 'panel rows' },
+            shown.length
+              ? shown.map((t) =>
+                  el(
+                    'a',
+                    { class: 'row', href: `#t${t.id}` },
+                    el('span', { class: 'id' }, t.id),
+                    el(
+                      'span',
+                      {},
+                      el('div', { class: 't' }, t.title),
+                      el('div', { class: 'f' }, t.files.map((f) => f.path).join('  ·  ')),
+                    ),
+                    t.model ? el('span', { class: 'chip' }, t.model) : el('span'),
+                    pill(t),
+                  ),
+                )
+              : el('p', { class: 'note', style: 'padding:14px' }, 'No tasks here.'),
+          ),
+        ];
+      }
+
+      const part = (label, body, cls = '') =>
+        el(
+          'div',
+          { class: `part ${cls}` },
+          el('div', { class: 'label' }, label),
+          el('div', { class: 'body' }, body),
+        );
+
+      function viewTask(id) {
+        const t = data.tasks.find((x) => x.id === id);
+        if (!t) return [pagehead('No such task', null, back('#tasks', 'Tasks'))];
+        const status = statusOf(t);
+        const list = (xs, key, tag = 'ul') =>
+          el(
+            tag,
+            {},
+            xs.map((x, i) => el('li', {}, markable(t.id, `${key}.${i}`, x))),
+          );
+
+        const spec = el('div', { class: 'panel spec' });
+        if (t.goal) spec.append(part('Goal', el('p', {}, markable(t.id, 'goal', t.goal))));
+        if (t.assumed.length)
+          spec.append(
+            part(
+              'Assumed, not confirmed. Check these first.',
+              list(t.assumed, 'assumed'),
+              'assume',
+            ),
+          );
+        if (t.background)
+          spec.append(part('Background', el('p', {}, markable(t.id, 'background', t.background))));
+        if (t.approach.length) spec.append(part('Approach', list(t.approach, 'approach', 'ol')));
+        if (t.outOfScope.length) spec.append(part('Out of scope', list(t.outOfScope, 'out')));
+        if (t.done.length) spec.append(part('Definition of done', list(t.done, 'done')));
+        if (t.reviewRounds)
+          spec.append(
+            part('Review rounds', el('p', { style: 'white-space:pre-wrap' }, t.reviewRounds)),
+          );
+
+        const actions = el('div', { class: 'actions' });
+        if (status === 'draft')
+          actions.append(
+            el(
+              'button',
+              {
+                type: 'button',
+                class: 'btn primary',
+                onclick: async () => {
+                  if ((await post('/api/approve', { id: t.id })).ok) {
+                    toast(`${t.id} approved`);
+                    load();
+                  }
+                },
+              },
+              'Approve spec',
+            ),
+          );
+        if (status === 'approved')
+          actions.append(
+            el(
+              'button',
+              {
+                type: 'button',
+                class: 'btn go',
+                onclick: async () => {
+                  const out = await post('/api/run', { id: t.id });
+                  if (out.ok) {
+                    commands[t.id] = out.command;
+                    toast(`${t.id} queued`);
+                    load();
+                  }
+                },
+              },
+              `Run on ${t.model ?? 'the default model'}`,
+            ),
+          );
+        const om = openMarks(t.id);
+        if (status === 'draft' && om)
+          actions.append(
+            el(
+              'span',
+              { class: 'note' },
+              `${om} open ${om === 1 ? 'mark' : 'marks'}. Approving sends the spec as it stands.`,
+            ),
+          );
+        if (status === 'draft')
+          actions.append(el('span', { class: 'hint' }, 'Select text in the spec to mark it.'));
+        actions.append(
+          el(
+            'button',
+            { type: 'button', class: 'btn', onclick: () => openInEditor(t.file) },
+            'Open the task file',
+          ),
+        );
+
+        const side = el('div', { class: 'side' });
+        side.append(
+          el(
+            'div',
+            { class: 'panel' },
+            el('div', { class: 'label' }, 'Files this task changes'),
+            t.files.map((f) => fileRow(f.path, null, f.exists ? null : 'New file', f.exists)),
+          ),
+        );
+        if (t.mentions.length)
+          side.append(
+            el(
+              'div',
+              { class: 'panel' },
+              el('div', { class: 'label' }, 'Code the spec mentions'),
+              t.mentions.map((m) => fileRow(m.path, m.line)),
+            ),
+          );
+        if (status === 'queued' || commands[t.id]) {
+          const cmd = commands[t.id];
+          side.append(
+            el(
+              'div',
+              { class: 'panel runbox' },
+              el('div', { class: 'label' }, 'Queued for the orchestrator'),
+              el(
+                'p',
+                { class: 'note' },
+                'It cuts the worktree and starts the worker the next time it reads the board. To start it yourself:',
+              ),
+              cmd
+                ? [
+                    el('pre', {}, cmd),
+                    el(
+                      'div',
+                      {},
+                      el(
+                        'button',
+                        { type: 'button', class: 'btn small', onclick: () => copyText(cmd) },
+                        'Copy command',
+                      ),
+                    ),
+                  ]
+                : el('p', { class: 'note' }, 'Press Run again to see the command.'),
+            ),
+          );
+        }
+        if (t.scoutRequests.length)
+          side.append(
+            el(
+              'div',
+              { class: 'panel' },
+              el('div', { class: 'label' }, 'The worker asked the scout'),
+              t.scoutRequests.map((s) => el('p', { class: 'note' }, linkify(s))),
+            ),
+          );
+        const marks = data.state.marks.filter((m) => m.task === t.id);
+        if (marks.length)
+          side.append(
+            el(
+              'div',
+              { class: 'panel' },
+              el('div', { class: 'label' }, `Your marks (${marks.length})`),
+              marks.map((m) =>
+                el(
+                  'div',
+                  { class: 'markrow' },
+                  el(
+                    'div',
+                    {},
+                    el(
+                      'span',
+                      {
+                        class: `pill ${m.kind === 'wrong' ? 'stop' : m.kind === 'change' ? 'wait' : 'run'}`,
+                      },
+                      m.kind === 'question' ? 'Ask' : m.kind,
+                    ),
+                  ),
+                  el('q', {}, m.quote),
+                  m.note ? el('div', {}, m.note) : null,
+                  el(
+                    'div',
+                    { class: 'st' },
+                    m.reply
+                      ? `Claude: ${m.reply}`
+                      : m.status === 'resolved'
+                        ? 'Resolved'
+                        : 'Not read yet',
+                  ),
+                ),
+              ),
+            ),
+          );
+
+        return [
+          pagehead(t.title, null, back('#tasks', 'Tasks')),
+          el(
+            'div',
+            { class: 'facts' },
+            el('span', { class: 'chip' }, `task ${t.id}`),
+            pill(t),
+            t.model ? el('span', { class: 'chip' }, t.model) : null,
+            t.env ? el('span', { class: 'chip' }, t.env) : null,
+            t.branch ? el('span', { class: 'chip' }, t.branch) : null,
+          ),
+          actions,
+          el('div', { class: 'two' }, spec, side),
+        ];
+      }
+
+      function viewQuestions() {
+        if (!questions().length && !gaps().length)
+          return [
+            pagehead(
+              'Questions',
+              'Nothing to answer. The scout writes its questions into .claude/crew/work.json.',
+            ),
+          ];
+        const qs = questions().map((q) => {
+          const saved = data.state.answers[q.id];
+          const box = el('textarea', {
+            id: `a-${q.id}`,
+            'aria-label': q.q,
+            placeholder: 'Your answer. "Don\'t know" is a fine answer.',
+          });
+          box.value = drafts[q.id] ?? saved?.text ?? '';
+          box.addEventListener('input', () => {
+            drafts[q.id] = box.value;
+          });
+          return el(
+            'div',
+            { class: 'panel q' },
+            el('div', { class: 'qt' }, q.q),
+            q.why ? el('p', { class: 'why' }, linkify(q.why)) : null,
+            q.refs?.length
+              ? el(
+                  'div',
+                  { class: 'side', style: 'gap:8px' },
+                  el('div', { class: 'label' }, `What it is asking about (${q.refs.length})`),
+                  q.refs.map((r) => fileRow(r.path, r.line, r.name ?? null)),
+                )
+              : null,
+            box,
+            el(
+              'div',
+              { class: 'foot' },
+              el(
+                'button',
+                {
+                  type: 'button',
+                  class: 'btn small primary',
+                  onclick: async () => {
+                    if (
+                      box.value.trim() &&
+                      (await post('/api/answer', { id: q.id, text: box.value })).answers
+                    ) {
+                      delete drafts[q.id];
+                      toast('Answer saved');
+                      load();
+                    }
+                  },
+                },
+                saved ? 'Update answer' : 'Save answer',
+              ),
+              el(
+                'button',
+                {
+                  type: 'button',
+                  class: 'btn small',
+                  onclick: () => askAbout(`About your question "${q.q}": `),
+                },
+                'Ask the scout',
+              ),
+              saved ? el('span', { class: 'done-note' }, 'Answered') : null,
+            ),
+          );
+        });
+        const gs = gaps().map((g) => {
+          const pick = data.state.gaps[g.id]?.choice;
+          const opt = (c, name) =>
+            el(
+              'button',
+              {
+                type: 'button',
+                class: 'btn small',
+                'aria-pressed': pick === c ? 'true' : 'false',
+                onclick: async () => {
+                  if ((await post('/api/gap', { id: g.id, choice: c })).gaps) load();
+                },
+              },
+              name,
+            );
+          return el(
+            'div',
+            { class: 'panel q' },
+            el('div', { class: 'qt' }, g.text),
+            g.next ? el('p', { class: 'why' }, `If followed up: ${g.next}`) : null,
+            el(
+              'div',
+              { class: 'foot' },
+              opt('follow', 'Follow it up'),
+              opt('accept', 'Fine without it'),
+            ),
+          );
+        });
+        return [
+          pagehead(
+            'Questions',
+            'What the scout could not settle from the code, the history or the graph. Your answers go into the specs as Background.',
+          ),
+          qs.length
+            ? el('section', { class: 'qlist' }, el('h2', { class: 'sec' }, 'For you'), qs)
+            : null,
+          gs.length
+            ? el(
+                'section',
+                { class: 'qlist' },
+                el(
+                  'div',
+                  { class: 'sechead' },
+                  el('h2', { class: 'sec' }, 'Where the scout stopped short'),
+                  el('span', { class: 'hint' }, 'Should it keep going?'),
+                ),
+                gs,
+              )
+            : null,
+        ];
+      }
+
+      function askAbout(prefix) {
+        drafts.scout = prefix;
+        location.hash = '#scout';
+      }
+
+      function viewScout() {
+        const findings = W().findings ?? [];
+        const msgs = el(
+          'div',
+          { class: 'msgs', id: 'msgs' },
+          (data.state.scout ?? []).map((m) =>
+            el(
+              'div',
+              { class: `msg ${m.role === 'you' ? 'you' : m.error ? 'scout err' : 'scout'}` },
+              el('span', { class: 'label who' }, m.role === 'you' ? 'You' : 'Scout'),
+              linkify(m.text ?? ''),
+            ),
+          ),
+        );
+        if (!data.state.scout?.length)
+          msgs.append(
+            el(
+              'p',
+              { class: 'note' },
+              'Ask it to find something: where else a function is called, whether a fix was done before, what the graph knows about a file. It can read the code, git history and the memory graph, and cannot change anything.',
+            ),
+          );
+        const box = el('textarea', {
+          id: 'scout-box',
+          placeholder:
+            'e.g. Which other functions still compare a tile value against an option id?',
+        });
+        box.value = drafts.scout ?? '';
+        box.addEventListener('input', () => {
+          drafts.scout = box.value;
+        });
+        box.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send();
+        });
+        const send = async () => {
+          const message = box.value.trim();
+          if (!message || scoutBusy) return;
+          scoutBusy = true;
+          render();
+          await post('/api/scout', { message, session: data.state.scoutSession });
+          scoutBusy = false;
+          drafts.scout = '';
+          await load();
+        };
+        const chat = el(
+          'section',
+          { class: 'panel chat', 'aria-label': 'Talk to the scout' },
+          el(
+            'div',
+            { class: 'sechead' },
+            el('h2', { class: 'sec' }, 'Talk to the scout'),
+            data.state.scout?.length
+              ? el(
+                  'button',
+                  {
+                    type: 'button',
+                    class: 'btn small',
+                    onclick: async () => {
+                      await post('/api/scout/new');
+                      load();
+                    },
+                  },
+                  'New conversation',
+                )
+              : null,
+          ),
+          msgs,
+          scoutBusy
+            ? el(
+                'p',
+                { class: 'working' },
+                'The scout is searching. This can take a minute or two.',
+              )
+            : null,
+          box,
+          el(
+            'div',
+            { class: 'actions' },
+            el(
+              'button',
+              { type: 'button', class: 'btn primary', disabled: scoutBusy, onclick: send },
+              'Ask',
+            ),
+            el(
+              'span',
+              { class: 'hint' },
+              'Ctrl+Enter to send. It remembers the conversation until you start a new one.',
+            ),
+          ),
+        );
+
+        return [
+          pagehead(
+            'Scout',
+            'What it found before the specs were written, and a line to ask it more. Every finding says where it came from: the code, git history, the memory graph, or you.',
+          ),
+          chat,
+          findings.length
+            ? el(
+                'div',
+                { class: 'scoutgrid' },
+                findings.map((sec, si) =>
+                  el(
+                    'section',
+                    { class: 'panel' },
+                    el('h3', {}, sec.title),
+                    el(
+                      'ul',
+                      { class: 'finding' },
+                      sec.rows.map((r, i) =>
+                        el(
+                          'li',
+                          {},
+                          el('span', { class: 'src' }, r.src),
+                          el(
+                            'div',
+                            {},
+                            markable('brief', `${si}.${i}`, r.text),
+                            r.refs?.length
+                              ? el(
+                                  'div',
+                                  { class: 'refs' },
+                                  r.refs.map((x) =>
+                                    el(
+                                      'a',
+                                      { class: 'ref', href: codeHref(x.path, x.line) },
+                                      `${x.path.split('/').pop()}${x.line ? `:${x.line}` : ''}`,
+                                    ),
+                                  ),
+                                )
+                              : null,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            : null,
+        ];
+      }
+
+      function viewFiles() {
+        const byPath = new Map();
+        const add = (path, line, role, id, exists = true) => {
+          const row = byPath.get(path) ?? {
+            path,
+            line,
+            roles: new Set(),
+            tasks: new Set(),
+            exists,
+          };
+          row.roles.add(role);
+          if (id) row.tasks.add(id);
+          byPath.set(path, row);
+        };
+        for (const t of data.tasks) {
+          for (const f of t.files) add(f.path, null, f.exists ? 'Changed' : 'New', t.id, f.exists);
+          for (const m of t.mentions) add(m.path, m.line, 'Mentioned', t.id);
+        }
+        for (const q of questions())
+          for (const r of q.refs ?? []) add(r.path, r.line, 'Asked about');
+        for (const f of W().findings ?? [])
+          for (const r of f.rows) for (const x of r.refs ?? []) add(x.path, x.line, 'Evidence');
+        const rows = [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path));
+        return [
+          pagehead(
+            'Files',
+            'Everything this work changes, mentions or cites. A file under two tasks can collide when they merge.',
+          ),
+          el(
+            'div',
+            { class: 'actions' },
+            el('a', { class: 'btn', href: '#dir/' }, 'Browse the repository'),
+          ),
+          rows.length
+            ? el(
+                'div',
+                { class: 'panel tablewrap' },
+                el(
+                  'table',
+                  {},
+                  el(
+                    'thead',
+                    {},
+                    el(
+                      'tr',
+                      {},
+                      el('th', {}, 'File'),
+                      el('th', {}, 'Role'),
+                      el('th', {}, 'Tasks'),
+                      el('th', {}, 'Open'),
+                    ),
+                  ),
+                  el(
+                    'tbody',
+                    {},
+                    rows.map((r) =>
+                      el(
+                        'tr',
+                        {},
+                        el(
+                          'td',
+                          { class: 'path' },
+                          r.exists
+                            ? el(
+                                'a',
+                                { href: codeHref(r.path, r.line), style: 'text-decoration:none' },
+                                r.path,
+                              )
+                            : r.path,
+                        ),
+                        el('td', {}, [...r.roles].join(', ')),
+                        el(
+                          'td',
+                          {},
+                          [...r.tasks].map((id) => el('a', { class: 'tl', href: `#t${id}` }, id)),
+                        ),
+                        el('td', {}, fileLinks(r.path, r.line, r.exists)),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            : null,
+        ];
+      }
+
+      function crumbs(path, file) {
+        const parts = path ? path.split('/') : [];
+        const out = [el('a', { href: '#dir/' }, data.project ?? 'repo')];
+        parts.forEach((p, i) => {
+          out.push(' / ');
+          const sub = parts.slice(0, i + 1).join('/');
+          out.push(
+            i === parts.length - 1 && file ? el('b', {}, p) : el('a', { href: `#dir/${sub}` }, p),
+          );
+        });
+        return el('div', { class: 'pathcrumbs' }, out);
+      }
+
+      async function viewCode(spec) {
+        const m = /^(.*?)(?::(\d+))?$/.exec(spec);
+        const [path, line] = [m[1], m[2] ? Number(m[2]) : null];
+        const src = await get(`/api/file?path=${encodeURIComponent(path)}`);
+        if (src.error)
+          return [pagehead(path, `Cannot show this: ${src.error}.`, back('#files', 'Files'))];
+        const table = el(
+          'table',
+          {},
+          src.lines.map((text, i) =>
+            el(
+              'tr',
+              { id: `L${i + 1}`, class: i + 1 === line ? 'hl' : null },
+              el('td', { class: 'n' }, el('a', { href: codeHref(path, i + 1) }, i + 1)),
+              el('td', {}, text),
+            ),
+          ),
+        );
+        return [
+          back('#files', 'Files'),
+          el(
+            'div',
+            { class: 'codehead' },
+            crumbs(src.path, true),
+            el(
+              'span',
+              { class: 'actions' },
+              el(
+                'button',
+                {
+                  type: 'button',
+                  class: 'btn small primary',
+                  onclick: () => openInEditor(src.path, line),
+                },
+                line ? `Open at line ${line}` : 'Open in editor',
+              ),
+              el(
+                'button',
+                {
+                  type: 'button',
+                  class: 'btn small',
+                  onclick: () => askAbout(`About ${src.path}${line ? `:${line}` : ''}: `),
+                },
+                'Ask the scout',
+              ),
+              el(
+                'button',
+                {
+                  type: 'button',
+                  class: 'btn small',
+                  onclick: () => copyText(`${src.path}${line ? `:${line}` : ''}`),
+                },
+                'Copy path',
+              ),
+            ),
+          ),
+          src.truncated ? el('p', { class: 'note' }, 'Only the first 512KB is shown.') : null,
+          el('div', { class: 'panel code' }, table),
+        ];
+      }
+
+      async function viewDir(path) {
+        const dir = await get(`/api/dir?path=${encodeURIComponent(path)}`);
+        if (dir.error)
+          return [pagehead(path || 'Repository', 'Not found.', back('#files', 'Files'))];
+        return [
+          back('#files', 'Files'),
+          crumbs(dir.path, false),
+          el(
+            'div',
+            { class: 'panel dirlist' },
+            dir.entries.map((e) =>
+              el(
+                'a',
+                { href: e.dir ? `#dir/${e.path}` : codeHref(e.path) },
+                el('span', { class: 'kind' }, e.dir ? 'dir' : 'file'),
+                e.name + (e.dir ? '/' : ''),
+              ),
+            ),
+          ),
+        ];
+      }
+
+      let renderSeq = 0;
+      async function render() {
+        renderTabs();
+        const r = route();
+        const seq = ++renderSeq;
+        let view;
+        if (/^t\d+$/.test(r)) view = viewTask(r.slice(1));
+        else if (r.startsWith('code/')) view = await viewCode(r.slice(5));
+        else if (r.startsWith('dir/')) view = await viewDir(r.slice(4));
+        else
+          view = (
+            { tasks: viewTasks, questions: viewQuestions, scout: viewScout, files: viewFiles }[r] ??
+            viewOverview
+          )();
+        if (seq !== renderSeq) return;
+        $('#view').replaceChildren(...view.flat().filter(Boolean));
+        // Scrolling has to wait until the page is drawn, not merely built.
+        const line = /^code\/.*:(\d+)$/.exec(r)?.[1];
+        if (line) document.getElementById(`L${line}`)?.scrollIntoView({ block: 'center' });
+        const msgs = $('#msgs');
+        if (msgs) msgs.scrollTop = msgs.scrollHeight;
+      }
+      addEventListener('hashchange', () => {
+        render();
+        if (!route().startsWith('code/')) scrollTo(0, 0);
+      });
+      $('#refresh').addEventListener('click', load);
+
+      async function copyText(text) {
+        try {
+          await navigator.clipboard.writeText(text);
+          toast('Copied');
+        } catch {
+          toast(text);
+        }
+      }
+
+      // ---------- marking selected text ----------
+      let pending = null;
+      let kind = 'wrong';
+      const selbar = $('#selbar');
+      const sectionOf = (n) => (n?.nodeType === 3 ? n.parentElement : n)?.closest('[data-section]');
+      function checkSelection() {
+        const s = getSelection();
+        if (!s || s.isCollapsed || !s.rangeCount) {
+          selbar.hidden = true;
+          return;
+        }
+        const range = s.getRangeAt(0);
+        const a = sectionOf(range.startContainer);
+        const quote = s.toString().trim();
+        if (!a || a !== sectionOf(range.endContainer) || !quote || quote.length > 400) {
+          selbar.hidden = true;
+          return;
+        }
+        pending = { task: a.dataset.task, section: a.dataset.section, quote };
+        const r = range.getBoundingClientRect();
+        selbar.hidden = false;
+        const w = selbar.offsetWidth;
+        selbar.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2))}px`;
+        selbar.style.top = `${r.top > 120 ? r.top - 48 : r.bottom + 8}px`;
+      }
+      let selTimer;
+      document.addEventListener('selectionchange', () => {
+        clearTimeout(selTimer);
+        selTimer = setTimeout(checkSelection, 120);
+      });
+      addEventListener(
+        'scroll',
+        () => {
+          if (!selbar.hidden) checkSelection();
+        },
+        { passive: true },
+      );
+      function setKind(k) {
+        kind = k;
+        for (const b of $('#composer-kinds').children)
+          b.setAttribute('aria-pressed', b.dataset.kind === k ? 'true' : 'false');
+        $('#composer-note').placeholder =
+          k === 'wrong'
+            ? 'What is wrong about it?'
+            : k === 'change'
+              ? 'What should it say instead?'
+              : 'What do you want to know?';
+      }
+      selbar.addEventListener('mousedown', (e) => e.preventDefault());
+      selbar.addEventListener('click', (e) => {
+        const k = e.target.closest('button')?.dataset.kind;
+        if (!k || !pending) return;
+        $('#composer-where').textContent =
+          pending.task === 'brief'
+            ? 'Scout findings'
+            : `Task ${pending.task} · ${pending.section.replace(/\.\d+$/, '')}`;
+        $('#composer-quote').textContent = pending.quote;
+        $('#composer-note').value = '';
+        setKind(k);
+        selbar.hidden = true;
+        $('#composer').hidden = false;
+        $('#composer-note').focus();
+      });
+      $('#composer-kinds').addEventListener('click', (e) => {
+        const k = e.target.closest('button')?.dataset.kind;
+        if (k) setKind(k);
+      });
+      $('#composer-cancel').addEventListener('click', () => {
+        $('#composer').hidden = true;
+        pending = null;
+      });
+      $('#composer').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!pending) return;
+        if (
+          (await post('/api/mark', { ...pending, kind, note: $('#composer-note').value })).marks
+        ) {
+          $('#composer').hidden = true;
+          pending = null;
+          getSelection()?.removeAllRanges();
+          toast('Mark saved');
+          load();
+        }
+      });
+      addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          $('#composer').hidden = true;
+          selbar.hidden = true;
+        }
+      });
+
+      // Task files change under us as workers report, so read them again every
+      // few seconds while the page is in front of someone.
+      load();
+      setInterval(() => {
+        if (document.visibilityState === 'visible' && !scoutBusy && pageOf(route()) !== 'files')
+          load();
+      }, 5000);
+    </script>
+  </body>
+</html>

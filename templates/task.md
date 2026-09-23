@@ -25,6 +25,10 @@ Which backlog item or decision this serves. One line.
      changed recently, a fix like this done before, the cause they suspect.
      Their words where they were precise. `None given.` if they had nothing. -->
 
+## Assumed
+<!-- Every decision in the Approach that neither the person nor the scout's
+     [code] or [git] evidence settled, one line each. Approval starts here. -->
+
 ## Existing work
 <!-- `npx crew collisions <this file>`, verbatim, plus one line on what you make
      of each hit after reading it. `None.` if it printed nothing, so the reader
