@@ -496,7 +496,7 @@ shape that works.
 ## The pit wall
 
 ```bash
-crew serve            # http://localhost:4747
+crew serve            # http://localhost:9171
 ```
 
 One local page for everything in flight on this machine, meant to sit open
@@ -507,7 +507,9 @@ front of you.
 
 **One server, every project.** Run `crew serve` in a second repository and it
 joins the server already running instead of starting another: it prints the
-address and exits. The header gets a project picker, with how many tasks are
+address and exits. It listens on 9171, pit 1. If something that is not crew
+already holds that port, it moves along to 9172, pit 2, and so on up to 9179,
+joining a crew server on any of them. `--port=N` pins one. The header gets a project picker, with how many tasks are
 waiting on you in each. Within a project, each piece of work has its own
 file and the tasks say which one they belong to with `work:`, so two things
 in flight in one repository do not overwrite each other. Switching is part of

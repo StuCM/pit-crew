@@ -475,34 +475,61 @@ const already = async (port) => {
   }
 };
 
-export const run = async (cfg, args) => {
-  const given = args.find((arg) => arg.startsWith('--port='));
-  const port = Number(given?.slice('--port='.length)) || 4747;
-  const key = register(cfg.root, cfg.project);
+// Pit 1, pit 2 … The first is the one you will almost always see: every
+// project joins the server already there. The next only comes into play
+// when something that is not crew is sitting on the one before it.
+export const PITS = [9171, 9172, 9173, 9174, 9175, 9176, 9177, 9178, 9179];
 
-  if (await already(port)) {
-    console.log(`crew serve: already running — ${cfg.project} is on it now.`);
-    console.log(`http://localhost:${port}/?p=${key}`);
+const listen = (server, port) =>
+  new Promise((done) => {
+    const failed = (error) => done(error.code);
+    server.once('error', failed);
+    server.listen(port, '127.0.0.1', () => {
+      server.off('error', failed);
+      done(null);
+    });
+  });
+
+/**
+ * The first pit that is either already a crew server, which this project
+ * then joins, or free, which it then takes. Tried in order, one at a time:
+ * pit 2 only matters when pit 1 is held by something else.
+ */
+const takePit = async (key, [port, ...rest]) => {
+  if (!port) return { port: null };
+  if (await already(port)) return { port, joined: true };
+  const { server } = createWall(key);
+  const failure = await listen(server, port);
+  if (failure === 'EADDRINUSE') return takePit(key, rest);
+  return failure ? { port, failure } : { port, server };
+};
+
+export const run = async (cfg, args) => {
+  const given = Number(args.find((arg) => arg.startsWith('--port='))?.slice('--port='.length));
+  const key = register(cfg.root, cfg.project);
+  const pit = await takePit(key, given ? [given] : PITS);
+
+  if (pit.joined) {
+    console.log(`crew serve: already running on ${pit.port} — ${cfg.project} is on it now.`);
+    console.log(`http://localhost:${pit.port}/?p=${key}`);
     return 0;
   }
-
-  const { server } = createWall(key);
-  server.on('error', (error) => {
+  if (!pit.server) {
+    const where = given ? `port ${given} is` : `every pit from ${PITS[0]} to ${PITS.at(-1)} is`;
     console.error(
-      `crew serve: ${error.code === 'EADDRINUSE' ? `port ${port} is taken by something else — pass --port=N` : error.message}`,
+      `crew serve: ${pit.failure ?? `${where} taken by something else — pass --port=N`}`,
     );
-    process.exitCode = 1;
-  });
-  server.listen(port, '127.0.0.1', () => {
-    console.log(`crew serve: http://localhost:${port}/?p=${key}`);
-    console.log('Every project you run crew serve in joins this one page. Ctrl-C to stop.');
-    // An API key in the environment outranks a subscription login for
-    // `claude -p`, so every agent run from the page would bill the API.
-    if (process.env.ANTHROPIC_API_KEY) {
-      console.log(
-        'note: ANTHROPIC_API_KEY is set, so agents run from the page bill the API, not your subscription.',
-      );
-    }
-  });
+    return 1;
+  }
+
+  console.log(`crew serve: http://localhost:${pit.port}/?p=${key}`);
+  console.log('Every project you run crew serve in joins this one page. Ctrl-C to stop.');
+  // An API key in the environment outranks a subscription login for
+  // `claude -p`, so every agent run from the page would bill the API.
+  if (process.env.ANTHROPIC_API_KEY) {
+    console.log(
+      'note: ANTHROPIC_API_KEY is set, so agents run from the page bill the API, not your subscription.',
+    );
+  }
   return new Promise(() => {});
 };
