@@ -16,7 +16,8 @@ owns — `.claude/crew.config.json` for the mechanics and
                          │
 YOU + ORCHESTRATOR (the main session — not an agent)
   /crew:crew-spec    what kind of work is this? → offer a plan, or not
-                     → query the graph once → write the spec → YOU APPROVE
+                     → ask what you know → one scout (git, graph, code)
+                     → write the spec → YOU APPROVE
   /crew:crew-run     hand the task to its own session in its own worktree
                          │
                          ├─ TASK SESSION (the crew-worker skill)
@@ -196,11 +197,12 @@ offered a plan.
 | command | who runs it | what it does |
 |---|---|---|
 | `/crew:crew-setup` | you + orchestrator | fill in this project's config and brief by reading the repository; run it once, after `crew init` |
-| `/crew:crew-spec` | you + orchestrator | work out what kind of work this is, offer a plan if it earns one, prime from the graph once, write the spec, **stop for your approval** |
+| `/crew:crew-spec` | you + orchestrator | work out what kind of work this is, offer a plan if it earns one, ask what you already know, send one scout, write the spec, **stop for your approval** |
 | `/crew:crew-run` | orchestrator | check collisions, cut the worktree, hand the task to its own session, then stop |
 | `/crew:crew-status` | orchestrator | render the board; what is waiting on you, what is in flight, what to pick up |
 | `/crew:crew-close` | orchestrator | verify the gate stamp, **stop for your approval**, merge, write the graph, deploy or queue |
 | `crew-worker` | the task session | not for you to invoke — it is the brief `/crew:crew-run` hands over |
+| `crew-scout` | the orchestrator | a read-only agent that finds prior fixes, helpers, call sites and graph chains before a spec is written |
 | `crew-reviewer` | the task session | a read-only agent, spawned by the worker after the gate passes |
 
 The two skills you never call yourself are the point of the design: the worker
@@ -221,7 +223,7 @@ into tasks". See [Planning](#planning).
 | `crew init --list` | the sections, and how to leave one out |
 | `crew doctor` | is this installation actually wired up? |
 | `crew spec-template` | the task template, for a new spec |
-| `crew graph <what>` | read the memory graph: `prime`, `prefs`, `constraints`, `traps`, `decisions`, `files <path...>`, `find <text>`, all `--limit=N` |
+| `crew graph <what>` | read the memory graph: `prime`, `prefs`, `constraints`, `traps`, `decisions`, `files <path...>`, `find <text>`, `chain <text> [--depth=N]`, all `--limit=N` |
 | `crew collisions <task>` | unmerged branches already touching its `files:` |
 | `crew preflight [env]` | what this machine can and cannot prove |
 | `crew plan [task\|part]` | the plan map slice bearing on a task: its boundaries, symbols and neighbours |
@@ -495,8 +497,8 @@ shape that works.
 Uses [claude-memory-graph](https://github.com/StuCM/claude-memory-graph) if it
 is installed, and degrades silently if not.
 
-The orchestrator queries **once**, at spec time, and inlines what matters into
-the spec. Workers never query.
+The graph is read **once per piece of work**, by `crew-scout` at spec time, and
+the orchestrator inlines what matters into the spec. Workers never query.
 
 Every read is **bounded and scoped to this project**, because the store is one
 graph for every project on the machine — unscoped, `traps` returned 64KB of
@@ -510,6 +512,17 @@ you can ask what is known about those exact paths rather than about the
 subsystem in general. That is one query per task instead of one per
 agent, filtered by judgement, and it keeps workers hermetic — no MCP, no
 network, no dependence on a store that may not exist in CI or a container.
+
+`crew graph chain <text>` is the one read that crosses links. It starts from
+every node whose name or description holds all the words, then walks the open
+links out from them — two hops by default, three at most — so a Pattern about
+this project leads to the Decision that fixed it and on to the Pattern
+anchored where that fix lives. It is deliberately **not** scoped to the
+project, because the same fix in a sibling project is often the best lead in
+the store; each line names the project it came from instead. A node with more
+than 25 links (a Project, or a Technology half the store points at) is named
+and not walked through, which is what kept `recall --depth 2` from being
+readable.
 
 Traps are the highest-value writes. *"A 403 here is the agent proxy, not the
 app"* recorded once stops every future agent chasing it.

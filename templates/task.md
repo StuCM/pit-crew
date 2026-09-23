@@ -20,6 +20,11 @@ One or two sentences. What is different afterwards, from the outside.
 ## Why now
 Which backlog item or decision this serves. One line.
 
+## Background
+<!-- What the person told /crew:crew-spec that the code does not say: what
+     changed recently, a fix like this done before, the cause they suspect.
+     Their words where they were precise. `None given.` if they had nothing. -->
+
 ## Existing work
 <!-- `npx crew collisions <this file>`, verbatim, plus one line on what you make
      of each hit after reading it. `None.` if it printed nothing, so the reader
