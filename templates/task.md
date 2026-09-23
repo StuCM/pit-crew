@@ -67,6 +67,10 @@ The reviewer executes this literally. Nothing here may be a matter of taste.
 - [ ] no file outside `files:` is touched
 - [ ] commits follow the convention (the hook enforces it)
 
+## Scout requests
+<!-- The worker appends one line per `crew-scout` question, at most two:
+     the question, the answer in a line, and whether it changed the build. -->
+
 ## Review rounds
 <!-- Reviewer appends one block per round. `rounds:` in the frontmatter counts
      them, and crew refuses to start one past the configured limit. -->

@@ -193,10 +193,14 @@ export const chain = (text, { depth = 2, limit = 40 } = {}, ask = query) => {
   for (const row of seeds) if (add(row)) roots.push(row.other);
 
   let frontier = roots;
+  let failed = false;
   for (let hop = 0; hop < depth && frontier.length && nodes.size < limit; hop++) {
     const refs = frontier.map(iriRef).filter(Boolean);
     const rows = refs.length ? ask(NEIGHBOUR_QUERY(refs)) : [];
-    if (rows === null) break;
+    if (rows === null) {
+      failed = true;
+      break;
+    }
 
     const byNode = new Map();
     for (const row of rows) {
@@ -229,7 +233,15 @@ export const chain = (text, { depth = 2, limit = 40 } = {}, ask = query) => {
     for (const child of children.get(iri) ?? []) render(child, `${indent}  `);
   };
   for (const root of roots) render(root, '');
+  // Each of these means the chain could have gone further. They are printed
+  // so the reader can say it needed more, not guess that it had everything.
   if (hubs.length) out.push('', `not followed, too many links: ${hubs.join(', ')}`);
+  if (failed) out.push('', 'stopped early: a query failed part-way, so the chain is incomplete');
+  else if (frontier.length && nodes.size < limit) {
+    const names = frontier.slice(0, 5).map((iri) => nodes.get(iri).name);
+    const more = frontier.length > 5 ? ` and ${frontier.length - 5} more` : '';
+    out.push('', `not expanded, depth ${depth} reached: ${names.join(', ')}${more}`);
+  }
   if (nodes.size >= limit)
     out.push('', `stopped at ${limit} nodes — narrow the text or pass --limit=N`);
   return out;

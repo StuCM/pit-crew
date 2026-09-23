@@ -195,6 +195,10 @@ Read what comes back and keep only what bears on the spec:
   recorded against a file the task is about to edit is the single
   highest-value line a spec can carry.
 - **Open** goes back to the person — do not answer it yourself.
+- **Needed more** is the scout saying where it stopped short. Decide each
+  one: send the scout back with that one follow-up, put it to the person, or
+  accept the gap and name it in the spec's Background so the worker knows it
+  is there. Never pass over one without deciding.
 
 This is still one read per task, filtered by someone with judgement, and
 workers stay hermetic: they need no graph, no network, and no memory of
