@@ -8,12 +8,14 @@
 
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { run as logEvent } from './log.js';
 import { readTasks, setField } from '../lib/task.js';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import { commitChanges, fileSides, taskChanges } from '../lib/changes.js';
 import {
   listDir,
   readSource,
@@ -114,6 +116,35 @@ const openInEditor = (cfg, path, line) =>
     });
   });
 
+const launch = (args) =>
+  new Promise((done) => {
+    const child = spawn(EDITOR, args, { detached: true, stdio: 'ignore' });
+    child.on('error', () => done({ error: `${EDITOR} is not on PATH. Set CREW_EDITOR.` }));
+    child.on('spawn', () => {
+      child.unref();
+      done({ ok: true });
+    });
+  });
+
+// The editor's own diff view, side by side: the base version on the left
+// from git, and on the right the live file in the worktree, so it keeps up
+// while the worker is still writing.
+const diffInEditor = (cfg, task, path) => {
+  const changes = taskChanges(cfg, task);
+  if (changes.error) return changes;
+  const sides = fileSides(cfg, changes, path);
+  if (!sides) return { error: 'that file is not in the diff' };
+  const dir = mkdtempSync(join(tmpdir(), 'crew-diff-'));
+  const left = join(dir, `base-${basename(path)}`);
+  writeFileSync(left, sides.before);
+  let right = sides.after;
+  if (!sides.afterIsPath) {
+    right = join(dir, `${task.id}-${basename(path)}`);
+    writeFileSync(right, sides.after);
+  }
+  return launch(['--diff', left, right]);
+};
+
 const runCommand = (cfg, task) => {
   const dir = `${cfg.worktreeDir}/${cfg.project}-${task.id}`;
   const brief = `Use the crew-worker skill for task ${join(cfg.tasksDir, task.file)}. You are in a worktree; the spec is the brief.`;
@@ -124,6 +155,23 @@ const routes = (cfg) => ({
   'GET /api/state': () => snapshot(cfg),
   'GET /api/file': (_, url) => readSource(cfg.root, url.searchParams.get('path') ?? ''),
   'GET /api/dir': (_, url) => listDir(cfg.root, url.searchParams.get('path') ?? ''),
+  'GET /api/changes': (_, url) => {
+    const task = findTask(cfg, url.searchParams.get('id'));
+    return task ? taskChanges(cfg, task) : { error: 'no such task' };
+  },
+  'GET /api/commit': (_, url) => commitChanges(cfg, url.searchParams.get('sha')),
+  'POST /api/diff-editor': (body) => {
+    const task = findTask(cfg, body.id);
+    return task ? diffInEditor(cfg, task, text(body.path, 1000)) : { error: 'no such task' };
+  },
+  'POST /api/open-worktree': (body) => {
+    const task = findTask(cfg, body.id);
+    if (!task) return { error: 'no such task' };
+    const changes = taskChanges(cfg, task);
+    return changes.worktree
+      ? launch([changes.worktree])
+      : { error: 'no worktree for this task on this machine' };
+  },
 
   'POST /api/answer': (body) =>
     update(cfg, (s) => {
@@ -243,6 +291,13 @@ export const run = (cfg, args) => {
   server.listen(port, '127.0.0.1', () => {
     console.log(`crew serve: http://localhost:${port}`);
     console.log('Open it in the Claude desktop browser pane. Ctrl-C to stop.');
+    // An API key in the environment outranks a subscription login for
+    // `claude -p`, so every scout chat would be billed to the API.
+    if (process.env.ANTHROPIC_API_KEY) {
+      console.log(
+        'note: ANTHROPIC_API_KEY is set, so scout chats bill the API, not your subscription.',
+      );
+    }
   });
   return new Promise(() => {});
 };

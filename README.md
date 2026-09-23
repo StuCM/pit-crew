@@ -508,6 +508,7 @@ runs, and reads them again every few seconds while the page is in front of you.
 |---|---|
 | Overview | the stage, what is waiting on you, and the tasks by state |
 | Tasks | each spec, starting with what it assumed. Select any text to mark it wrong, ask for a change or ask a question. Approve and Run are here |
+| Tasks → Changes | what the worker has actually done, live from its worktree: every commit, uncommitted edits and new files, with any file outside `files:` flagged at the top |
 | Questions | the scout's questions, each with the files it is about, and where it stopped short |
 | Scout | what it found, and a chat with the scout itself |
 | Files | everything the work touches, a code viewer, and a browser for the repository |
@@ -516,10 +517,22 @@ runs, and reads them again every few seconds while the page is in front of you.
 page at the right line, and Editor, which runs `code -g path:line` on your
 machine. Set `CREW_EDITOR=cursor` (or any editor taking `-g`) to change it.
 
+**Reviewing a running worker.** The Changes tab diffs the task's worktree
+against the point it branched from, so it shows work in progress, not just
+what has been committed. Each file has **Side by side in editor**, which
+opens `code --diff` with the base version on the left and the live
+worktree file on the right. **Open worktree in editor** opens the whole
+worktree, for VS Code's Source Control view, and **Copy lazygit command**
+gives `lazygit -p <worktree>`. Each commit opens on its own.
+
 **The scout chat is the real agent.** It runs `claude -p` with
 `agents/crew-scout.md` as the agent: read-only tools, and `--resume` so it
 remembers the conversation until you start a new one. Set `CREW_CLAUDE` if
-`claude` is not on the server's `PATH`.
+`claude` is not on the server's `PATH`. It uses whatever login `claude` has
+on your machine, so on a Pro or Max subscription it counts against that
+plan's usage limits, not the API. The exception is `ANTHROPIC_API_KEY`: if
+it is set where you start `crew serve`, it takes precedence and every chat
+is billed to the API. `crew serve` warns you at startup when it is set.
 
 **What the page writes.** Approve sets `status: approved` and logs it, the
 same as approving in the conversation. Everything else goes into

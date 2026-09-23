@@ -1054,6 +1054,135 @@
         color: var(--ink-3);
       }
 
+      /* ---- task subtabs and diffs ---- */
+      .subtabs {
+        display: flex;
+        gap: 4px;
+        border-bottom: 1px solid var(--rule);
+      }
+      .subtabs a {
+        padding: 8px 12px;
+        text-decoration: none;
+        color: var(--ink-2);
+        font: 600 16px/1 var(--display);
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        border-bottom: 3px solid transparent;
+        margin-bottom: -1px;
+      }
+      .subtabs a[aria-current='page'] {
+        color: var(--ink);
+        border-bottom-color: var(--accent);
+      }
+      .add {
+        color: var(--go);
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .del {
+        color: var(--stop);
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .warnbox {
+        background: var(--stop-soft);
+        color: var(--ink);
+        border-radius: 10px;
+        padding: 12px 14px;
+        font-size: 14.5px;
+        overflow-wrap: anywhere;
+      }
+      .warnbox b {
+        color: var(--stop);
+      }
+      .okline {
+        color: var(--go);
+        font-weight: 700;
+        font-size: 14.5px;
+      }
+      .row.commit {
+        grid-template-columns: auto minmax(0, 1fr) auto auto;
+      }
+      .diffs {
+        display: grid;
+        gap: 10px;
+      }
+      .dfile {
+        background: var(--surface);
+        border: 1px solid var(--rule);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .dfile.outside {
+        border-color: var(--stop);
+      }
+      .dfile > summary {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 6px 12px;
+        align-items: center;
+        padding: 10px 14px;
+        cursor: pointer;
+        background: var(--ground);
+        list-style: none;
+      }
+      .dfile > summary::-webkit-details-marker {
+        display: none;
+      }
+      .dpath {
+        font: 600 13.5px/1.35 var(--mono);
+        overflow-wrap: anywhere;
+      }
+      .dmeta {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        flex-wrap: wrap;
+        font-size: 13px;
+      }
+      .dactions {
+        display: flex;
+        gap: 6px;
+        padding: 8px 14px 0;
+      }
+      .dactions:empty {
+        display: none;
+      }
+      .dcode {
+        overflow-x: auto;
+        padding-block: 8px;
+      }
+      .dcode table {
+        font: 12.5px/1.55 var(--mono);
+        border-collapse: collapse;
+        width: 100%;
+      }
+      .dcode td {
+        border: 0;
+        padding: 0 10px;
+        white-space: pre;
+        vertical-align: top;
+      }
+      .dcode td.n {
+        width: 1%;
+        text-align: right;
+        color: var(--ink-3);
+        user-select: none;
+        padding: 0 6px;
+      }
+      .dcode tr.ad td {
+        background: var(--go-soft);
+      }
+      .dcode tr.rm td {
+        background: var(--stop-soft);
+      }
+      .dcode tr.hh td {
+        color: var(--ink-3);
+        background: var(--sunk);
+        padding-block: 2px;
+      }
+
       /* ---- scout chat ---- */
       .chat {
         display: grid;
@@ -1331,7 +1460,7 @@
       ];
       const route = () => decodeURIComponent(location.hash.slice(1)) || 'overview';
       const pageOf = (r) =>
-        /^t\d+$/.test(r) ? 'tasks' : r.startsWith('code/') || r.startsWith('dir/') ? 'files' : r;
+        /^t\d+/.test(r) ? 'tasks' : r.startsWith('code/') || r.startsWith('dir/') ? 'files' : r;
 
       function renderTabs() {
         const current = pageOf(route());
@@ -1731,6 +1860,12 @@
             ),
           );
 
+        return [...taskHead(t, 'spec'), actions, el('div', { class: 'two' }, spec, side)];
+      }
+
+      function taskHead(t, on) {
+        const tab = (id, label, href) =>
+          el('a', { href, 'aria-current': on === id ? 'page' : false }, label);
         return [
           pagehead(t.title, null, back('#tasks', 'Tasks')),
           el(
@@ -1742,8 +1877,220 @@
             t.env ? el('span', { class: 'chip' }, t.env) : null,
             t.branch ? el('span', { class: 'chip' }, t.branch) : null,
           ),
-          actions,
-          el('div', { class: 'two' }, spec, side),
+          el(
+            'nav',
+            { class: 'subtabs', 'aria-label': 'Task' },
+            tab('spec', 'Spec', `#t${t.id}`),
+            tab('changes', 'Changes', `#t${t.id}/changes`),
+          ),
+        ];
+      }
+
+      // ---------- changes: what the worker actually did ----------
+      const closedDiffs = new Set();
+      const allowed = (t, path) =>
+        t.files.some((f) =>
+          f.path.endsWith('/') || f.path.endsWith('*')
+            ? path.startsWith(f.path.replace(/\*$/, ''))
+            : path === f.path,
+        );
+
+      function diffFile(t, file, key, withScope) {
+        const id = `${key}:${file.path}`;
+        const scope = file.scope ?? (allowed(t, file.path) ? 'declared' : 'outside');
+        const d = el(
+          'details',
+          {
+            class: `dfile ${withScope && scope === 'outside' ? 'outside' : ''}`,
+            open: !closedDiffs.has(id),
+          },
+          el(
+            'summary',
+            {},
+            el(
+              'span',
+              { class: 'dpath' },
+              file.oldPath && file.oldPath !== file.path && file.status === 'renamed'
+                ? `${file.oldPath} → ${file.path}`
+                : file.path,
+            ),
+            el(
+              'span',
+              { class: 'dmeta' },
+              file.status !== 'modified' ? el('span', { class: 'chip' }, file.status) : null,
+              withScope && scope === 'outside'
+                ? el('span', { class: 'pill stop' }, 'Outside the spec')
+                : null,
+              withScope && scope === 'bookkeeping'
+                ? el('span', { class: 'pill idle' }, 'Bookkeeping')
+                : null,
+              file.uncommitted ? el('span', { class: 'pill run' }, 'Uncommitted') : null,
+              el('span', { class: 'add' }, `+${file.added}`),
+              el('span', { class: 'del' }, `−${file.removed}`),
+            ),
+          ),
+          el(
+            'div',
+            { class: 'dactions' },
+            withScope && file.status !== 'deleted'
+              ? el(
+                  'button',
+                  {
+                    type: 'button',
+                    class: 'lk code',
+                    onclick: async () => {
+                      if ((await post('/api/diff-editor', { id: t.id, path: file.path })).ok)
+                        toast('Opened side by side');
+                    },
+                  },
+                  'Side by side in editor',
+                )
+              : null,
+          ),
+          file.binary
+            ? el('p', { class: 'note', style: 'padding:10px 14px' }, 'Binary file.')
+            : el(
+                'div',
+                { class: 'dcode' },
+                el(
+                  'table',
+                  {},
+                  file.hunks.map((h) => [
+                    el('tr', { class: 'hh' }, el('td', { colspan: 3 }, h.header)),
+                    h.lines.map((l) =>
+                      el(
+                        'tr',
+                        { class: l.kind === '+' ? 'ad' : l.kind === '-' ? 'rm' : '' },
+                        el('td', { class: 'n' }, l.a ?? ''),
+                        el('td', { class: 'n' }, l.b ?? ''),
+                        el('td', {}, `${l.kind === ' ' ? ' ' : l.kind}${l.text}`),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+        );
+        d.addEventListener('toggle', () => (d.open ? closedDiffs.delete(id) : closedDiffs.add(id)));
+        return d;
+      }
+
+      const sum = (files, k) => files.reduce((n, f) => n + f[k], 0);
+
+      async function viewChanges(id) {
+        const t = data.tasks.find((x) => x.id === id);
+        if (!t) return [pagehead('No such task', null, back('#tasks', 'Tasks'))];
+        const c = await get(`/api/changes?id=${id}`);
+        if (c.error)
+          return [
+            ...taskHead(t, 'changes'),
+            el('div', { class: 'panel empty-state' }, el('p', {}, c.error)),
+          ];
+        const outside = c.files.filter((f) => f.scope === 'outside');
+        const lazygit = c.worktree ? `lazygit -p ${c.worktree}` : null;
+        return [
+          ...taskHead(t, 'changes'),
+          el(
+            'div',
+            { class: 'actions' },
+            el(
+              'span',
+              { class: 'note' },
+              `${c.commits.length} ${c.commits.length === 1 ? 'commit' : 'commits'} · ${c.files.length} ${c.files.length === 1 ? 'file' : 'files'} · `,
+              el('span', { class: 'add' }, `+${sum(c.files, 'added')}`),
+              ' ',
+              el('span', { class: 'del' }, `−${sum(c.files, 'removed')}`),
+              c.worktree ? ' · live from the worktree' : ' · from the branch',
+            ),
+            c.worktree
+              ? el(
+                  'button',
+                  {
+                    type: 'button',
+                    class: 'btn small primary',
+                    onclick: async () => {
+                      if ((await post('/api/open-worktree', { id })).ok)
+                        toast('Opened the worktree');
+                    },
+                  },
+                  'Open worktree in editor',
+                )
+              : null,
+            lazygit
+              ? el(
+                  'button',
+                  { type: 'button', class: 'btn small', onclick: () => copyText(lazygit) },
+                  'Copy lazygit command',
+                )
+              : null,
+          ),
+          outside.length
+            ? el(
+                'div',
+                { class: 'warnbox' },
+                el(
+                  'b',
+                  {},
+                  `${outside.length} ${outside.length === 1 ? 'file' : 'files'} outside the spec's files list. `,
+                ),
+                'The spec did not allow these. Either the spec missed them or the worker wandered: ',
+                outside.map((f) => f.path).join(', '),
+              )
+            : c.files.length
+              ? el('p', { class: 'okline' }, 'Every changed file is one the spec allowed.')
+              : null,
+          c.commits.length
+            ? el(
+                'section',
+                { class: 'panel rows' },
+                c.commits.map((k) =>
+                  el(
+                    'a',
+                    { class: 'row commit', href: `#t${id}/commit/${k.sha}` },
+                    el('span', { class: 'chip' }, k.short),
+                    el('span', { class: 't' }, k.subject),
+                    el('span', { class: 'hint' }, k.when),
+                    el('span', { class: 'hint' }, 'View →'),
+                  ),
+                ),
+              )
+            : null,
+          c.truncated
+            ? el(
+                'p',
+                { class: 'note' },
+                'The diff is over 2MB, so only the start is shown. Open the worktree for the rest.',
+              )
+            : null,
+          c.files.length
+            ? el(
+                'section',
+                { class: 'diffs' },
+                c.files.map((f) => diffFile(t, f, `t${id}`, true)),
+              )
+            : el('p', { class: 'note' }, 'No changes yet.'),
+        ];
+      }
+
+      async function viewCommit(id, sha) {
+        const t = data.tasks.find((x) => x.id === id);
+        const c = await get(`/api/commit?sha=${sha}`);
+        const head = t ? taskHead(t, 'changes') : [];
+        if (c.error) return [...head, el('p', { class: 'note' }, c.error)];
+        return [
+          ...head,
+          el('div', { class: 'crumb' }, el('a', { href: `#t${id}/changes` }, '← All changes')),
+          el(
+            'div',
+            { class: 'actions' },
+            el('span', { class: 'chip' }, c.short),
+            el('b', {}, c.subject),
+            el('span', { class: 'hint' }, c.when),
+          ),
+          el(
+            'section',
+            { class: 'diffs' },
+            c.files.map((f) => diffFile(t ?? { files: [] }, f, sha, Boolean(t))),
+          ),
         ];
       }
 
@@ -2201,7 +2548,10 @@
         const r = route();
         const seq = ++renderSeq;
         let view;
-        if (/^t\d+$/.test(r)) view = viewTask(r.slice(1));
+        const taskRoute = /^t(\d+)(?:\/(changes|commit\/([0-9a-f]{7,40})))?$/.exec(r);
+        if (taskRoute?.[3]) view = await viewCommit(taskRoute[1], taskRoute[3]);
+        else if (taskRoute?.[2]) view = await viewChanges(taskRoute[1]);
+        else if (taskRoute) view = viewTask(taskRoute[1]);
         else if (r.startsWith('code/')) view = await viewCode(r.slice(5));
         else if (r.startsWith('dir/')) view = await viewDir(r.slice(4));
         else
