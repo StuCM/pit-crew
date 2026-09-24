@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 20 is the floor package.json promises; 24 is the newest.
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+
+  package:
+    # `crew serve` loads its page and its agents from inside the installed
+    # package, so a file missing from `files` breaks it only after publish.
+    name: package contents
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: |
+          npm pack --dry-run --json > pack.json
+          node -e '
+            const files = new Set(require("./pack.json")[0].files.map((f) => f.path));
+            const needed = [
+              "src/cli.js",
+              "src/web/wall.html",
+              "agents/crew-scout.md",
+              "agents/crew-fixer.md",
+              "agents/crew-reviewer.md",
+              "skills/crew-spec/SKILL.md",
+              "templates/task.md",
+              "githooks/pre-commit",
+            ];
+            const missing = needed.filter((f) => !files.has(f));
+            if (missing.length) {
+              console.error("missing from the package: " + missing.join(", "));
+              process.exit(1);
+            }
+            console.log("package has all " + needed.length + " files crew needs at runtime");
+          '

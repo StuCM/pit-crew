@@ -45,7 +45,7 @@
     "access": "public"
   },
   "scripts": {
-    "test": "node --test \"test/*.test.js\"",
+    "test": "node --test",
     "lint": "oxlint",
     "format": "oxfmt --write",
     "format:check": "oxfmt --check",
