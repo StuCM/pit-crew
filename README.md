@@ -636,6 +636,27 @@ cost; they are not a way to refuse one.
 - **The CLI is not on npm yet.** `npm publish` is blocked on npm 2FA. The
   plugins install from the marketplace already.
 
+## Releasing
+
+```bash
+npm version minor          # or patch, major, prerelease --preid=beta
+git push --follow-tags
+```
+
+`npm version` bumps `package.json` and copies the version into the three
+plugin manifests, because `/plugin update` compares those and not npm's. It
+commits that as `chore: release X.Y.Z` and tags it `vX.Y.Z`. Pushing the tag
+runs `.github/workflows/release.yml`: it verifies, checks the tag matches
+all four files, publishes to npm with provenance, and creates a GitHub
+Release with notes generated from the merged pull requests. A pre-release tag
+(`v1.0.0-beta.1`) publishes to npm's `next` tag and is marked a pre-release.
+
+Run it from an up-to-date `main`: the tag is what gets published, so a tag
+on an unmerged branch publishes that branch.
+
+It needs one repository secret, `NPM_TOKEN`: an npm granular access token
+with read and write access to `@stucm/pit-crew`.
+
 ## Contributing
 
 This is a Node CLI. It runs on your machine and in CI, **never in a browser and
