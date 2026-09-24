@@ -36,6 +36,7 @@ const USAGE = `crew — a task loop for agents
   crew commit-msg <file>    the commit convention (git hook)
   crew pre-commit           staged-file format and lint (git hook)
   crew hook scope           PreToolUse: refuse a write outside files:
+  crew hook session         SessionStart: route work through crew-spec
 `;
 
 // Loaded on demand: a git hook should not parse nine modules to check a
@@ -71,6 +72,19 @@ const main = async (argv) => {
   // Aliases for the two shapes that read better as their own verb.
   if (name === 'collisions') [name, args] = ['preflight', ['collisions', ...args]];
   if (name === 'hook') [name, args] = [`hook-${args[0] || ''}`, args.slice(1)];
+
+  // Silent outside a crew repository, and never fatal: a session must start
+  // whatever this hook thinks.
+  if (name === 'hook-session') {
+    try {
+      const root = repoRoot();
+      if (!root || !existsSync(join(root, CONFIG_PATH))) return 0;
+      const { run } = await import('./commands/hook-session.js');
+      return run(loadConfig(root), args);
+    } catch {
+      return 0;
+    }
+  }
 
   if (name === 'hook-scope') {
     // A hook must never break the session it is advising. Anything unexpected

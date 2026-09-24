@@ -1,6 +1,6 @@
 ---
 name: crew-spec
-description: Work out what kind of work this is, then route it — straight to a spec, or an offer to plan first. Use when the user starts a piece of work: a bug to fix, a feature to add, something to change, "spec this", "let's plan X", or a backlog item to pick up. Not for questions about how existing code already works.
+description: Route a piece of work before any code changes — straight to a spec, inline, or an offer to plan first. Use in a crew repository whenever the user asks for a bug to be fixed, a feature added or something changed, even a small one, and before editing code for it; also for "spec this", "let's plan X", or a backlog item. Not for questions about how existing code already works.
 ---
 
 # Routing a piece of work, then specifying it
@@ -132,10 +132,17 @@ someone asks. "The concept nodes all became references in the upgrade" is one
 sentence to them, and it is the difference between a spec that finds the root
 cause and a worker that patches one symptom of twelve.
 
-**Ask before you scout**, so the scout knows what to look for. One message,
+**Ask before you scout, and before you read any code yourself**, so the
+scout knows what to look for and you have not already decided the cause. One message,
 three to five questions picked from below for this kind of work, numbered so
 they can be answered by number. Say "I don't know" is a fine answer. Skip any
 question already answered in the conversation, and never ask all of them.
+
+**When they say go, go.** If the person has answered some questions and tells
+you to scout, spec or get on with it, ask nothing more in this step: send the
+scout, and let its **Open** list carry whatever is still unknown. A second
+round of questions after "go ahead" is the friction this step exists to
+avoid.
 
 **What changed.**
 1. Did something change recently that this work is a consequence of — an
@@ -175,8 +182,21 @@ it.
 
 ## 2. Scout — one agent, once
 
-Spawn `crew-scout` with the work in the person's words and the answers above
-as **leads**. For several fixes, give it all of them together.
+Spawn it with the Agent tool: `subagent_type` `crew:crew-scout` (or
+`crew-scout` where the plugin is not namespaced). Give it the work in the
+person's words and the answers above as **leads**. For several fixes, give it
+all of them together, in one agent.
+
+**Between the answers and the scout's brief, do not read, grep or glob the
+repository yourself**, not even to check a lead first. Every file you open
+here is context the scout was meant to hold instead of you, and a search you
+start is one you will be tempted to finish. If the brief comes back short,
+send the scout back with the follow-up.
+
+Run it in the foreground and wait for it. Do not open the files it names to
+check its work while you wait, or after: its lines say where each claim came
+from, and one marked `unverified` is a question for the scout or the person,
+not a file for you to read.
 
 It searches the git history and changelog for the same fix done before,
 follows chains through the memory graph (`crew graph chain`) from each lead,
