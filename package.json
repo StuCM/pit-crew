@@ -20,7 +20,7 @@
   "homepage": "https://github.com/StuCM/pit-crew#readme",
   "type": "module",
   "engines": {
-    "node": ">=20.11"
+    "node": ">=22"
   },
   "bin": {
     "crew": "src/cli.js"

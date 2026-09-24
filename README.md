@@ -640,7 +640,7 @@ cost; they are not a way to refuse one.
 
 This is a Node CLI. It runs on your machine and in CI, **never in a browser and
 never in whatever runtime the host project targets** — so it is written in
-modern JavaScript and pinned to `node >= 20.11`. The host project's own
+modern JavaScript and pinned to `node >= 22`. The host project's own
 constraints are the host project's; this said nothing about its runtime and got
 written in ES5 by contagion, which is the reason this paragraph exists.
 
