@@ -1,0 +1,10 @@
+schema_version: '1.1'
+name: spec-typo-is-fixed-inline
+description: 'Too small for the loop: the typo is fixed directly, with no task and no worktree. Whether the orchestrator says it is stepping outside the loop matters mid-session, not here, where crew-spec does not load at all.'
+tags: [crew-spec, routing]
+context:
+  scaffold_script: fixture.sh
+execution:
+  max_turns: 10
+  timeout_seconds: 240
+  allowed_tools: [Read, Glob, Grep, Skill, Edit]

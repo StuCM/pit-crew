@@ -1,0 +1,10 @@
+schema_version: '1.1'
+name: spec-asks-first
+description: 'A brownfield fix with nothing known yet: crew-spec asks what the person knows before it scouts or specs.'
+tags: [crew-spec, brownfield]
+context:
+  scaffold_script: fixture.sh
+execution:
+  max_turns: 15
+  timeout_seconds: 420
+  allowed_tools: [Read, Glob, Grep, Skill, Agent]

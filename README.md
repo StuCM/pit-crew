@@ -636,6 +636,31 @@ cost; they are not a way to refuse one.
 - **The CLI is not on npm yet.** `npm publish` is blocked on npm 2FA. The
   plugins install from the marketplace already.
 
+## Skill evals
+
+The skills and agents are prompts, so the unit tests cannot say whether they
+still behave. `evals/` holds cases for `claude plugin eval`. Each case builds
+a small repository with coral-arches' real problem in it: a v8 upgrade turned
+concept nodes into references, one caller was fixed in #855, and three still
+compare against a retired option id. Each case then checks one behaviour:
+
+| case | checks |
+|---|---|
+| `spec-asks-first` | crew-spec loads, asks 3–5 numbered questions, touches no code |
+| `spec-one-scout-for-several-fixes` | one scout for both fixes; the orchestrator does not read the code itself |
+| `scout-finds-prior-fix-and-every-instance` | the scout cites #855, the helper, the instance nobody mentioned, and its brief keeps its format |
+| `spec-answers-a-question` | a question is answered, with no spec and no scout |
+| `spec-typo-is-fixed-inline` | a typo is fixed directly, with no task |
+
+```bash
+npm run eval -- --runs 3 --threshold 0.8
+```
+
+It runs Claude on your login and costs roughly $1–2 per run of the suite.
+Cases that let the agent run `git` need Claude Code's sandbox (`bubblewrap`
+and `socat` on Linux). The **Skill evals** workflow runs it by hand in GitHub
+Actions, with an `ANTHROPIC_API_KEY` secret.
+
 ## Releasing
 
 ```bash

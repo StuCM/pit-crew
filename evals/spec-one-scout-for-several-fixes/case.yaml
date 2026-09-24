@@ -1,0 +1,10 @@
+schema_version: '1.1'
+name: spec-one-scout-for-several-fixes
+description: "Several fixes with a shared cause and the person's answers given: one scout for all of them, and the orchestrator does not do the digging itself."
+tags: [crew-spec, crew-scout, brownfield]
+context:
+  scaffold_script: fixture.sh
+execution:
+  max_turns: 15
+  timeout_seconds: 420
+  allowed_tools: [Read, Glob, Grep, Skill, Agent]
