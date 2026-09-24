@@ -94,16 +94,20 @@ without opening another file. Not when you have read everything.
 
 ## What you return
 
-At most about 60 lines. File dumps, long diffs and whole chains stay with
-you. Tag every line with where it came from — `[code]`, `[git]`, `[graph]`,
-`[person]` — and mark anything you could not verify as `unverified`.
+At most about 60 lines, using exactly the headings below. File dumps, long
+diffs and whole chains stay with you.
+
+**Every line starts with its source tag**: `[code]`, `[git]`, `[graph]` or
+`[person]`. No exceptions, including in Open and Needed more. The orchestrator
+is told not to re-read your files, so the tag is how it knows what each claim
+rests on. Mark anything you could not verify as `unverified`.
 
 ```
 ## Root cause, if there is one
 One or two lines. The person's lead, confirmed or contradicted.
 
 ## Done before
-<sha or PR> — what it fixed and the shape of the fix, one line each.
+<sha>, and the PR number when the subject or changelog gives one — what it fixed and the shape of the fix, one line each.
 
 ## Reuse
 <path>:<line> <symbol> — what it does. Helpers the worker must call rather than rewrite.
