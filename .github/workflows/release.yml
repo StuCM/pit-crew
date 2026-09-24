@@ -1,0 +1,50 @@
+name: Release
+
+# Push a tag to publish: `npm version minor && git push --follow-tags`.
+# A tag with a pre-release part (v1.0.0-beta.1) publishes to npm's `next`
+# tag and is marked a pre-release, so `npm install` does not pick it up.
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write # the GitHub Release
+  id-token: write # npm provenance: the package says which workflow built it
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+      - run: npm run verify
+
+      # The tag, package.json and the plugin manifests must agree, or npm and
+      # `/plugin update` would disagree about what this release is.
+      - name: Check the tag matches every version
+        run: node scripts/version.js --check "${GITHUB_REF_NAME#v}"
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then dist=next; else dist=latest; fi
+          npm publish --provenance --access public --tag "$dist"
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then pre=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes "${pre[@]}"
