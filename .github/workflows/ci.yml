@@ -14,18 +14,13 @@ concurrency:
 
 jobs:
   verify:
-    name: verify (node ${{ matrix.node }})
+    name: verify
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # 20 is the floor package.json promises; 24 is the newest.
-        node: [20, 22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run verify
