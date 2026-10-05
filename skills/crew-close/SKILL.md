@@ -34,7 +34,24 @@ output, and anything the worker said the spec got wrong.
 two places a human is in this loop by design; everything between them runs
 unattended, which is only safe because these two hold.
 
-## 3. Merge
+## 3. Merge, or push for review
+
+If the project lands work through pull requests, push instead of merging —
+and rename the branch first:
+
+```sh
+git branch -m <branch> <type>/<topic>     # e.g. fix/hb-number-blank-save
+git push -u origin <type>/<topic>
+gh pr create --base <baseBranch> --head <type>/<topic>
+```
+
+`crew/<id>-<slug>` is for the scope hook, not for reviewers. Rename before the
+first push: renaming a pushed branch on GitHub closes its open PR. Fill the
+body from `.github/pull_request_template.md` when there is one. Set the task
+file's `branch:` to the new name. The merge, the worktree removal and step 4
+wait until the PR lands.
+
+Otherwise merge locally:
 
 ```sh
 git checkout <baseBranch> && git merge --no-ff <branch>

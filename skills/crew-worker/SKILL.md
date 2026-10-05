@@ -194,4 +194,11 @@ learnt. A Decision with its rationale, or a Pattern for a trap that cost you
 time. The orchestrator decides what gets committed to the graph; you only
 propose.
 
+Release the branch so the person can check it out in their main checkout —
+git refuses a branch that another worktree holds:
+
+```sh
+git switch --detach
+```
+
 Then run `npx crew board` and stop. Do not start anything else.

@@ -20,6 +20,12 @@ right the first time.
   - `new`: a commit of its own
   - `uncommitted`: the line is not committed yet, so just edit it
 
+## Before you start
+
+The worker detaches its worktree when it finishes, so take the branch back
+with `git switch <branch>`. If git refuses because the person has it checked
+out elsewhere, stop and say so — do not edit on a detached HEAD.
+
 ## For each suggestion, in order
 
 1. Read the file around the line. The line number is from when they looked,
@@ -34,7 +40,9 @@ right the first time.
    - `uncommitted`: leave it uncommitted
 
 Stay inside the spec's `files:`. The scope hook refuses anything else, and
-a suggestion that needs another file is one to skip and report.
+a suggestion that needs another file is one to skip and report. On a branch
+renamed for its PR the hook cannot find the task and allows everything, so
+the limit is yours to keep.
 
 ## Then fold the fixups in
 
