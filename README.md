@@ -525,6 +525,19 @@ two different pieces of work. The registry is
 | Questions | the scout's questions, each with the files it is about, and where it stopped short |
 | Scout | what it found, and a chat with the scout itself |
 | Files | everything the work touches, a code viewer, and a browser for the repository |
+| Worktrees | every worktree of the repository, crew's or not: its task, branch, uncommitted files, ahead/behind and whether it is merged |
+
+**Try a branch in your main checkout.** On Worktrees, **Check out in main**
+switches your main checkout to a task's branch. If a worktree still holds
+the branch, that worktree is detached first. **Back to …** returns your main
+checkout to the branch it was on before. Both refuse while either checkout
+has uncommitted changes, and nothing is ever forced, stashed or discarded.
+If a `skip-worktree` file blocks the switch, the page names the file.
+**Remove** deletes a worktree but keeps its branch. It asks first if the
+branch is not merged, and refuses a dirty worktree. **Prune** clears entries
+whose folder is gone. **Open PR** pushes the branch if it has no upstream yet,
+then runs `gh pr create --fill`. If the branch already has a PR, it shows that
+one instead.
 
 **Files open in your editor.** Every file has View, which shows it in the
 page at the right line, and Editor, which runs `code -g path:line` on your

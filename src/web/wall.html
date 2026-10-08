@@ -1572,6 +1572,7 @@
         ['questions', 'Questions'],
         ['scout', 'Scout'],
         ['files', 'Files'],
+        ['worktrees', 'Worktrees'],
       ];
       const route = () => decodeURIComponent(location.hash.slice(1)) || 'overview';
       const pageOf = (r) =>
@@ -2389,6 +2390,149 @@
         ];
       }
 
+      // The last worktree action's outcome, kept across the 5-second redraws.
+      let wtNote = null;
+      async function wtAction(path, body, done) {
+        wtNote = null;
+        let out = await post(path, body);
+        if (out.confirm) {
+          if (!confirm(out.confirm)) return;
+          out = await post(path, { ...body, confirm: true });
+        }
+        wtNote = out.error ? { error: out.error } : { text: done(out), url: out.url };
+        render();
+      }
+
+      async function viewWorktrees() {
+        const l = await get('/api/worktrees');
+        const head = pagehead(
+          'Worktrees',
+          'Every worktree of this repository. Check a finished branch out in your main checkout to try it, then go back.',
+        );
+        if (l.error) return [head, el('div', { class: 'panel empty-state' }, el('p', {}, l.error))];
+        const [main, ...rest] = l.worktrees;
+        const home = l.returnTo ?? l.base;
+        const gone = rest.filter((w) => w.missing);
+        const note = wtNote
+          ? wtNote.error
+            ? el('div', { class: 'warnbox' }, wtNote.error)
+            : el(
+                'p',
+                { class: 'okline' },
+                wtNote.text,
+                wtNote.url
+                  ? [' ', el('a', { href: wtNote.url, target: '_blank' }, wtNote.url)]
+                  : null,
+              )
+          : null;
+        const btn = (label, onclick, cls = 'btn small') =>
+          el('button', { type: 'button', class: cls, onclick }, label);
+        const facts = (w) =>
+          el(
+            'div',
+            { class: 'facts' },
+            el('span', { class: 'chip' }, w.branch ?? `detached ${w.sha}`),
+            w.missing
+              ? el('span', { class: 'pill idle' }, 'Gone from disk')
+              : w.dirty.length
+                ? el(
+                    'span',
+                    { class: 'pill stop', title: w.dirty.join('\n') },
+                    `${w.dirty.length} uncommitted`,
+                  )
+                : el('span', { class: 'pill go-t' }, 'Clean'),
+            w.merged && !w.main ? el('span', { class: 'pill go-t' }, 'Merged') : null,
+            w.ahead != null && !w.main
+              ? el('span', { class: 'hint' }, `${w.ahead} ahead · ${w.behind} behind ${l.base}`)
+              : null,
+          );
+        const row = (w) =>
+          el(
+            'div',
+            { class: 'row' },
+            el('span', { class: 'id' }, w.task?.id ?? '—'),
+            el(
+              'div',
+              {},
+              el('div', { class: 't' }, w.task?.title ?? w.path.split('/').pop()),
+              el('div', { class: 'f', title: w.path }, w.path),
+            ),
+            facts(w),
+            el(
+              'div',
+              { class: 'actions' },
+              w.checkout && !w.missing && w.checkout !== main.branch
+                ? btn(
+                    'Check out in main',
+                    () =>
+                      wtAction(
+                        '/api/worktrees/checkout',
+                        { branch: w.checkout },
+                        () => `Main checkout is on ${w.checkout}.`,
+                      ),
+                    'btn small primary',
+                  )
+                : null,
+              w.checkout
+                ? btn('Open PR', () =>
+                    wtAction(
+                      '/api/worktrees/pr',
+                      { branch: w.checkout },
+                      (o) => `Pull request for ${w.checkout} (${String(o.state).toLowerCase()}):`,
+                    ),
+                  )
+                : null,
+              w.missing
+                ? null
+                : btn('Remove', () =>
+                    wtAction('/api/worktrees/remove', { path: w.path }, () => `Removed ${w.path}.`),
+                  ),
+            ),
+          );
+        return [
+          head,
+          note,
+          el(
+            'section',
+            { class: 'panel empty-state' },
+            el(
+              'div',
+              { class: 'actions' },
+              el('b', {}, 'Main checkout'),
+              facts(main),
+              main.branch !== home
+                ? btn(
+                    `Back to ${home}`,
+                    () =>
+                      wtAction(
+                        '/api/worktrees/back',
+                        {},
+                        (o) => `Main checkout is back on ${o.branch}.`,
+                      ),
+                    'btn small primary',
+                  )
+                : null,
+            ),
+            el('div', { class: 'f hint' }, main.path),
+          ),
+          gone.length
+            ? el(
+                'div',
+                { class: 'actions' },
+                el(
+                  'span',
+                  { class: 'note' },
+                  `${gone.length} gone from disk but still registered with git.`,
+                ),
+                btn('Prune', () => wtAction('/api/worktrees/prune', {}, () => 'Pruned.')),
+              )
+            : null,
+          rest.length
+            ? el('section', { class: 'panel rows' }, rest.map(row))
+            : el('p', { class: 'note' }, 'No other worktrees.'),
+        ];
+      }
+
       async function viewCommit(id, sha) {
         const t = data.tasks.find((x) => x.id === id);
         const c = await get(`/api/commit?sha=${sha}`);
@@ -2873,6 +3017,7 @@
         else if (taskRoute) view = viewTask(taskRoute[1]);
         else if (r.startsWith('code/')) view = await viewCode(r.slice(5));
         else if (r.startsWith('dir/')) view = await viewDir(r.slice(4));
+        else if (r === 'worktrees') view = await viewWorktrees();
         else
           view = (
             { tasks: viewTasks, questions: viewQuestions, scout: viewScout, files: viewFiles }[r] ??

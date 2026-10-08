@@ -9,11 +9,19 @@
 import { execFileSync } from 'node:child_process';
 
 const QUIET = ['ignore', 'pipe', 'ignore'];
+// git asks for credentials on the tty, not stdin, so a push would hang the pit wall.
+const NO_PROMPT = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
 
 /** Run git and return stdout, or null if it failed. Never throws. */
 export const git = (args, cwd) => {
   try {
-    return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: QUIET, maxBuffer: 64 << 20 });
+    return execFileSync('git', args, {
+      cwd,
+      encoding: 'utf8',
+      stdio: QUIET,
+      env: NO_PROMPT,
+      maxBuffer: 64 << 20,
+    });
   } catch {
     return null;
   }

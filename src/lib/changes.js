@@ -16,8 +16,12 @@ export const worktrees = (root) => {
   const out = [];
   let current = null;
   for (const line of (git(['worktree', 'list', '--porcelain'], root) ?? '').split('\n')) {
-    if (line.startsWith('worktree ')) out.push((current = { path: line.slice(9), branch: null }));
-    else if (line.startsWith('branch ') && current)
+    if (line.startsWith('worktree '))
+      out.push((current = { path: line.slice(9), branch: null, head: null, prunable: false }));
+    else if (!current) continue;
+    else if (line.startsWith('HEAD ')) current.head = line.slice(5);
+    else if (line.startsWith('prunable')) current.prunable = true;
+    else if (line.startsWith('branch '))
       current.branch = line.slice(7).replace(/^refs\/heads\//, '');
   }
   return out;

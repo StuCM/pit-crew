@@ -26,6 +26,14 @@ import { readTasks, setField } from '../lib/task.js';
 import { projects, register } from '../lib/registry.js';
 import { commitChanges, fileSides, suggestionTarget, taskChanges } from '../lib/changes.js';
 import {
+  backToBase,
+  checkoutInMain,
+  listWorktrees,
+  openPr,
+  pruneWorktrees,
+  removeWorktree,
+} from '../lib/worktrees.js';
+import {
   fixerArgs,
   listDir,
   readSource,
@@ -273,6 +281,14 @@ const routes = {
     return task ? taskChanges(cfg, task) : { error: 'no such task' };
   },
   'GET /api/commit': (cfg, _, url) => commitChanges(cfg, url.searchParams.get('sha')),
+  'GET /api/worktrees': (cfg) => listWorktrees(cfg),
+
+  'POST /api/worktrees/checkout': (cfg, body) => checkoutInMain(cfg, body.branch),
+  'POST /api/worktrees/back': (cfg) => backToBase(cfg),
+  'POST /api/worktrees/remove': (cfg, body) =>
+    removeWorktree(cfg, body.path, body.confirm === true),
+  'POST /api/worktrees/prune': (cfg) => pruneWorktrees(cfg),
+  'POST /api/worktrees/pr': (cfg, body) => openPr(cfg, body.branch),
 
   'POST /api/diff-editor': (cfg, body) => {
     const task = findTask(cfg, body.id);
