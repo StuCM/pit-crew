@@ -53,6 +53,7 @@ const BOARD = {
     draft: { waitsOnUser: 'spec needs your approval' },
     approved: {},
     building: { inFlight: true },
+    review: { inFlight: true },
     blocked: { waitsOnUser: 'review rounds disagreed' },
     'pending-desktop': { waitsOnUser: 'only desktop can prove it', pendingEnv: 'desktop' },
     done: { terminal: true },
@@ -77,6 +78,14 @@ const BOARD = {
       model: 'sonnet',
       files: [],
     },
+    ...['approved', 'review', 'blocked', 'pending-desktop', 'done'].map((status, i) => ({
+      id: '00' + (i + 3),
+      file: `.claude/tasks/00${i + 3}-${status}.md`,
+      title: status + ' task',
+      status,
+      model: 'sonnet',
+      files: [],
+    })),
   ],
 };
 
@@ -143,6 +152,7 @@ const stubs = (
     reads: [] as string[],
     submitted: [] as string[],
     toasts: [] as string[],
+    opens: [] as any[],
   };
   on('store.get', ($: any, e: any) => ({ value: seen.store.get(e.key) }));
   on('store.set', ($: any, e: any) => {
@@ -188,7 +198,10 @@ const stubs = (
     seen.toasts.push(e.text);
     return { value: undefined };
   });
-  on('ui.open', () => ({ value: { isPlaced: true } }));
+  on('ui.open', ($: any, e: any) => {
+    seen.opens.push(e);
+    return { value: { isPlaced: true } };
+  });
   on('ui.scroll', () => ({}));
   return seen;
 };
@@ -196,7 +209,7 @@ const stubs = (
 test('tabs: spec first, context and build record on their own tabs', async ($, on) => {
   stubs(on);
   for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ ...pane('crew-wall'), surface });
+    const ui = await $.ui.mount({ ...pane('crew-spec'), surface });
     expect(
       await ui.find({ type: 'Markdown', text: /First step in `src\/a.ts`\n {3}continues here/ }),
     ).toBeDefined();
@@ -212,19 +225,19 @@ test('tabs: spec first, context and build record on their own tabs', async ($, o
   }
 });
 
-test('the spec flows under the board at full length, and closing it gives the board the pane', async ($, on) => {
+test('the board pane holds the crew list alone, with no spec window or its buttons', async ($, on) => {
   stubs(on);
   const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
-  expect(await ui.find({ type: 'Markdown', text: /Second step/ })).toBeDefined();
-  await ui.press({ key: 'close-spec' });
-  expect(await ui.find({ key: 'spec-window' })).toBeUndefined();
-  expect(await ui.find({ key: 'board-window' })).toBeDefined();
+  expect(await ui.find({ key: 'row-001' })).toBeDefined();
+  for (const key of ['spec-window', 'full', 'pop-out', 'close-spec', 'composer'])
+    expect(await ui.find({ key })).toBeUndefined();
+  expect(await ui.find({ type: 'Markdown', text: /Second step/ })).toBeUndefined();
   await ui.unmount();
 });
 
 test('the spec is the selected task file, read from the board root', async ($, on) => {
   const seen = stubs(on);
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   expect(await ui.find({ type: 'Markdown', text: /Holding OK opens a menu/ })).toBeDefined();
   expect(seen.reads).toContain('/repo/.claude/tasks/001-first.md');
   await ui.unmount();
@@ -232,7 +245,7 @@ test('the spec is the selected task file, read from the board root', async ($, o
 
 test('edit, remove, add and remove-section write the task file through crew task edit', async ($, on) => {
   const seen = stubs(on);
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   const edit = ['task', '001', 'edit'];
   await ui.press({ key: 'edit-btn-2-1' });
   await ui.input({ key: 'edit-2-1', text: 'Second step, reworded' });
@@ -256,7 +269,7 @@ test('edit, remove, add and remove-section write the task file through crew task
 
 test('the column and model dropdowns set status and model', async ($, on) => {
   const seen = stubs(on);
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   await ui.select({ key: 'model', value: 'haiku' });
   await ui.select({ key: 'column', value: 'building' });
   expect(seen.calls.map((c) => c.args)).toEqual([
@@ -270,7 +283,7 @@ test('the column and model dropdowns set status and model', async ($, on) => {
 
 test('approve writes approval and asks the session to run it, with a manual start as the fallback', async ($, on) => {
   const seen = stubs(on);
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   expect(await ui.find({ key: 'signoff' })).toBeUndefined();
   expect(await ui.find({ key: 'sendback' })).toBeUndefined();
   await ui.press({ key: 'approve' });
@@ -287,7 +300,7 @@ test('approve writes approval and asks the session to run it, with a manual star
 
 test('a refused write toasts the reason and leaves the spec as the file has it', async ($, on) => {
   const seen = stubs(on, { refuse: 'task: that text is no longer in the spec' });
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   await ui.press({ key: 'rm-2-1' });
   expect(seen.toasts).toEqual(['task: that text is no longer in the spec']);
   expect(await ui.find({ type: 'Markdown', text: '2. Second step' })).toBeDefined();
@@ -297,18 +310,92 @@ test('a refused write toasts the reason and leaves the spec as the file has it',
   await ui.unmount();
 });
 
-test('the board has a column per status and a flag on tasks waiting on the person', async ($, on) => {
+const svgs = async (ui: any) =>
+  (await ui.findAll({ type: 'Svg' })).map((el: any) => el.props as { source: string; alt: string });
+
+test('the board lists tasks under Scout, Worker, Reviewer and Done, flagging those waiting on the person', async ($, on) => {
   stubs(on);
   const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
-  expect(await ui.find({ key: 'composer' })).toBeDefined();
-  const draft = (await ui.find({ key: 'card-001' }))?.props.props;
-  expect(draft.title).toBe('First thing');
-  expect(draft.who).toBe('opus');
-  expect(draft.attention).toBe('spec needs your approval');
-  expect((await ui.find({ key: 'card-002' }))?.props.props.attention).toBe('');
-  for (const name of ['draft', 'approved', 'building', 'done']) {
-    expect(await ui.find({ type: 'Text', text: name })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: '7 tasks · 3 waiting on you' })).toBeDefined();
+  expect((await svgs(ui)).map((s) => s.alt)).toEqual([
+    'Scout, 1',
+    '001 First thing: draft · ⚑ spec needs your approval',
+    'Worker, 2',
+    '002 Second thing: building',
+    '003 approved task: approved',
+    'Reviewer, 2',
+    '004 review task: review',
+    '005 blocked task: blocked · ⚑ review rounds disagreed',
+    'Done, 2',
+    '006 pending-desktop task: pending-desktop · ⚑ only desktop can prove it',
+    '007 done task: done',
+  ]);
+  const row = async (id: string) =>
+    ((await ui.find({ key: 'row-' + id }))?.children?.[0] as any)?.props.source as string;
+  expect(await row('005')).toContain('⚑ review rounds disagreed');
+  expect(await row('002')).toContain('c-engineer run');
+  expect(await row('003')).toContain('class="c-engineer"');
+  expect(await row('004')).toContain('c-detective run');
+  for (const { source } of await svgs(ui)) {
+    expect(source).toContain('@media (prefers-color-scheme: dark){.t{fill:#ececec}');
+    expect(source).toContain('prefers-reduced-motion');
+    expect(source).not.toMatch(/\$\d/);
+    expect(source.length).toBeLessThan(131072);
   }
+  await ui.unmount();
+});
+
+test('an empty section is left out, and Done keeps the five newest finished tasks', async ($, on) => {
+  const crowded = structuredClone(BOARD);
+  crowded.tasks = [
+    crowded.tasks[1],
+    ...['10', '11', '12', '13', '14', '15'].map((id) => ({
+      id,
+      file: `.claude/tasks/${id}-finished.md`,
+      title: 'Finished ' + id,
+      status: 'done',
+      model: 'sonnet',
+      files: [],
+    })),
+  ];
+  stubs(on, { boardRun: { exitCode: 0, stdout: JSON.stringify(crowded), stderr: '' } });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  expect((await svgs(ui)).map((s) => s.alt.split(':')[0])).toEqual([
+    'Worker, 1',
+    '002 Second thing',
+    'Done, 5',
+    '15 Finished 15',
+    '14 Finished 14',
+    '13 Finished 13',
+    '12 Finished 12',
+    '11 Finished 11',
+  ]);
+  await ui.unmount();
+});
+
+test('clicking a row opens that task in the crew-spec pane', async ($, on) => {
+  const seen = stubs(on);
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  expect((await ui.find({ key: 'card-004' }))?.props.props).toEqual({ id: '004' });
+  await ui.post({ select: '004' }, { in: 'card-004' });
+  expect(seen.opens).toEqual([
+    expect.objectContaining({ id: 'crew-spec', title: '004 · review task' }),
+  ]);
+  await ui.unmount();
+  const spec = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
+  expect(seen.reads).toContain('/repo/.claude/tasks/004-review.md');
+  await spec.unmount();
+});
+
+test('the terminal draws the same sections as plain rows', async ($, on) => {
+  stubs(on);
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'terminal' });
+  expect(await ui.findAll({ type: 'Svg' })).toEqual([]);
+  expect(await ui.find({ type: 'Text', text: 'Reviewer · 2' })).toBeDefined();
+  expect(
+    await ui.find({ type: 'Text', text: '001  First thing · ⚑ spec needs your approval' }),
+  ).toBeDefined();
+  expect(await ui.find({ key: 'card-007' })).toBeDefined();
   await ui.unmount();
 });
 
@@ -329,7 +416,7 @@ test('diagrams: the change map draws steps against files, and the flow comes fro
         'Here: {"nodes":[{"id":"a","label":"OK pressed","kind":"start"},{"id":"b","label":"Held 500ms?","kind":"decision"},{"id":"c","label":"Open menu","kind":"end"}],"edges":[{"from":"a","to":"b"},{"from":"b","to":"c","label":"yes"}]}',
       ),
   });
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   await ui.press({ key: 'tab-diagram' });
   const svg = async () =>
     ((await ui.find({ key: 'diagram-view' }))?.children?.[0] as any)?.props.source as string;
@@ -344,7 +431,7 @@ test('diagrams: the change map draws steps against files, and the flow comes fro
 
 test('diagrams: a task with a part gets Architecture and Feature views, one without gets the pointer', async ($, on) => {
   stubs(on);
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   await ui.press({ key: 'tab-diagram' });
   expect(await ui.find({ key: 'diagram-architecture' })).toBeUndefined();
   expect(await ui.find({ type: 'Text', text: /feature-map/ })).toBeDefined();
@@ -355,7 +442,7 @@ test('diagrams: a task with a part gets Architecture and Feature views of it and
   const withPart = structuredClone(BOARD);
   (withPart.tasks[0] as any).part = 'p-x';
   stubs(on, { boardRun: { exitCode: 0, stdout: JSON.stringify(withPart), stderr: '' } });
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   await ui.press({ key: 'tab-diagram' });
   const svg = async () =>
     ((await ui.find({ key: 'diagram-view' }))?.children?.[0] as any)?.props.source as string;
@@ -373,7 +460,7 @@ const reply = (out: object) => () => answer(JSON.stringify(out));
 
 test('a plain question is answered from the spec and the thread, with no edit run', async ($, on) => {
   const seen = stubs(on, { complete: reply({ reply: 'Step two is clear.', replacements: [] }) });
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   expect(await ui.find({ type: 'Markdown', text: 'Earlier answer' })).toBeDefined();
   await ui.post({ send: 'Is step two clear?' }, { in: 'composer' });
   expect(await ui.find({ type: 'Markdown', text: 'Step two is clear.' })).toBeDefined();
@@ -401,7 +488,7 @@ test('the status line reads the spec with elapsed seconds while the model works'
       return answer('{"reply":"Done thinking.","replacements":[]}');
     },
   });
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   await ui.post({ send: 'Anything missing?' }, { in: 'composer' });
   expect(await ui.find({ type: 'Text', text: 'Reading the spec… 0:00' })).toBeDefined();
   await clock.advance(4000);
@@ -420,7 +507,7 @@ test('a proposed change is a suggestion card, and Apply writes it through crew t
       apply: false,
     }),
   });
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   await ui.post({ send: 'Is step two clear?' }, { in: 'composer' });
   expect(await ui.find({ type: 'Markdown', text: 'Reword the second step.' })).toBeDefined();
   expect(await ui.find({ type: 'Text', text: '+ 2. Second step, clearer' })).toBeDefined();
@@ -445,7 +532,7 @@ test('a change the person asked for is made without a click, showing Updating th
       apply: true,
     }),
   });
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   const reads = seen.reads.length;
   await ui.post({ send: 'Just fix step two.' }, { in: 'composer' });
   expect(await ui.find({ type: 'Text', text: 'Updating the spec… 0:00' })).toBeDefined();
@@ -471,7 +558,7 @@ test('a refused edit is reported in the reply', async ($, on) => {
       apply: true,
     }),
   });
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   await ui.post({ send: 'Fix it.' }, { in: 'composer' });
   expect(
     await ui.find({ type: 'Markdown', text: "Done.\n\n_Couldn't find 'Gone line' in the spec._" }),
@@ -481,7 +568,7 @@ test('a refused edit is reported in the reply', async ($, on) => {
 
 test('a reply that is not JSON is shown as it came', async ($, on) => {
   stubs(on, { complete: () => answer('Plain words, no JSON.') });
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   await ui.post({ send: 'Hello?' }, { in: 'composer' });
   expect(await ui.find({ type: 'Markdown', text: 'Plain words, no JSON.' })).toBeDefined();
   await ui.unmount();
@@ -497,7 +584,7 @@ test('an unanswered completion shows why', async ($, on) => {
       usage: USAGE,
     }),
   });
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   await ui.post({ send: 'Hello?' }, { in: 'composer' });
   expect(
     await ui.find({
@@ -510,7 +597,7 @@ test('an unanswered completion shows why', async ($, on) => {
 
 test('? on a line sends the quote to the model', async ($, on) => {
   const seen = stubs(on);
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   await ui.press({ key: 'ask-0-0' });
   expect(seen.prompts[0].prompt).toContain(
     '> Holding OK opens a menu.\n\nCan we talk this one through?',
@@ -525,7 +612,7 @@ test('a throwing completion shows the error and leaves no status turn behind', a
       throw new Error('socket closed');
     },
   });
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   await ui.post({ send: 'Hello?' }, { in: 'composer' });
   expect(
     await ui.find({ type: 'Markdown', text: /The model did not answer: threw/ }),
@@ -536,8 +623,7 @@ test('a throwing completion shows the error and leaves no status turn behind', a
 
 test('sign off appears for a pending task, records it and asks the session to close it', async ($, on) => {
   const seen = stubs(on, { status: 'pending-desktop' });
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
-  await ui.post({ select: '001' }, { in: 'card-001' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   expect(await ui.find({ key: 'signoff' })).toBeDefined();
   expect(await ui.find({ key: 'sendback' })).toBeUndefined();
   expect(await ui.find({ key: 'approve' })).toBeUndefined();
@@ -549,8 +635,7 @@ test('sign off appears for a pending task, records it and asks the session to cl
 
 test('a blocked task shows its reason and Send back', async ($, on) => {
   const seen = stubs(on, { status: 'blocked' });
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
-  await ui.post({ select: '001' }, { in: 'card-001' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   expect(await ui.find({ type: 'Text', text: 'review rounds disagreed' })).toBeDefined();
   expect(await ui.find({ key: 'signoff' })).toBeUndefined();
   await ui.press({ key: 'sendback' });
@@ -562,8 +647,10 @@ test('a blocked task shows its reason and Send back', async ($, on) => {
 test('a done or building task offers neither', async ($, on) => {
   stubs(on, { status: 'done' });
   for (const key of ['card-001', 'card-002']) {
-    const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
-    await ui.post({ select: key.slice(-3) }, { in: key });
+    const wall = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+    await wall.post({ select: key.slice(-3) }, { in: key });
+    await wall.unmount();
+    const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
     expect(await ui.find({ key: 'signoff' })).toBeUndefined();
     expect(await ui.find({ key: 'sendback' })).toBeUndefined();
     await ui.unmount();

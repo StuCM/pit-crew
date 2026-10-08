@@ -495,11 +495,25 @@ shape that works.
 
 ## The pit wall
 
-The pit wall is a mod inside Claude Code: the board, spec editing, the task
-chat and the diagrams in one pane beside your session. Open it with the
-**Pit wall** button or `/pitwall`. It reads the task files and
-`.claude/crew/work/<slug>.json`, which `/crew:crew-spec` writes after the
-scout runs, and writes through the `crew` CLI (`crew task`). The task chat
+The pit wall is a mod inside Claude Code. Open it with the **Pit wall**
+button or `/pitwall`. Its board is the crew list: every task as a row in one
+of four sections by who has it, each with its own pixel crab.
+
+| Section | Statuses | Crab |
+| --- | --- | --- |
+| Scout | `draft` | astronaut |
+| Worker | `approved`, `building` | engineer |
+| Reviewer | `review`, `blocked` | detective |
+| Done | `done` (the five newest), `pending-<env>` | racer |
+
+A task waiting on you carries a ⚑ with what it needs; a task in flight
+animates, unless your system asks for reduced motion. Click a row to open its
+spec, with editing, the task chat and the diagrams, in its own pane. The
+drawing follows the light or dark theme, and is adapted from the agents panel
+of johnnyvizz's savvy-progress mod (MIT).
+
+It reads the task files and `.claude/crew/work/<slug>.json`, which
+`/crew:crew-spec` writes after the scout runs, and writes through the `crew` CLI (`crew task`). The task chat
 runs on the Desktop session's own model access, one quick call per message,
 and changes the spec only through `crew task edit`.
 

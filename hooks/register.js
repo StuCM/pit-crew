@@ -1,5 +1,3 @@
-// Throwaway spike: the "Pit Crew Task Board" design as one mod pane, board above spec.
-// ponytail: one pane because the dock shows several panes as tabs, never stacked
 const PANE = 'crew-wall';
 const SPEC_PANE = 'crew-spec';
 
@@ -33,25 +31,9 @@ const MODELS = [
   { value: 'haiku', label: 'Haiku 4.5' },
 ];
 
-// Columns come from `crew board --json`: one per crew status, cards are [title, id, who, attention].
-let COLUMNS = [];
 let board = null; // the last `crew board --json`, for each task's file and status
 let boardError = '';
 let isLoaded = false;
-
-const dotFor = (meta) =>
-  meta.waitsOnUser ? C.clay : meta.inFlight ? C.blue : meta.terminal ? C.green : C.gray;
-
-export const buildColumns = ({ statuses, tasks }) =>
-  Object.entries(statuses).map(([name, meta]) => {
-    const mine = tasks.filter((t) => t.status === name);
-    const shown = meta.terminal ? mine.sort((x, y) => y.id.localeCompare(x.id)).slice(0, 5) : mine;
-    return {
-      name,
-      dot: dotFor(meta),
-      cards: shown.map((t) => [t.title, t.id, t.model ?? 'unassigned', meta.waitsOnUser ?? '']),
-    };
-  });
 
 const loadBoard = async ($) => {
   try {
@@ -61,9 +43,8 @@ const loadBoard = async ($) => {
       throw new Error(why);
     }
     board = JSON.parse(run.stdout);
-    COLUMNS = buildColumns(board);
     boardError = '';
-    if (!findCard(selected)) selected = COLUMNS.flatMap((c) => c.cards)[0]?.[1] ?? selected;
+    if (!selectedTask()) selected = board.tasks[0]?.id ?? selected;
   } catch (err) {
     boardError = 'Could not read the board: ' + err.message;
   }
@@ -95,101 +76,305 @@ const editSpec = ($, change) => crew($, ['task', selected, 'edit'], JSON.stringi
 let selected = '';
 // Desktop draws a plain Button's hover itself with no padding prop, so spaces in the label widen it.
 const pad = (label) => ' ' + label + ' ';
-let isFull = false;
-let isSpecOpen = true; // closing the spec gives the board the pane
-let isPoppedOut = false;
 let log = '';
 
-const findCard = (id) => {
-  for (const col of COLUMNS) {
-    const card = col.cards.find((c) => c[1] === id);
-    if (card) return { card, col };
-  }
-};
-
-const select = ($, id) => {
+const select = async ($, id) => {
   selected = id;
   doc = null;
-  isSpecOpen = true;
-  if (isPoppedOut) $.ui.open({ id: SPEC_PANE, title: 'Spec · ' + id });
+  await $.ui.open({
+    id: SPEC_PANE,
+    title: id + ' · ' + (selectedTask()?.title ?? ''),
+    focus: true,
+  });
   $.ui.invalidate('ui.render');
 };
 
-const boardView = ($, { Box, Text, Svg, Client }, width, surface) => {
-  const narrow = width < 100;
-  // Rows a card takes: border, padding, wrapped title, meta, and the attention and tag lines with their gaps.
-  const colWidth = narrow
-    ? width
-    : Math.floor((width - (COLUMNS.length - 1) * (S.sm * 2 + 1)) / COLUMNS.length);
-  const cardRows = ([title, , , attention]) =>
-    2 +
-    S.xs * 2 +
-    Math.ceil(title.length / Math.max(colWidth - S.sm * 2 - 2, 8)) +
-    S.xs +
-    1 +
-    (attention ? S.xs + 1 : 0);
-  // A Client has no height of its own in the terminal, so there each card is given its estimated rows; Desktop sizes it from its content.
-  const card = ([title, id, who, attention]) =>
-    Client({
-      key: 'card-' + id,
-      width: '100%',
-      ...(surface === 'desktop' ? {} : { height: cardRows([title, id, who, attention]) }),
-      module: './card.js',
-      props: {
-        title,
-        id,
-        who,
-        isSelected: id === selected,
-        attention,
-        tags: [],
-        colors: C,
-      },
-    });
-  const column = (col) =>
-    Box({
-      flexDirection: 'column',
-      rowGap: S.sm,
-      ...(narrow ? { width: '100%' } : { width: 0, flexGrow: 1 }),
+// ---- The crew list. Drawing adapted from savvy-progress's agents panel (MIT, © 2026 johnnyvizz).
+const SECTIONS = [
+  { name: 'Scout', costume: 'astronaut' },
+  { name: 'Worker', costume: 'engineer' },
+  { name: 'Reviewer', costume: 'detective' },
+  { name: 'Done', costume: 'racer' },
+];
+const SECTION_OF = {
+  draft: 'Scout',
+  approved: 'Worker',
+  building: 'Worker',
+  review: 'Reviewer',
+  blocked: 'Reviewer',
+};
+
+// Tasks by crew role, empty sections dropped; Done keeps every task still waiting on the person and the 5 newest finished.
+export const buildSections = ({ statuses, tasks }) => {
+  const isFinished = (t) => statuses[t.status]?.terminal;
+  return SECTIONS.map(({ name, costume }) => {
+    const mine = tasks.filter((t) => (SECTION_OF[t.status] ?? 'Done') === name);
+    const finished = mine.filter(isFinished).sort((x, y) => y.id.localeCompare(x.id));
+    const shown =
+      name === 'Done' ? [...mine.filter((t) => !isFinished(t)), ...finished.slice(0, 5)] : mine;
+    return { name, costume, tasks: shown };
+  }).filter((section) => section.tasks.length);
+};
+
+const FONT = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',sans-serif";
+const ROW_H = 52;
+const SECTION_H = 30;
+
+// Rough advance of system UI text, in em; good enough to size a slot.
+const charEm = (ch) => (/[\s.,:;'|!il1()[\]]/.test(ch) ? 0.3 : /[A-Z@%mw]/.test(ch) ? 0.72 : 0.56);
+const textWidth = (s, size) => [...s].reduce((w, ch) => w + charEm(ch) * size, 0);
+
+const fitText = (s, size, maxW) => {
+  if (textWidth(s, size) <= maxW) return s;
+  let out = '';
+  for (const ch of s) {
+    if (textWidth(out + ch + '…', size) > maxW) break;
+    out += ch;
+  }
+  return out + '…';
+};
+
+const PANE_CSS = `<style>
+.t{fill:#1f1f1f}.s{fill:#6b6b68}.m{fill:#9a9a96}.ln{stroke:#e4e4e1}.mk{stroke:#9a9a96}
+.pb{fill:#FAEEDA}.pt{fill:#9A6224}.lv{fill:#378ADD}.ok{stroke:#3B9C5F}
+@media (prefers-color-scheme: dark){.t{fill:#ececec}.s{fill:#a8a8a4}.m{fill:#7d7d79}.ln{stroke:#333331}.mk{stroke:#7d7d79}
+.pb{fill:#3D2E18}.pt{fill:#E8B26A}.lv{fill:#6AA8EE}.ok{stroke:#5CC283}}
+.live{animation:p 1.6s ease-in-out infinite}@keyframes p{50%{opacity:.3}}
+@media (prefers-reduced-motion: reduce){.live{animation:none}}
+</style>`;
+
+// Only an in-flight row runs: every crab walks, the engineer's wrench turns, the detective's magnifier sweeps.
+const CRAB_CSS = `<style>
+.run .la{animation:st .5s steps(1) infinite}.run .lb{animation:st .5s steps(1) infinite -.25s}
+.run .bd{animation:bob .5s steps(1) infinite -.125s}
+.run g{transform-box:fill-box}
+@keyframes st{50%{transform:translateY(-1px)}}@keyframes bob{50%{transform:translateY(1px)}}
+@keyframes blink{50%{opacity:.15}}
+.c-detective.run .it{animation:scan 1s steps(1) infinite}
+.c-detective.run .gl{animation:blink 1s steps(1) infinite -.5s}
+@keyframes scan{25%{transform:translate(-1px,1px)}50%{transform:translate(-2px,2px)}75%{transform:translate(-1px,1px)}}
+.c-engineer.run .it{transform-origin:100% 100%;animation:twist .5s ease-in-out infinite}
+@keyframes twist{50%{transform:rotate(-35deg)}}
+@media (prefers-reduced-motion: reduce){.run,.run g{animation:none!important}}
+</style>`;
+
+// The crab is pixel art in mid tones, drawn the same in both themes, so its fills stay literal.
+const CLAY = '#D97757';
+const INK = '#1F1E1D';
+const COSTUME_COLOR = {
+  astronaut: '#7F77DD',
+  engineer: '#BA7517',
+  detective: '#D85A30',
+  racer: '#1D9E75',
+};
+
+// `cls` puts a pixel in a group: `bd` (the default) is the body, `la`/`lb` the leg pairs, anything else a prop.
+const stamp = (f, x, y, rows, map, cls) =>
+  rows.forEach((row, dy) =>
+    [...row].forEach((ch, dx) => {
+      if (map[ch]) f(x + dx, y + dy, 1, 1, map[ch], cls);
+    }),
+  );
+
+const crabBody = (f, armFront = 0, armCls) => {
+  f(7, 10, 16, 12, CLAY);
+  f(3, 14, 4, 4, CLAY);
+  f(23, 14 + armFront, 4, 4, CLAY, armCls);
+  f(9, 12, 2, 2, INK);
+  f(19, 12, 2, 2, INK);
+  f(7, 22, 2, 4, CLAY, 'la');
+  f(17, 22, 2, 4, CLAY, 'la');
+  f(11, 22, 2, 4, CLAY, 'lb');
+  f(21, 22, 2, 4, CLAY, 'lb');
+};
+
+const COSTUMES = {
+  astronaut: (f, t) => {
+    crabBody(f);
+    f(6, 7, 18, 1, '#E6E8EE');
+    f(5, 8, 1, 14, '#E6E8EE');
+    f(24, 8, 1, 14, '#E6E8EE');
+    f(6, 22, 18, 1, '#C9CCD2');
+    f(6, 8, 18, 14, 'rgba(169,214,245,.32)');
+    f(8, 9, 2, 1, '#fff');
+    f(8, 10, 1, 2, '#fff');
+    f(14, 4, 2, 3, '#C9CCD2');
+    f(14, 2, 2, 2, t);
+    f(13, 18, 4, 2, t);
+    f(27, 3, 1, 3, '#F5C542');
+    f(26, 4, 3, 1, '#F5C542');
+  },
+  detective: (f, t) => {
+    crabBody(f, -4, 'it');
+    stamp(
+      f,
+      6,
+      3,
+      [
+        '......bbbbbb......',
+        '....bbcbbcbbbb....',
+        '...bbbbbbbbbbbb...',
+        '..bcbbcbbcbbcbbb..',
+        '.bbbbbbbbbbbbbbbb.',
+        'dddddddddddddddddd',
+      ],
+      { b: '#7A4A26', c: '#A0703F', d: '#5A3519' },
+    );
+    f(6, 9, 18, 1, t);
+    stamp(f, 23, 1, ['.kkk.', 'k...k', 'k...k', 'k...k', '.kkk.'], { k: '#3A3A3C' }, 'it');
+    f(24, 2, 3, 3, 'rgba(169,214,245,.7)', 'it');
+    f(25, 6, 1, 4, '#7A4A26', 'it');
+    f(24, 2, 1, 1, '#fff', 'gl');
+  },
+  engineer: (f, t) => {
+    crabBody(f);
+    stamp(
+      f,
+      6,
+      4,
+      [
+        '.....yyyyyyyy.....',
+        '...yyyyyhhyyyyy...',
+        '..yyyyyyhhyyyyyy..',
+        '..yyyyyyhhyyyyyy..',
+        '.yyyyyyyhhyyyyyyy.',
+        'dddddddddddddddddd',
+      ],
+      { y: '#F5C542', h: '#FBE08A', d: '#C99A1E' },
+    );
+    f(13, 5, 4, 2, t);
+    stamp(f, 0, 10, ['.s.s', 'sss.', '.s..', '.s..'], { s: '#8E929A' }, 'it');
+  },
+  racer: (f, t) => {
+    crabBody(f, -4);
+    stamp(
+      f,
+      6,
+      5,
+      [
+        '....rrrrrrrrrr....',
+        '..rrrrrrwwrrrrrr..',
+        '.rrrrrrrwwrrrrrrr.',
+        '.rrrrrrrwwrrrrrrr.',
+        '.rrrrrrrwwrrrrrrr.',
+        '.kkkkkkkkkkkkkkkkr',
+      ],
+      { r: t, w: '#F8F6F1', k: INK },
+    );
+    f(25, 1, 1, 9, '#8E929A');
+    stamp(f, 26, 1, ['wkwk', 'kwkw', 'wkwk'], { w: '#F8F6F1', k: INK });
+  },
+};
+
+// Props nest inside `bd` so they ride its bob; the legs stay outside it and step on their own.
+const crab = (x, y, costume, isLive) => {
+  const groups = new Map([['bd', []]]);
+  const f = (cx, cy, w, h, c, cls = 'bd') => {
+    if (!groups.has(cls)) groups.set(cls, []);
+    groups.get(cls).push(`<rect x="${cx}" y="${cy}" width="${w}" height="${h}" fill="${c}"/>`);
+  };
+  COSTUMES[costume](f, COSTUME_COLOR[costume]);
+  const group = (cls) => `<g class="${cls}">${(groups.get(cls) ?? []).join('')}</g>`;
+  const props = [...groups.keys()].filter((k) => k !== 'bd' && k !== 'la' && k !== 'lb');
+  const body = `<g class="bd">${groups.get('bd').join('')}${props.map(group).join('')}</g>`;
+  return `<g transform="translate(${x},${y}) scale(1.1)" shape-rendering="crispEdges"><g class="c-${costume}${isLive ? ' run' : ''}">${body}${group('la')}${group('lb')}</g></g>`;
+};
+
+const statusMark = (x, y, meta) => {
+  if (meta.inFlight) return `<circle class="live lv" cx="${x}" cy="${y}" r="3.5"/>`;
+  if (meta.terminal)
+    return `<path class="ok" d="M${x - 5} ${y}l3.5 3.5 6.5-7" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+  return `<circle class="mk" cx="${x}" cy="${y}" r="5" fill="none" stroke-width="1.4"/><path class="mk" d="M${x} ${y - 2.5}v2.8l1.8 1.2" fill="none" stroke-width="1.4" stroke-linecap="round"/>`;
+};
+
+const svg = (W, H, body) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${PANE_CSS}${CRAB_CSS}${body}</svg>`;
+
+const rowSvg = (task, meta, W, costume) => {
+  const textW = W - 42 - 24;
+  const id = task.id + '  ';
+  const title = fitText(task.title, 13, textW - textWidth(id, 13));
+  const pillX = 42 + textWidth(task.status, 11) + 10;
+  const waiting = meta.waitsOnUser
+    ? fitText('⚑ ' + meta.waitsOnUser, 11, Math.max(W - pillX - 40, 20))
+    : '';
+  const pill = waiting
+    ? `<rect class="pb" x="${pillX}" y="27" width="${textWidth(waiting, 11) + 16}" height="16" rx="8"/>
+<text class="pt" x="${pillX + 8}" y="39" font-family="${FONT}" font-size="11" font-weight="600">${esc(waiting)}</text>`
+    : '';
+  return svg(
+    W,
+    ROW_H,
+    `${crab(0, 10, costume, meta.inFlight)}
+<text x="42" y="20" font-family="${FONT}" font-size="13" font-weight="600"><tspan class="m">${esc(id)}</tspan><tspan class="t">${esc(title)}</tspan></text>
+<text class="s" x="42" y="39" font-family="${FONT}" font-size="11">${esc(task.status)}</text>
+${pill}${statusMark(W - 8, 16, meta)}
+<line class="ln" x1="0" y1="${ROW_H - 0.5}" x2="${W}" y2="${ROW_H - 0.5}"/>`,
+  );
+};
+
+const sectionSvg = (title, count, W) =>
+  svg(
+    W,
+    SECTION_H,
+    `<text x="0" y="20" font-family="${FONT}" font-size="12" font-weight="600"><tspan class="t">${esc(title)}</tspan><tspan class="m"> · ${count}</tspan></text>`,
+  );
+
+// Each row is a keyed Box holding the drawing, with card.js laid over it to take the click an Svg cannot.
+const boardList = ({ Box, Text, Svg, Client }, width, surface) => {
+  const isDrawn = surface === 'desktop' && Svg;
+  const W = Math.max(240, Math.min(900, width * 8 - 8));
+  const row = (task, costume) => {
+    const meta = board.statuses[task.status] ?? {};
+    const waiting = meta.waitsOnUser ? ' · ⚑ ' + meta.waitsOnUser : '';
+    return Box({
+      key: 'row-' + task.id,
+      position: 'relative',
+      flexShrink: 0,
       children: [
+        isDrawn
+          ? Svg({
+              source: rowSvg(task, meta, W, costume),
+              alt: `${task.id} ${task.title}: ${task.status}${waiting}`,
+              width: W,
+              height: ROW_H,
+            })
+          : Text({ children: [`${task.id}  ${task.title}${waiting}`] }),
         Box({
-          flexDirection: 'row',
-          columnGap: S.xs,
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
           children: [
-            Text({ color: col.dot, children: ['●'] }),
-            Text({ bold: true, color: C.mut, children: [col.name] }),
-            Text({ color: C.faint, children: [String(col.cards.length)] }),
+            Client({
+              key: 'card-' + task.id,
+              module: './card.js',
+              width: '100%',
+              height: '100%',
+              props: { id: task.id },
+            }),
           ],
         }),
-        ...col.cards.map(card),
       ],
     });
-  if (narrow) return Box({ flexDirection: 'column', rowGap: S.sm, children: COLUMNS.map(column) });
-  // Rows a column takes: header, then per card its border, padding, wrapped title, meta and tags, plus the gap.
-  const tallest = Math.max(
-    ...COLUMNS.map((col) => 1 + col.cards.reduce((n, c) => n + S.sm + cardRows(c), 0)),
-  );
-  // ponytail: Box has no single-side border, so the divider is sized from the estimate above, short by a gap at each end.
-  // Desktop gets a 1px Svg line (stacked │ glyphs draw dashed there); ROW_PX is a guess at Desktop's row height.
-  const ROW_PX = 22;
-  const rows = Math.max(tallest - S.sm * 2, 1);
-  const divider = () =>
-    Box({
-      marginY: S.sm,
-      children: [
-        surface === 'desktop' && Svg
-          ? Svg({
-              source: `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="${rows * ROW_PX}"><rect width="1" height="${rows * ROW_PX}" fill="${C.cardBorder}"/></svg>`,
-              alt: '',
-              width: 1,
-              height: rows * ROW_PX,
-            })
-          : Text({ color: C.cardBorder, children: [Array(rows).fill('│').join('\n')] }),
-      ],
-    });
-  const children = COLUMNS.flatMap((col, i) =>
-    i === 0 ? [column(col)] : [divider(), column(col)],
-  );
-  return Box({ flexDirection: 'row', columnGap: S.sm, children });
+  };
+  const children = [];
+  for (const section of buildSections(board)) {
+    const count = section.tasks.length;
+    children.push(
+      isDrawn
+        ? Svg({
+            source: sectionSvg(section.name, count, W),
+            alt: `${section.name}, ${count}`,
+            width: W,
+            height: SECTION_H,
+          })
+        : Text({ bold: true, children: [`${section.name} · ${count}`] }),
+    );
+    for (const task of section.tasks) children.push(row(task, section.costume));
+  }
+  return Box({ flexDirection: 'column', children });
 };
 
 // Agreement is what approval signs; context informs it; the build record is appended by the worker later.
@@ -1112,8 +1297,6 @@ export function register(on) {
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
     if (e.requestId !== PANE && e.requestId !== SPEC_PANE) return next(e);
     if (!isLoaded) await loadBoard($);
-    if (!doc) await loadDoc($);
-    if (selected && !chats[selected]) await loadChat($, selected);
     const width = e.props.bodyColumns ?? 80;
     const ui = $.ui.resolve(e);
     const { Box, Text, Button } = ui;
@@ -1155,8 +1338,34 @@ export function register(on) {
     const frame = (children) =>
       Box({ flexDirection: 'column', padding: S.sm, rowGap: S.sm, children: [children].flat() });
 
-    const found = findCard(selected);
-    const status = selectedTask()?.status;
+    if (e.requestId === PANE) {
+      const tasks = board?.tasks ?? [];
+      const waiting = tasks.filter((t) => board.statuses[t.status]?.waitsOnUser).length;
+      const header = row(
+        [
+          Text({ color: C.clay, bold: true, children: ['⫼'] }),
+          Text({ bold: true, color: C.ink, children: ['Pit crew'] }),
+          Text({
+            color: C.mut,
+            children: [
+              `${tasks.length} tasks · ${waiting} waiting on you` + (log ? ' · ' + log : ''),
+            ],
+          }),
+        ],
+        [],
+      );
+      return frame([
+        header,
+        boardError
+          ? Text({ color: C.amb, children: [boardError] })
+          : boardList(ui, width - S.sm * 2, e.surface),
+      ]);
+    }
+
+    if (!doc) await loadDoc($);
+    if (selected && !chats[selected]) await loadChat($, selected);
+    const task = selectedTask();
+    const status = task?.status;
     const questions = openQuestions();
     const waiting = board?.statuses?.[status]?.waitsOnUser;
     const pendingEnv = board?.statuses?.[status]?.pendingEnv;
@@ -1220,13 +1429,13 @@ export function register(on) {
         }),
       ],
       [
-        ...(found
+        ...(task
           ? [
               ui.Select({
                 key: 'column',
                 label: '',
-                options: COLUMNS.map((c) => ({ value: c.name, label: c.name })),
-                value: found.col.name,
+                options: Object.keys(board.statuses).map((name) => ({ value: name, label: name })),
+                value: task.status,
                 onSelect: async (to) => {
                   if (await crew($, ['task', selected, 'set', 'status', to]))
                     log = `${selected} → ${to}`;
@@ -1236,86 +1445,21 @@ export function register(on) {
                 key: 'model',
                 label: '',
                 options: MODELS,
-                value: selectedTask()?.model ?? 'sonnet',
+                value: task.model ?? 'sonnet',
                 onSelect: (m) => crew($, ['task', selected, 'set', 'model', m]),
               }),
             ]
           : []),
         ...runControls,
-        ...(e.requestId === SPEC_PANE
-          ? []
-          : [
-              Button({
-                key: 'full',
-                label: pad(isFull ? '⤡ Show board' : '⤢ Full view'),
-                plain: true,
-                onPress: () => {
-                  isFull = !isFull;
-                  redraw();
-                },
-              }),
-              Button({
-                key: 'pop-out',
-                label: pad('↗ Own pane'),
-                plain: true,
-                onPress: async () => {
-                  isPoppedOut = true;
-                  isFull = false;
-                  await $.ui.open({ id: SPEC_PANE, title: 'Spec · ' + selected, focus: true });
-                  redraw();
-                },
-              }),
-              Button({
-                key: 'close-spec',
-                label: pad('✖ Close'),
-                plain: true,
-                dimColor: true,
-                onPress: () => {
-                  isSpecOpen = false;
-                  isFull = false;
-                  redraw();
-                },
-              }),
-            ]),
       ],
     );
 
-    const spec = window('spec-window', specHeader, specBody($, ui, inner));
-    if (e.requestId === SPEC_PANE) return frame(spec);
-
-    const header = row(
-      [
-        Text({ color: C.clay, bold: true, children: ['⫼'] }),
-        Text({ bold: true, color: C.ink, children: ['Pit crew'] }),
-        Text({ color: C.mut, children: ['3 agents working' + (log ? ' · ' + log : '')] }),
-      ],
-      [
-        Button({
-          key: 'filter',
-          label: pad('Filter'),
-          plain: true,
-          dimColor: true,
-          onPress: () => {},
-        }),
-        Button({ key: 'new-task', label: 'New task', variant: 'primary', onPress: () => {} }),
-      ],
-    );
-    const boardWindow = window(
-      'board-window',
-      Text({ bold: true, color: C.mut, children: ['Board'] }),
-      boardError
-        ? Text({ color: C.amb, children: [boardError] })
-        : boardView($, ui, inner, e.surface),
-      { flexShrink: 0 },
-    );
-    if (isPoppedOut || !isSpecOpen) return frame([header, boardWindow]);
-    if (isFull) return frame([header, spec]);
-    return frame([header, boardWindow, spec]);
+    return frame(window('spec-window', specHeader, specBody($, ui, inner)));
   });
 
   on('ui.message', async ($, e, next) => {
     if (e.element.startsWith('card-') && typeof e.data?.select === 'string') {
-      select($, e.data.select);
+      await select($, e.data.select);
       return {};
     }
     if (e.element !== 'composer') return next(e);
@@ -1325,13 +1469,5 @@ export function register(on) {
       void sendChat($, e.data.send);
     }
     return {};
-  });
-
-  on('ui.close', async ($, e, next) => {
-    if (e.id === SPEC_PANE) {
-      isPoppedOut = false;
-      $.ui.invalidate('ui.render');
-    }
-    return next(e);
   });
 }
