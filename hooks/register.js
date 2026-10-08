@@ -33,41 +33,47 @@ const MODELS = [
 ];
 const model = {};
 
-// What each task waits on you for, as crew's draft and blocked statuses say it; tags are the open-question counts.
-const ATTENTION = { 'RX-031': 'Needs your approval', 'PC-09': 'Review rounds disagreed' };
-const TAGS = { 'RX-031': ['1 open'] };
+// Columns come from `crew board --json`: one per crew status, cards are [title, id, who, attention].
+let COLUMNS = [];
+let boardError = '';
+let isLoaded = false;
 
-const COLUMNS = [
-  {
-    name: 'Backlog',
-    dot: C.gray,
-    cards: [
-      ['Fix intermittent upload test failure in CI', 'PC-21', 'unassigned'],
-      ['Document the task packet schema', 'PC-22', 'unassigned'],
-    ],
-  },
-  {
-    name: 'Spec review',
-    dot: C.clay,
-    cards: [['Holding OK on an episode opens a menu against the card', 'RX-031', 'planner']],
-  },
-  {
-    name: 'Running',
-    dot: C.blue,
-    cards: [
-      ['Replace legacy date picker', 'PC-17', 'builder-2'],
-      ['Autosave in the resource editor', 'PC-18', 'builder-1'],
-    ],
-  },
-  {
-    name: 'Review',
-    dot: C.vio,
-    cards: [['Rate-limit the public search endpoint', 'PC-09', 'reviewer']],
-  },
-  { name: 'Done', dot: C.green, cards: [['Seed fixtures for staging', 'PC-11', 'builder-1']] },
-];
+const dotFor = (meta) =>
+  meta.waitsOnUser ? C.clay : meta.inFlight ? C.blue : meta.terminal ? C.green : C.gray;
 
-let selected = 'RX-031';
+export const buildColumns = ({ statuses, tasks }) =>
+  Object.entries(statuses).map(([name, meta]) => {
+    const mine = tasks.filter((t) => t.status === name);
+    const shown = meta.terminal ? mine.sort((x, y) => y.id.localeCompare(x.id)).slice(0, 5) : mine;
+    return {
+      name,
+      dot: dotFor(meta),
+      cards: shown.map((t) => [t.title, t.id, t.model ?? 'unassigned', meta.waitsOnUser ?? '']),
+    };
+  });
+
+const loadBoard = async ($) => {
+  try {
+    const run = await $.process.run(['npx', '--no-install', 'crew', 'board', '--json']);
+    if (run.exitCode !== 0) {
+      const why = run.stderr.trim().split('\n')[0] || 'exit ' + run.exitCode;
+      throw new Error(why);
+    }
+    COLUMNS = buildColumns(JSON.parse(run.stdout));
+    boardError = '';
+    if (!findCard(selected)) selected = COLUMNS.flatMap((c) => c.cards)[0]?.[1] ?? selected;
+  } catch (err) {
+    boardError = 'Could not read the board: ' + err.message;
+  }
+  isLoaded = true;
+};
+
+const refreshBoard = async ($) => {
+  await loadBoard($);
+  $.ui.invalidate('ui.render');
+};
+
+let selected = '';
 // Desktop draws a plain Button's hover itself with no padding prop, so spaces in the label widen it.
 const pad = (label) => ' ' + label + ' ';
 let isFull = false;
@@ -84,9 +90,10 @@ const findCard = (id) => {
 
 const moveCard = (id, to) => {
   const found = findCard(id);
-  if (!found || found.col.name === to) return;
+  const target = COLUMNS.find((c) => c.name === to);
+  if (!found || !target || found.col === target) return;
   found.col.cards = found.col.cards.filter((c) => c[1] !== id);
-  COLUMNS.find((c) => c.name === to).cards.push(found.card);
+  target.cards.push(found.card);
 };
 
 const select = ($, id) => {
@@ -102,28 +109,27 @@ const boardView = ($, { Box, Text, Svg, Client }, width, surface) => {
   const colWidth = narrow
     ? width
     : Math.floor((width - (COLUMNS.length - 1) * (S.sm * 2 + 1)) / COLUMNS.length);
-  const cardRows = ([title, id]) =>
+  const cardRows = ([title, , , attention]) =>
     2 +
     S.xs * 2 +
     Math.ceil(title.length / Math.max(colWidth - S.sm * 2 - 2, 8)) +
     S.xs +
     1 +
-    (ATTENTION[id] ? S.xs + 1 : 0) +
-    (TAGS[id] ? S.xs + 1 : 0);
+    (attention ? S.xs + 1 : 0);
   // A Client has no height of its own in the terminal, so there each card is given its estimated rows; Desktop sizes it from its content.
-  const card = ([title, id, who]) =>
+  const card = ([title, id, who, attention]) =>
     Client({
       key: 'card-' + id,
       width: '100%',
-      ...(surface === 'desktop' ? {} : { height: cardRows([title, id]) }),
+      ...(surface === 'desktop' ? {} : { height: cardRows([title, id, who, attention]) }),
       module: './card.js',
       props: {
         title,
         id,
         who,
         isSelected: id === selected,
-        attention: ATTENTION[id] ?? '',
-        tags: TAGS[id] ?? [],
+        attention,
+        tags: [],
         colors: C,
       },
     });
@@ -254,7 +260,7 @@ const approve = ($) => {
   $.clock.after(4000, () => {
     if (status !== 'approved') return;
     status = 'running';
-    moveCard(selected, 'Running');
+    moveCard(selected, 'building');
     log = 'running on ' + (model[selected] ?? 'sonnet');
     $.ui.invalidate('ui.render');
   });
@@ -844,8 +850,10 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Client, Svg }, width)
 };
 
 export function register(on) {
-  on('session.start', async ($, e) => {
+  on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'pitwall', description: 'Open the pit wall board' });
+    refreshBoard($);
+    $.clock.every(10000, () => refreshBoard($));
     return next(e);
   });
 
@@ -872,6 +880,7 @@ export function register(on) {
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
     if (e.requestId !== PANE && e.requestId !== SPEC_PANE) return next(e);
     await loadDoc($);
+    if (!isLoaded) await loadBoard($);
     const width = e.props.bodyColumns ?? 80;
     const ui = $.ui.resolve(e);
     const { Box, Text, Button } = ui;
@@ -937,7 +946,7 @@ export function register(on) {
                 plain: true,
                 onPress: () => {
                   status = 'running';
-                  moveCard(selected, 'Running');
+                  moveCard(selected, 'building');
                   log = 'started manually';
                   redraw();
                 },
@@ -1051,7 +1060,9 @@ export function register(on) {
     const board = window(
       'board-window',
       Text({ bold: true, color: C.mut, children: ['Board'] }),
-      boardView($, ui, inner, e.surface),
+      boardError
+        ? Text({ color: C.amb, children: [boardError] })
+        : boardView($, ui, inner, e.surface),
       { flexShrink: 0 },
     );
     if (isPoppedOut || !isSpecOpen) return frame([header, board]);

@@ -46,7 +46,22 @@ const pane = (requestId: string) =>
     },
   }) as const;
 
-const stubs = (on: any) => {
+const BOARD = {
+  project: 'Test',
+  root: '/repo',
+  statuses: {
+    draft: { waitsOnUser: 'spec needs your approval' },
+    building: { inFlight: true },
+    done: { terminal: true },
+  },
+  tasks: [
+    { id: '001', title: 'First thing', status: 'draft', model: 'opus' },
+    { id: '002', title: 'Second thing', status: 'building', model: 'sonnet' },
+  ],
+};
+
+const stubs = (on: any, run: any = { exitCode: 0, stdout: JSON.stringify(BOARD), stderr: '' }) => {
+  on('process.run', () => ({ value: run }));
   on('fs.read', () => ({ value: SPEC }));
   on('fs.exists', ($: any, e: any) => ({ value: e.path.endsWith('src/a.ts') }));
   on('ui.open', () => ({ value: { isPlaced: true } }));
@@ -108,17 +123,32 @@ test('approve starts automatically, with a manual start as the fallback', async 
   expect(await ui.find({ type: 'Text', text: 'Starting…' })).toBeDefined();
   await ui.press({ key: 'start' });
   expect(await ui.find({ type: 'Text', text: '● Running' })).toBeDefined();
-  expect((await ui.find({ key: 'column' }))?.props.value).toBe('Running');
+  expect((await ui.find({ key: 'column' }))?.props.value).toBe('building');
   await ui.unmount();
 });
 
-test('the composer is drawn, and cards press as a whole', async ($, on) => {
+test('the board has a column per status and a flag on tasks waiting on the person', async ($, on) => {
   stubs(on);
   const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
   expect(await ui.find({ key: 'composer' })).toBeDefined();
-  const card = (await ui.find({ key: 'card-PC-09' }))?.props.props;
-  expect(card.id).toBe('PC-09');
-  expect(card.attention).toBe('Review rounds disagreed');
+  const draft = (await ui.find({ key: 'card-001' }))?.props.props;
+  expect(draft.title).toBe('First thing');
+  expect(draft.who).toBe('opus');
+  expect(draft.attention).toBe('spec needs your approval');
+  expect((await ui.find({ key: 'card-002' }))?.props.props.attention).toBe('');
+  for (const name of ['draft', 'building', 'done']) {
+    expect(await ui.find({ type: 'Text', text: name })).toBeDefined();
+  }
+  await ui.unmount();
+});
+
+test('a failing crew call draws one error line instead of an empty board', async ($, on) => {
+  stubs(on, { exitCode: 1, stdout: '', stderr: 'crew: not found\nmore' });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  expect(
+    await ui.find({ type: 'Text', text: 'Could not read the board: crew: not found' }),
+  ).toBeDefined();
+  expect(await ui.find({ key: 'card-001' })).toBeUndefined();
   await ui.unmount();
 });
 
