@@ -508,14 +508,14 @@ of four sections by who has it, each with its own pixel crab.
 
 A task waiting on you carries a ⚑ with what it needs; a task in flight
 animates, unless your system asks for reduced motion. Click a row to open its
-spec, with editing, the task chat and the diagrams, in its own pane. The
+spec in its own pane: a header in the same style, then the Spec, Context,
+Build record and Diagrams tabs, with editing, approve and sign-off. The
 drawing follows the light or dark theme, and is adapted from the agents panel
 of johnnyvizz's savvy-progress mod (MIT).
 
 It reads the task files and `.claude/crew/work/<slug>.json`, which
-`/crew:crew-spec` writes after the scout runs, and writes through the `crew` CLI (`crew task`). The task chat
-runs on the Desktop session's own model access, one quick call per message,
-and changes the spec only through `crew task edit`.
+`/crew:crew-spec` writes after the scout runs, and writes through the `crew` CLI (`crew task`). There is no task chat; the
+behaviour-flow diagram is the one thing that asks the session's own model.
 
 It needs Claude Code 2.1.287 or later in the terminal and 2.1.286 or later in
 the Desktop Code tab. Desktop bundles its own copy of Claude Code; an older

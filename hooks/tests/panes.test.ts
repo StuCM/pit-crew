@@ -1,4 +1,4 @@
-import { expect, mock, test } from 'claude-code/testing';
+import { expect, test } from 'claude-code/testing';
 
 const SPEC = `---
 id: 031
@@ -114,39 +114,26 @@ const USAGE = {
   cache_creation_input_tokens: 0,
 };
 const answer = (text: string) => ({ isAnswered: true, text, usage: USAGE });
-const CHAT_KEY = 'chat:/repo:001';
 
 // A fake crew: `board --json` answers from a board that `task` calls change, as the real files would.
-// `complete` answers the model; `slowEdit` holds each `task … edit` until the clock moves a second.
+// `complete` answers the model.
 const stubs = (
   on: any,
   {
     boardRun,
     refuse,
     complete,
-    slowEdit,
     status,
   }: {
     status?: string;
     boardRun?: any;
     refuse?: string;
     complete?: (e: any) => any;
-    slowEdit?: boolean;
   } = {},
 ) => {
   const board = structuredClone(BOARD);
   if (status) board.tasks[0].status = status;
   const seen = {
-    clock: mock.clock(on),
-    store: new Map<string, unknown>([
-      [
-        CHAT_KEY,
-        [
-          { who: 'you', text: 'Earlier question' },
-          { who: 'planner', text: 'Earlier answer', suggestions: [] },
-        ],
-      ],
-    ]),
     calls: [] as any[],
     prompts: [] as any[],
     reads: [] as string[],
@@ -154,11 +141,6 @@ const stubs = (
     toasts: [] as string[],
     opens: [] as any[],
   };
-  on('store.get', ($: any, e: any) => ({ value: seen.store.get(e.key) }));
-  on('store.set', ($: any, e: any) => {
-    seen.store.set(e.key, e.value);
-    return { value: undefined };
-  });
   on('model.complete', async ($: any, e: any) => {
     seen.prompts.push(e);
     return { value: complete ? await complete(e) : answer('{"reply":"Fine.","replacements":[]}') };
@@ -177,7 +159,6 @@ const stubs = (
       };
     }
     seen.calls.push({ args, stdin: e.init?.stdin && JSON.parse(e.init.stdin) });
-    if (slowEdit && args[2] === 'edit') await seen.clock.sleep(1000);
     if (refuse) return { value: { exitCode: 1, stdout: '', stderr: refuse + '\nmore' } };
     const task = board.tasks.find((t) => t.id === args[1])!;
     if (args[2] === 'approve') task.status = 'approved';
@@ -225,6 +206,35 @@ test('tabs: spec first, context and build record on their own tabs', async ($, o
   }
 });
 
+test('the spec pane has the Svg header, the controls and four tabs, and no chat or ? controls', async ($, on) => {
+  stubs(on);
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
+  const [{ source: head }] = await svgs(ui);
+  expect(await ui.findAll({ type: 'Svg' })).toHaveLength(1);
+  expect(head).toContain('c-astronaut');
+  expect(head).toContain('Holding OK opens a menu');
+  expect(head).toContain('#031 · laptop · 2 files · crew/031-x');
+  expect(head).toContain('⚑ spec needs your approval');
+  expect(head).toContain('prefers-color-scheme: dark');
+  for (const key of [
+    'column',
+    'model',
+    'approve',
+    'tab-agreement',
+    'tab-context',
+    'tab-record',
+    'tab-diagram',
+  ])
+    expect(await ui.find({ key })).toBeDefined();
+  for (const key of ['composer', 'ask-0-0', 'ask-diagram'])
+    expect(await ui.find({ key })).toBeUndefined();
+  await ui.press({ key: 'tab-context' });
+  expect(await ui.find({ key: 'ask-2-0' })).toBeUndefined();
+  await ui.press({ key: 'tab-diagram' });
+  expect(await ui.find({ key: 'ask-diagram' })).toBeUndefined();
+  await ui.unmount();
+});
+
 test('the board pane holds the crew list alone, with no spec window or its buttons', async ($, on) => {
   stubs(on);
   const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
@@ -261,8 +271,6 @@ test('edit, remove, add and remove-section write the task file through crew task
   ]);
   expect(await ui.find({ key: 'restore-2-0' })).toBeUndefined();
   await ui.press({ key: 'ok-0-0' });
-  await ui.press({ key: 'ask-0-0' });
-  expect(await ui.find({ type: 'Markdown', text: /Can we talk this one through/ })).toBeDefined();
   expect(seen.calls.length).toBe(4);
   await ui.unmount();
 });
@@ -453,171 +461,6 @@ test('diagrams: a task with a part gets Architecture and Feature views of it and
   await ui.press({ key: 'diagram-feature' });
   expect(await svg()).toContain('✔ diagramItems · modify');
   expect(await svg()).toContain('Desktop pane');
-  await ui.unmount();
-});
-
-const reply = (out: object) => () => answer(JSON.stringify(out));
-
-test('a plain question is answered from the spec and the thread, with no edit run', async ($, on) => {
-  const seen = stubs(on, { complete: reply({ reply: 'Step two is clear.', replacements: [] }) });
-  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
-  expect(await ui.find({ type: 'Markdown', text: 'Earlier answer' })).toBeDefined();
-  await ui.post({ send: 'Is step two clear?' }, { in: 'composer' });
-  expect(await ui.find({ type: 'Markdown', text: 'Step two is clear.' })).toBeDefined();
-  expect(seen.calls).toEqual([]);
-  expect(seen.prompts.length).toBe(1);
-  const { model, effort, prompt } = seen.prompts[0];
-  expect([model, effort]).toEqual(['sonnet', 'low']);
-  expect(prompt).toContain('2. Second step');
-  expect(prompt).toContain('planner: Earlier answer');
-  expect(prompt).toContain('Is step two clear?');
-  const saved = seen.store.get(CHAT_KEY) as any[];
-  expect(saved.map((t) => t.text)).toEqual([
-    'Earlier question',
-    'Earlier answer',
-    'Is step two clear?',
-    'Step two is clear.',
-  ]);
-  await ui.unmount();
-});
-
-test('the status line reads the spec with elapsed seconds while the model works', async ($, on) => {
-  const { clock } = stubs(on, {
-    complete: async () => {
-      await clock.sleep(5000);
-      return answer('{"reply":"Done thinking.","replacements":[]}');
-    },
-  });
-  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
-  await ui.post({ send: 'Anything missing?' }, { in: 'composer' });
-  expect(await ui.find({ type: 'Text', text: 'Reading the spec… 0:00' })).toBeDefined();
-  await clock.advance(4000);
-  expect(await ui.find({ type: 'Text', text: 'Reading the spec… 0:04' })).toBeDefined();
-  await clock.advance(1000);
-  expect(await ui.find({ type: 'Markdown', text: 'Done thinking.' })).toBeDefined();
-  expect(await ui.find({ type: 'Text', text: /Reading the spec/ })).toBeUndefined();
-  await ui.unmount();
-});
-
-test('a proposed change is a suggestion card, and Apply writes it through crew task edit', async ($, on) => {
-  const seen = stubs(on, {
-    complete: reply({
-      reply: 'Reword the second step.',
-      replacements: [{ old: '2. Second step', new: '2. Second step, clearer' }],
-      apply: false,
-    }),
-  });
-  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
-  await ui.post({ send: 'Is step two clear?' }, { in: 'composer' });
-  expect(await ui.find({ type: 'Markdown', text: 'Reword the second step.' })).toBeDefined();
-  expect(await ui.find({ type: 'Text', text: '+ 2. Second step, clearer' })).toBeDefined();
-  expect(seen.calls).toEqual([]);
-  await ui.press({ key: 'apply-3-0' });
-  expect(seen.calls).toEqual([
-    {
-      args: ['task', '001', 'edit'],
-      stdin: { old: '2. Second step', new: '2. Second step, clearer' },
-    },
-  ]);
-  expect(await ui.find({ key: 'apply-3-0' })).toBeUndefined();
-  await ui.unmount();
-});
-
-test('a change the person asked for is made without a click, showing Updating the spec', async ($, on) => {
-  const seen = stubs(on, {
-    slowEdit: true,
-    complete: reply({
-      reply: 'Reworded it.',
-      replacements: [{ old: '2. Second step', new: '2. Second step, clearer' }],
-      apply: true,
-    }),
-  });
-  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
-  const reads = seen.reads.length;
-  await ui.post({ send: 'Just fix step two.' }, { in: 'composer' });
-  expect(await ui.find({ type: 'Text', text: 'Updating the spec… 0:00' })).toBeDefined();
-  expect(seen.calls).toEqual([
-    {
-      args: ['task', '001', 'edit'],
-      stdin: { old: '2. Second step', new: '2. Second step, clearer' },
-    },
-  ]);
-  await seen.clock.advance(1000);
-  expect(await ui.find({ type: 'Markdown', text: 'Reworded it.' })).toBeDefined();
-  expect(await ui.find({ key: 'apply-3-0' })).toBeUndefined();
-  expect(seen.reads.length).toBeGreaterThan(reads + 1);
-  await ui.unmount();
-});
-
-test('a refused edit is reported in the reply', async ($, on) => {
-  stubs(on, {
-    refuse: 'task: no match',
-    complete: reply({
-      reply: 'Done.',
-      replacements: [{ old: 'Gone line', new: 'x' }],
-      apply: true,
-    }),
-  });
-  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
-  await ui.post({ send: 'Fix it.' }, { in: 'composer' });
-  expect(
-    await ui.find({ type: 'Markdown', text: "Done.\n\n_Couldn't find 'Gone line' in the spec._" }),
-  ).toBeDefined();
-  await ui.unmount();
-});
-
-test('a reply that is not JSON is shown as it came', async ($, on) => {
-  stubs(on, { complete: () => answer('Plain words, no JSON.') });
-  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
-  await ui.post({ send: 'Hello?' }, { in: 'composer' });
-  expect(await ui.find({ type: 'Markdown', text: 'Plain words, no JSON.' })).toBeDefined();
-  await ui.unmount();
-});
-
-test('an unanswered completion shows why', async ($, on) => {
-  stubs(on, {
-    complete: () => ({
-      isAnswered: false,
-      reason: 'api-error',
-      status: 401,
-      error: 'authentication_failed',
-      usage: USAGE,
-    }),
-  });
-  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
-  await ui.post({ send: 'Hello?' }, { in: 'composer' });
-  expect(
-    await ui.find({
-      type: 'Markdown',
-      text: 'The model did not answer: api-error (authentication_failed)',
-    }),
-  ).toBeDefined();
-  await ui.unmount();
-});
-
-test('? on a line sends the quote to the model', async ($, on) => {
-  const seen = stubs(on);
-  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
-  await ui.press({ key: 'ask-0-0' });
-  expect(seen.prompts[0].prompt).toContain(
-    '> Holding OK opens a menu.\n\nCan we talk this one through?',
-  );
-  expect(await ui.find({ type: 'Markdown', text: 'Fine.' })).toBeDefined();
-  await ui.unmount();
-});
-
-test('a throwing completion shows the error and leaves no status turn behind', async ($, on) => {
-  stubs(on, {
-    complete: () => {
-      throw new Error('socket closed');
-    },
-  });
-  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
-  await ui.post({ send: 'Hello?' }, { in: 'composer' });
-  expect(
-    await ui.find({ type: 'Markdown', text: /The model did not answer: threw/ }),
-  ).toBeDefined();
-  expect(await ui.find({ type: 'Text', text: /Reading the spec/ })).toBeUndefined();
   await ui.unmount();
 });
 

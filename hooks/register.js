@@ -119,6 +119,7 @@ export const buildSections = ({ statuses, tasks }) => {
 const FONT = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',sans-serif";
 const ROW_H = 52;
 const SECTION_H = 30;
+const SPEC_HEAD_H = 64;
 
 // Rough advance of system UI text, in em; good enough to size a slot.
 const charEm = (ch) => (/[\s.,:;'|!il1()[\]]/.test(ch) ? 0.3 : /[A-Z@%mw]/.test(ch) ? 0.72 : 0.56);
@@ -313,6 +314,40 @@ ${pill}${statusMark(W - 8, 16, meta)}
   );
 };
 
+// The spec pane's header in the list's style: costume crab, title, meta line, and the status and waiting pills in the section's colour.
+const specHeaderSvg = (task, doc, meta, metaLine, W) => {
+  const costume = SECTIONS.find((x) => x.name === (SECTION_OF[task.status] ?? 'Done')).costume;
+  const color = COSTUME_COLOR[costume];
+  const textW = W - 42 - 8;
+  const pill = (text, x, fill, cls) => {
+    const w = textWidth(text, 11) + 16;
+    return {
+      w,
+      svg: `<rect ${cls ? 'class="pb"' : `fill="${fill}" fill-opacity=".18"`} x="${x}" y="38" width="${w}" height="16" rx="8"/>
+<text ${cls ? 'class="pt"' : `fill="${fill}"`} x="${x + 8}" y="50" font-family="${FONT}" font-size="11" font-weight="600">${esc(text)}</text>`,
+    };
+  };
+  const status = pill(task.status, 42, color);
+  const waiting = meta.waitsOnUser
+    ? pill(
+        fitText('⚑ ' + meta.waitsOnUser, 11, Math.max(textW - status.w - 8, 20)),
+        42 + status.w + 8,
+        '',
+        true,
+      )
+    : null;
+  const metaX = 42 + status.w + (waiting ? waiting.w + 8 : 0) + 10;
+  return svg(
+    W,
+    SPEC_HEAD_H,
+    `${crab(0, 12, costume, meta.inFlight)}
+<text class="t" x="42" y="26" font-family="${FONT}" font-size="18" font-weight="600">${esc(fitText(doc.title, 18, textW))}</text>
+${status.svg}${waiting?.svg ?? ''}
+<text class="s" x="${metaX}" y="50" font-family="${FONT}" font-size="11">${esc(fitText(metaLine, 11, Math.max(W - metaX - 8, 20)))}</text>
+<line class="ln" x1="0" y1="${SPEC_HEAD_H - 0.5}" x2="${W}" y2="${SPEC_HEAD_H - 0.5}"/>`,
+  );
+};
+
 const sectionSvg = (title, count, W) =>
   svg(
     W,
@@ -423,85 +458,7 @@ export const parseSpec = (source) => {
 let doc = null;
 let newFiles = new Set(); // files: entries not yet in the repository
 let editing = null; // { s, b } of the block being edited, or { s, b: 'new' } for an added line
-const marks = {}; // block text → 'ok' | 'asked': view-only, never written, so kept across reloads
-const chats = {}; // task id → [{ who, text, suggestions? } | { who, status, seconds }], so a late reply lands in its own task's chat
-
-const chatKey = (id) => 'chat:' + board?.root + ':' + id;
-const saveChat = ($, id) => $.store.set(chatKey(id), chats[id]);
-
-const loadChat = async ($, id) => {
-  chats[id] = (await $.store.get(chatKey(id))) ?? [];
-};
-
-const CHAT_SYSTEM =
-  'You help a person refine a software task spec. You get the spec in full, the chat so far and their new message. ' +
-  'Reply with JSON only, no prose around it: {"reply":"your answer, in markdown","replacements":[{"old":"text copied exactly from the spec","new":"what replaces it, empty to delete"}],"apply":false}. ' +
-  'Answer a question briefly in reply, with no replacements. Each old must match the spec exactly once. ' +
-  'Set apply to true only when the person told you to make the change, not when you are proposing one.';
-
-// One completion per message, through the session's own model access; spec changes go through `crew task edit`.
-const sendChat = async ($, text) => {
-  const id = selected;
-  const file = selectedTask()?.file;
-  const thread = (chats[id] ??= []);
-  const history = thread
-    .filter((t) => !t.status)
-    .slice(-10)
-    .map((t) => t.who + ': ' + t.text)
-    .join('\n\n');
-  const turn = { who: 'planner', status: 'Reading the spec…', seconds: 0 };
-  thread.push({ who: 'you', text }, turn);
-  const redraw = () => $.ui.invalidate('ui.render');
-  redraw();
-  const tick = $.clock.every(1000, () => {
-    turn.seconds += 1;
-    redraw();
-  });
-  try {
-    let spec = '';
-    try {
-      spec = await $.fs.read(board.root + '/' + file);
-    } catch {}
-    let r;
-    try {
-      r = await $.model.complete({
-        model: 'sonnet',
-        effort: 'low',
-        system: CHAT_SYSTEM,
-        prompt: `# The spec\n\n${spec}\n\n# The chat so far\n\n${history || '(none)'}\n\n# Their new message\n\n${text}`,
-      });
-    } catch (err) {
-      r = { isAnswered: false, reason: 'threw', error: String(err?.message ?? err) };
-    }
-    let reply = r.isAnswered
-      ? r.text
-      : 'The model did not answer: ' + r.reason + (r.error ? ' (' + r.error + ')' : '');
-    let replacements = [];
-    let isApply = false;
-    try {
-      const out = JSON.parse(r.text.slice(r.text.indexOf('{'), r.text.lastIndexOf('}') + 1));
-      if (typeof out.reply === 'string') reply = out.reply;
-      replacements = (Array.isArray(out.replacements) ? out.replacements : []).filter(
-        (c) => typeof c?.old === 'string' && typeof c?.new === 'string',
-      );
-      isApply = out.apply === true;
-    } catch {}
-    if (isApply && replacements.length) {
-      turn.status = 'Updating the spec…';
-      redraw();
-      for (const change of replacements)
-        if (!(await crew($, ['task', id, 'edit'], JSON.stringify(change))))
-          reply += `\n\n_Couldn't find '${clip(change.old, 80)}' in the spec._`;
-      replacements = [];
-    }
-    thread[thread.indexOf(turn)] = { who: 'planner', text: reply, suggestions: replacements };
-  } finally {
-    tick.cancel();
-  }
-  await saveChat($, id);
-  redraw();
-};
-
+const marks = {}; // block text → 'ok': view-only, never written, so kept across reloads
 const loadPlan = async ($, task) => {
   if (!task.part || plans[task.id]) return;
   plans[task.id] = [];
@@ -527,9 +484,6 @@ const loadDoc = async ($) => {
   newFiles = new Set(task.files.filter((f) => !f.exists).map((f) => f.path));
   await loadPlan($, task);
 };
-
-const openQuestions = () =>
-  doc.sections.flatMap((s) => s.blocks).filter((b) => b.state === 'asked').length;
 
 // The main session runs crew-run itself; the mod only asks, and the board shows when it has started.
 const startRun = ($) => {
@@ -558,7 +512,6 @@ const sendBack = async ($) => {
 // ---- Diagrams: data comes from the spec or a model as nodes and edges; the mod does the drawing, so layout and colours stay its own.
 const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const clip = (t, n) => (t.length > n ? t.slice(0, n - 1) + '…' : t);
-const elapsed = (seconds) => Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
 
 // Approach steps against the files they name: a step "touches" a file whose path or file name it mentions.
 export const changeMap = (spec) => {
@@ -789,9 +742,7 @@ const TABS = [
 ];
 let tab = 'agreement';
 
-let clears = 0; // bumped to tell the composer to empty itself
-
-const ICON = { ok: '✔', edit: '✏', remove: '✖', ask: '?', add: '＋' };
+const ICON = { ok: '✔', edit: '✏', remove: '✖', add: '＋' };
 
 // The Diagrams tab: a picker, then the chosen diagram as an Svg on Desktop, or a text outline where Svg does not draw.
 const PLAN_POINTER =
@@ -832,17 +783,6 @@ const diagramItems = ($, { Box, Text, Button, Markdown, Svg }, act) => {
             }),
           ]
         : []),
-      Button({
-        key: 'ask-diagram',
-        label: pad('? Ask about this'),
-        plain: true,
-        dimColor: true,
-        onPress: () =>
-          sendChat(
-            $,
-            `About the ${diagram === 'change' ? 'change map' : diagram === 'flow' ? 'behaviour flow' : diagram + ' view'}: can you walk me through it?`,
-          ),
-      }),
     ],
   });
   const out = [{ el: picker }];
@@ -968,18 +908,12 @@ const diagramItems = ($, { Box, Text, Button, Markdown, Svg }, act) => {
   return out;
 };
 
-const specBody = ($, { Box, Text, Button, Input, Markdown, Client, Svg }, width) => {
-  const narrow = width < 100;
+const specBody = ($, { Box, Text, Button, Input, Markdown, Svg }) => {
   const redraw = () => $.ui.invalidate('ui.render');
   const act = (fn) => () => {
     fn();
     redraw();
   };
-  const ask = (block, note) => {
-    block.state = marks[block.text] = 'asked';
-    void sendChat($, '> ' + block.text.split('\n')[0].slice(0, 120) + '\n\n' + note);
-  };
-
   const blockRow = (section, si, block, bi) => {
     if (editing && editing.s === si && editing.b === bi) {
       return Input({
@@ -995,18 +929,9 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Client, Svg }, width)
         },
       });
     }
-    const tint = block.state === 'asked' ? C.vioBg : undefined;
     const controls =
       section.tier !== 'agreement'
-        ? [
-            Button({
-              key: `ask-${si}-${bi}`,
-              label: pad(ICON.ask),
-              plain: true,
-              dimColor: true,
-              onPress: act(() => ask(block, 'Why this?')),
-            }),
-          ]
+        ? []
         : [
             Button({
               key: `ok-${si}-${bi}`,
@@ -1033,13 +958,6 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Client, Svg }, width)
               dimColor: true,
               onPress: () => editSpec($, { old: block.text, new: '' }),
             }),
-            Button({
-              key: `ask-${si}-${bi}`,
-              label: pad(ICON.ask),
-              plain: true,
-              dimColor: block.state !== 'asked',
-              onPress: act(() => ask(block, 'Can we talk this one through?')),
-            }),
           ];
     return Box({
       key: `block-${si}-${bi}`,
@@ -1049,7 +967,6 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Client, Svg }, width)
         Box({
           flexGrow: 1,
           flexDirection: 'column',
-          backgroundColor: tint,
           children: [Markdown({ text: block.text, dimColor: section.tier === 'record' })],
         }),
         Box({ flexDirection: 'row', children: controls }),
@@ -1145,124 +1062,14 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Client, Svg }, width)
     ),
   });
 
-  const spec = Box({
+  return Box({
     flexDirection: 'column',
     rowGap: S.sm,
     overflow: 'hidden',
-    ...(narrow ? { width: '100%' } : { width: 0, flexGrow: 3 }),
     children: [
       tabs,
       Box({ flexDirection: 'column', rowGap: S.sm, children: items.map((item) => item.el) }),
     ],
-  });
-
-  const suggestion = (thread, m, s) => {
-    const { old, new: replacement } = thread[m].suggestions[s];
-    const id = selected;
-    const drop = () => {
-      thread[m].suggestions.splice(s, 1);
-      void saveChat($, id);
-    };
-    return Box({
-      key: `suggestion-${m}-${s}`,
-      flexDirection: 'column',
-      rowGap: S.xs,
-      borderStyle: 'round',
-      borderColor: C.cardBorder,
-      backgroundColor: C.card,
-      paddingX: S.xs,
-      children: [
-        Text({ color: C.mut, children: ['− ' + old] }),
-        Text({ color: C.ink, children: [replacement ? '+ ' + replacement : '+ (delete it)'] }),
-        Box({
-          flexDirection: 'row',
-          columnGap: S.sm,
-          children: [
-            Button({
-              key: `apply-${m}-${s}`,
-              label: 'Apply',
-              variant: 'primary',
-              onPress: async () => {
-                if (await editSpec($, { old, new: replacement })) drop();
-                redraw();
-              },
-            }),
-            Button({
-              key: `dismiss-${m}-${s}`,
-              label: pad('Dismiss'),
-              plain: true,
-              dimColor: true,
-              onPress: act(drop),
-            }),
-          ],
-        }),
-      ],
-    });
-  };
-  const thread = chats[selected] ?? [];
-  const message = ({ who, text, status, seconds, suggestions = [] }, m) =>
-    Box({
-      key: 'message-' + m,
-      flexDirection: 'column',
-      rowGap: S.xs,
-      alignSelf: who === 'you' ? 'flex-end' : 'flex-start',
-      backgroundColor: who === 'you' ? C.well : undefined,
-      paddingX: who === 'you' ? S.xs : 0,
-      children: [
-        ...(who === 'you' ? [] : [Text({ color: C.faint, children: [who] })]),
-        status
-          ? Text({ italic: true, color: C.faint, children: [status + ' ' + elapsed(seconds)] })
-          : Markdown({ text }),
-        ...suggestions.map((_, s) => suggestion(thread, m, s)),
-      ],
-    });
-  // Newest first with the composer on top: the pane scrolls as a whole, so the input sits by the spec's title,
-  // where it is in view whenever the spec is, instead of at the foot of a column as long as the spec.
-  const chatPanel = Box({
-    flexDirection: 'column',
-    rowGap: S.sm,
-    alignSelf: 'flex-start',
-    ...(narrow ? { width: '100%' } : { width: 0, flexGrow: 2 }),
-    borderStyle: 'round',
-    borderColor: C.cardBorder,
-    backgroundColor: C.window,
-    paddingX: S.sm,
-    paddingY: S.xs,
-    children: [
-      Box({
-        flexDirection: 'row',
-        columnGap: S.xs,
-        children: [
-          Text({ bold: true, color: C.mut, children: ['Task chat'] }),
-          Text({ color: C.faint, children: ['only this task · kept out of the main session'] }),
-        ],
-      }),
-      // ponytail: drawn by composer.js, since Desktop's Input is fixed-width and framed; typing is the mod's own, so paste is not native
-      Client({
-        key: 'composer',
-        module: './composer.js',
-        width: '100%',
-        props: {
-          placeholder: 'Ask about this spec, or tell the planner what to change…',
-          clear: clears,
-          ink: C.ink,
-          faint: C.faint,
-          border: C.border,
-          card: C.card,
-        },
-      }),
-      Box({
-        flexDirection: 'column',
-        rowGap: S.sm,
-        children: thread.map((item, m) => message(item, m)).toReversed(),
-      }),
-    ],
-  });
-  return Box({
-    flexDirection: narrow ? 'column' : 'row',
-    columnGap: S.sm,
-    rowGap: S.sm,
-    children: [spec, chatPanel],
   });
 };
 
@@ -1363,10 +1170,8 @@ export function register(on) {
     }
 
     if (!doc) await loadDoc($);
-    if (selected && !chats[selected]) await loadChat($, selected);
     const task = selectedTask();
     const status = task?.status;
-    const questions = openQuestions();
     const waiting = board?.statuses?.[status]?.waitsOnUser;
     const pendingEnv = board?.statuses?.[status]?.pendingEnv;
     const runControls = pendingEnv
@@ -1387,7 +1192,7 @@ export function register(on) {
           ? [
               Button({
                 key: 'approve',
-                label: questions ? `Approve · ${questions} open` : 'Approve spec',
+                label: 'Approve spec',
                 variant: 'primary',
                 onPress: () => approve($),
               }),
@@ -1417,44 +1222,62 @@ export function register(on) {
     ]
       .filter(Boolean)
       .join(' · ');
-    const specHeader = row(
-      [
-        Box({
+    const controls = [
+      ...(task
+        ? [
+            ui.Select({
+              key: 'column',
+              label: '',
+              options: Object.keys(board.statuses).map((name) => ({ value: name, label: name })),
+              value: task.status,
+              onSelect: async (to) => {
+                if (await crew($, ['task', selected, 'set', 'status', to]))
+                  log = `${selected} → ${to}`;
+              },
+            }),
+            ui.Select({
+              key: 'model',
+              label: '',
+              options: MODELS,
+              value: task.model ?? 'sonnet',
+              onSelect: (m) => crew($, ['task', selected, 'set', 'model', m]),
+            }),
+          ]
+        : []),
+      ...runControls,
+    ];
+    const headW = Math.max(240, Math.min(900, inner * 8 - 8));
+    const isDrawn = e.surface === 'desktop' && ui.Svg && task;
+    const specHeader = isDrawn
+      ? Box({
           flexDirection: 'column',
-          rowGap: S.sm,
+          rowGap: S.xs,
           children: [
-            ui.Markdown({ text: '## ' + doc.title }),
-            Text({ color: C.mut, children: [meta] }),
+            ui.Svg({
+              key: 'spec-head',
+              source: specHeaderSvg(task, doc, board.statuses[task.status] ?? {}, meta, headW),
+              alt: `${doc.title}: ${task.status}`,
+              width: headW,
+              height: SPEC_HEAD_H,
+            }),
+            row([], controls),
           ],
-        }),
-      ],
-      [
-        ...(task
-          ? [
-              ui.Select({
-                key: 'column',
-                label: '',
-                options: Object.keys(board.statuses).map((name) => ({ value: name, label: name })),
-                value: task.status,
-                onSelect: async (to) => {
-                  if (await crew($, ['task', selected, 'set', 'status', to]))
-                    log = `${selected} → ${to}`;
-                },
-              }),
-              ui.Select({
-                key: 'model',
-                label: '',
-                options: MODELS,
-                value: task.model ?? 'sonnet',
-                onSelect: (m) => crew($, ['task', selected, 'set', 'model', m]),
-              }),
-            ]
-          : []),
-        ...runControls,
-      ],
-    );
+        })
+      : row(
+          [
+            Box({
+              flexDirection: 'column',
+              rowGap: S.sm,
+              children: [
+                ui.Markdown({ text: '## ' + doc.title }),
+                Text({ color: C.mut, children: [meta] }),
+              ],
+            }),
+          ],
+          controls,
+        );
 
-    return frame(window('spec-window', specHeader, specBody($, ui, inner)));
+    return frame(window('spec-window', specHeader, specBody($, ui)));
   });
 
   on('ui.message', async ($, e, next) => {
@@ -1462,12 +1285,6 @@ export function register(on) {
       await select($, e.data.select);
       return {};
     }
-    if (e.element !== 'composer') return next(e);
-    if (typeof e.data?.send === 'string' && e.data.send.trim()) {
-      clears += 1;
-      log = 'sent to planner';
-      void sendChat($, e.data.send);
-    }
-    return {};
+    return next(e);
   });
 }
