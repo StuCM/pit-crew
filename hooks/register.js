@@ -239,42 +239,77 @@ let doc = null;
 let newFiles = new Set(); // files: entries not yet in the repository
 let editing = null; // { s, b } of the block being edited, or { s, b: 'new' } for an added line
 const marks = {}; // block text → 'ok' | 'asked': view-only, never written, so kept across reloads
-const chats = {}; // task id → [{ who, text, suggestions? }], so a late reply lands in its own task's chat
+const chats = {}; // task id → [{ who, text, suggestions? } | { who, status, seconds }], so a late reply lands in its own task's chat
 
-// `crew chat` keeps the conversation; the mod only shows it, so the main session never sees it.
+const chatKey = (id) => 'chat:' + board?.root + ':' + id;
+const saveChat = ($, id) => $.store.set(chatKey(id), chats[id]);
+
 const loadChat = async ($, id) => {
-  chats[id] = [];
-  const run = await $.process.run(['npx', '--no-install', 'crew', 'chat', id, '--history']);
-  if (run.exitCode !== 0) return;
-  try {
-    chats[id] = JSON.parse(run.stdout).map(({ who, text }) => ({ who, text }));
-  } catch {}
+  chats[id] = (await $.store.get(chatKey(id))) ?? [];
 };
 
+const CHAT_SYSTEM =
+  'You help a person refine a software task spec. You get the spec in full, the chat so far and their new message. ' +
+  'Reply with JSON only, no prose around it: {"reply":"your answer, in markdown","replacements":[{"old":"text copied exactly from the spec","new":"what replaces it, empty to delete"}],"apply":false}. ' +
+  'Answer a question briefly in reply, with no replacements. Each old must match the spec exactly once. ' +
+  'Set apply to true only when the person told you to make the change, not when you are proposing one.';
+
+// One completion per message, through the session's own model access; spec changes go through `crew task edit`.
 const sendChat = async ($, text) => {
   const id = selected;
+  const file = selectedTask()?.file;
   const thread = (chats[id] ??= []);
-  const reply = { who: 'planner', text: 'planner is thinking…', suggestions: [] };
-  thread.push({ who: 'you', text }, reply);
-  $.ui.invalidate('ui.render');
-  let out = null;
-  let why = '';
+  const history = thread
+    .filter((t) => !t.status)
+    .slice(-10)
+    .map((t) => t.who + ': ' + t.text)
+    .join('\n\n');
+  const turn = { who: 'planner', status: 'Reading the spec…', seconds: 0 };
+  thread.push({ who: 'you', text }, turn);
+  const redraw = () => $.ui.invalidate('ui.render');
+  redraw();
+  const tick = $.clock.every(1000, () => {
+    turn.seconds += 1;
+    redraw();
+  });
   try {
-    const run = await $.process.run(['npx', '--no-install', 'crew', 'chat', id], {
-      stdin: text,
-      timeoutMs: 600000,
+    let spec = '';
+    try {
+      spec = await $.fs.read(board.root + '/' + file);
+    } catch {}
+    const r = await $.model.complete({
+      model: 'sonnet',
+      effort: 'low',
+      system: CHAT_SYSTEM,
+      prompt: `# The spec\n\n${spec}\n\n# The chat so far\n\n${history || '(none)'}\n\n# Their new message\n\n${text}`,
     });
-    why = run.stderr.trim().split('\n')[0] || 'crew chat exited ' + run.exitCode;
-    out = JSON.parse(run.stdout.trim().split('\n').at(-1));
-  } catch (err) {
-    why ||= err.message;
+    let reply = r.isAnswered
+      ? r.text
+      : 'The model did not answer: ' + r.reason + (r.error ? ' (' + r.error + ')' : '');
+    let replacements = [];
+    let isApply = false;
+    try {
+      const out = JSON.parse(r.text.slice(r.text.indexOf('{'), r.text.lastIndexOf('}') + 1));
+      if (typeof out.reply === 'string') reply = out.reply;
+      replacements = (Array.isArray(out.replacements) ? out.replacements : []).filter(
+        (c) => typeof c?.old === 'string' && typeof c?.new === 'string',
+      );
+      isApply = out.apply === true;
+    } catch {}
+    if (isApply && replacements.length) {
+      turn.status = 'Updating the spec…';
+      redraw();
+      for (const change of replacements)
+        if (!(await crew($, ['task', id, 'edit'], JSON.stringify(change))))
+          reply += `\n\n_Couldn't find '${clip(change.old, 80)}' in the spec._`;
+      replacements = [];
+    }
+    thread[thread.indexOf(turn)] = { who: 'planner', text: reply, suggestions: replacements };
+  } finally {
+    tick.cancel();
   }
-  reply.text = out?.text || why;
-  reply.suggestions = out?.suggestions ?? [];
-  if (out?.reverted?.length)
-    reply.text += '\n\n_Reverted its changes to ' + out.reverted.join(', ') + '._';
-  if (out?.edited) await refreshBoard($);
-  else $.ui.invalidate('ui.render');
+  await saveChat($, id);
+  redraw();
 };
 
 const loadPlan = async ($, task) => {
@@ -321,6 +356,7 @@ const approve = async ($) => {
 // ---- Diagrams: data comes from the spec or a model as nodes and edges; the mod does the drawing, so layout and colours stay its own.
 const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const clip = (t, n) => (t.length > n ? t.slice(0, n - 1) + '…' : t);
+const elapsed = (seconds) => Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
 
 // Approach steps against the files they name: a step "touches" a file whose path or file name it mentions.
 export const changeMap = (spec) => {
@@ -920,7 +956,11 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Client, Svg }, width)
 
   const suggestion = (thread, m, s) => {
     const { old, new: replacement } = thread[m].suggestions[s];
-    const drop = () => thread[m].suggestions.splice(s, 1);
+    const id = selected;
+    const drop = () => {
+      thread[m].suggestions.splice(s, 1);
+      void saveChat($, id);
+    };
     return Box({
       key: `suggestion-${m}-${s}`,
       flexDirection: 'column',
@@ -958,7 +998,7 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Client, Svg }, width)
     });
   };
   const thread = chats[selected] ?? [];
-  const message = ({ who, text, suggestions = [] }, m) =>
+  const message = ({ who, text, status, seconds, suggestions = [] }, m) =>
     Box({
       key: 'message-' + m,
       flexDirection: 'column',
@@ -968,7 +1008,9 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Client, Svg }, width)
       paddingX: who === 'you' ? S.xs : 0,
       children: [
         ...(who === 'you' ? [] : [Text({ color: C.faint, children: [who] })]),
-        Markdown({ text }),
+        status
+          ? Text({ italic: true, color: C.faint, children: [status + ' ' + elapsed(seconds)] })
+          : Markdown({ text }),
         ...suggestions.map((_, s) => suggestion(thread, m, s)),
       ],
     });
