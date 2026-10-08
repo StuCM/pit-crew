@@ -1,8 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { render } from '../src/commands/board.js';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { render, run } from '../src/commands/board.js';
 import { statuses } from '../src/lib/config.js';
-import { config } from './helpers.js';
+import { config, sandbox, task as taskFile, writeTask } from './helpers.js';
 
 const cfg = config('/nowhere', {
   reviewRounds: 2,
@@ -83,4 +85,29 @@ test('an empty board says so in both sections', () => {
   assert.match(text, /\*no tasks yet\*/);
   assert.match(text, /## Waiting on you\n\nNothing\./);
   assert.match(text, /## In flight\n\nNothing running\./);
+});
+
+test('--json prints the tasks and statuses, and leaves BOARD.md alone', () => {
+  const root = sandbox();
+  writeTask(root, '001-a.md', taskFile({ status: 'draft', extra: 'model: opus\n' }));
+  writeTask(root, '002-b.md', taskFile({ status: 'building' }));
+  const lines = [];
+  const log = console.log;
+  console.log = (line) => lines.push(line);
+  try {
+    assert.equal(run(config(root), ['--json']), 0);
+  } finally {
+    console.log = log;
+  }
+  const board = JSON.parse(lines.join('\n'));
+  assert.equal(board.project, 'Test');
+  assert.deepEqual(
+    board.tasks.map((t) => [t.status, t.model, t.title]),
+    [
+      ['draft', 'opus', 'A thing'],
+      ['building', null, 'A thing'],
+    ],
+  );
+  assert.ok(board.statuses.draft.waitsOnUser);
+  assert.equal(existsSync(join(root, '.claude', 'tasks', 'BOARD.md')), false);
 });

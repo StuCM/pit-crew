@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { branches } from '../lib/git.js';
 import { readTasks } from '../lib/task.js';
 import { statuses } from '../lib/config.js';
+import { snapshot } from '../lib/wall.js';
 
 // Waiting on a person first — it is the only category they can act on now.
 const rank = (status, known) => {
@@ -72,7 +73,14 @@ export const render = (tasks, known, live, cfg) => {
   return { text: out.join('\n'), waiting, total: ordered.length };
 };
 
-export const run = (cfg) => {
+export const run = (cfg, args = []) => {
+  if (args.includes('--json')) {
+    const { tasks } = snapshot(cfg);
+    console.log(
+      JSON.stringify({ project: cfg.project, root: cfg.root, statuses: statuses(cfg), tasks }),
+    );
+    return 0;
+  }
   const dir = join(cfg.root, cfg.tasksDir);
   const tasks = readTasks(dir);
   const known = statuses(cfg);

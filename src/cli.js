@@ -29,7 +29,7 @@ const USAGE = `crew — a task loop for agents
   crew gate --check <task>  has the gate passed on the code that is here?
   crew scope <task> [base]  changed files against the spec's files:
   crew review <task>        open a review round, refusing one past the limit
-  crew board                render BOARD.md from the task files
+  crew board                render BOARD.md from the task files (--json: print them instead)
   crew serve [--port=N]     the pit wall: a local page for the work in flight
   crew log <task> <event>   append one line to the cost log
 
