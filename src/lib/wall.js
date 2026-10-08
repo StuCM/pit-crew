@@ -253,7 +253,8 @@ export const agentArgs = (agentFile, name, tools, sessionId) => {
     '--allowedTools',
     ...tools,
   ];
-  if (!tools.includes('Edit')) args.push('--disallowedTools', 'Edit', 'Write', 'NotebookEdit');
+  if (!tools.some((t) => t === 'Edit' || t.startsWith('Edit(')))
+    args.push('--disallowedTools', 'Edit', 'Write', 'NotebookEdit');
   if (sessionId) args.push('--resume', sessionId);
   return args;
 };

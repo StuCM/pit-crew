@@ -4,8 +4,10 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { askScout, createWall } from '../src/commands/serve.js';
+import { createWall } from '../src/commands/serve.js';
+import { askScout } from '../src/lib/agent.js';
 import {
+  agentArgs,
   items,
   listDir,
   mentions,
@@ -218,6 +220,20 @@ const wall = async (root, bin) => {
     }).then((r) => r.json());
   return { post, close: () => server.close() };
 };
+
+test('a path-scoped Edit entry keeps Edit allowed; no Edit entry disallows it', () => {
+  const agent = new URL('../agents/crew-scout.md', import.meta.url).pathname;
+  const scoped = agentArgs(agent, 'a', ['Read', 'Edit(.claude/tasks/1.md)']);
+  assert.equal(scoped.includes('--disallowedTools'), false);
+  assert.ok(scoped.includes('Edit(.claude/tasks/1.md)'));
+  const readOnly = agentArgs(agent, 'a', ['Read']);
+  assert.deepEqual(readOnly.slice(readOnly.indexOf('--disallowedTools')), [
+    '--disallowedTools',
+    'Edit',
+    'Write',
+    'NotebookEdit',
+  ]);
+});
 
 test('a suggestion two commits back is folded into its commit, leaving no fixup behind', async () => {
   const lines = ['one', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];

@@ -20,6 +20,7 @@ import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { basename, join, resolve } from 'node:path';
 import { run as logEvent } from './log.js';
+import { CLAUDE, askScout, runAgent } from '../lib/agent.js';
 import { loadConfig } from '../lib/config.js';
 import { git } from '../lib/git.js';
 import { readTasks, setField } from '../lib/task.js';
@@ -39,18 +40,14 @@ import {
   readSource,
   readState,
   safePath,
-  scoutArgs,
   snapshot,
   writeState,
 } from '../lib/wall.js';
 
 const PAGE = fileURLToPath(new URL('../web/wall.html', import.meta.url));
-const SCOUT = fileURLToPath(new URL('../../agents/crew-scout.md', import.meta.url));
 const FIXER = fileURLToPath(new URL('../../agents/crew-fixer.md', import.meta.url));
-const CLAUDE = process.env.CREW_CLAUDE || 'claude';
 const EDITOR = process.env.CREW_EDITOR || 'code';
 const MAX_BODY = 64 * 1024;
-const AGENT_TIMEOUT = 15 * 60 * 1000;
 const WAITS = new Set(['draft', 'blocked']);
 
 const send = (res, status, body, type = 'application/json; charset=utf-8') => {
@@ -91,37 +88,6 @@ const update = (cfg, change) => {
 const text = (value, max = 4000) => (typeof value === 'string' ? value.slice(0, max) : '');
 const now = () => new Date().toISOString();
 const workKey = (value) => (/^[\w-]{1,80}$/.test(value ?? '') ? value : 'current');
-
-/** Run one of crew's agents headless; resolves `{ text, session }` or `{ error }`. */
-export const runAgent = (cwd, args, message, { bin = CLAUDE, env = {} } = {}) =>
-  new Promise((done) => {
-    const child = spawn(bin, args, { cwd, env: { ...process.env, ...env }, stdio: 'pipe' });
-    let out = '';
-    let err = '';
-    const timer = setTimeout(() => child.kill(), AGENT_TIMEOUT);
-    child.stdout.on('data', (chunk) => (out += chunk));
-    child.stderr.on('data', (chunk) => (err += chunk));
-    child.on('error', () => {
-      clearTimeout(timer);
-      done({ error: `${bin} is not on PATH, so crew's agents cannot run from here.` });
-    });
-    child.on('close', () => {
-      clearTimeout(timer);
-      try {
-        const result = JSON.parse(out);
-        if (result.is_error) return done({ error: result.result || 'the agent failed' });
-        done({ text: result.result ?? '', session: result.session_id ?? null });
-      } catch {
-        done({ error: (err || out || 'the agent returned nothing').trim().slice(0, 600) });
-      }
-    });
-    child.stdin.end(message);
-  });
-
-export const askScout = (cfg, message, session, bin = CLAUDE) =>
-  runAgent(cfg.root, scoutArgs(SCOUT, session), message, { bin }).then((answer) =>
-    answer.error ? answer : { ...answer, session: answer.session ?? session ?? null },
-  );
 
 /** The fixer's closing JSON block, or null if it did not leave one. */
 export const fixerReport = (reply = '') => {
