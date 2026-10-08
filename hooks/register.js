@@ -20,6 +20,7 @@ const C = {
   green: '#47795A',
   gray: '#8F8B83',
   ambBg: '#FAEEDA',
+  clayBg: '#FBE9E2',
   vioBg: '#EEEDFE',
 };
 
@@ -276,6 +277,15 @@ const sendChat = async ($, text) => {
   else $.ui.invalidate('ui.render');
 };
 
+const loadPlan = async ($, task) => {
+  if (!task.part || plans[task.id]) return;
+  plans[task.id] = [];
+  const run = await $.process.run(['npx', '--no-install', 'crew', 'plan', task.part, '--json']);
+  try {
+    if (run.exitCode === 0) plans[task.id] = JSON.parse(run.stdout);
+  } catch {}
+};
+
 const loadDoc = async ($) => {
   const task = selectedTask();
   if (!task) {
@@ -290,6 +300,7 @@ const loadDoc = async ($) => {
   for (const block of doc.sections.flatMap((s) => s.blocks))
     block.state = marks[block.text] ?? 'open';
   newFiles = new Set(task.files.filter((f) => !f.exists).map((f) => f.path));
+  await loadPlan($, task);
 };
 
 const openQuestions = () =>
@@ -439,6 +450,64 @@ const flowSvg = ({ nodes, edges }) => {
   };
 };
 
+// The task's part in the middle, parts that feed it on the left and parts it feeds on the right; the feature layer colours by status and lists the part's symbols.
+const STATUS_FILL = {
+  exists: [C.well, C.gray],
+  extend: [C.ambBg, C.amb],
+  new: [C.clayBg, C.clay],
+};
+
+const partSvg = ({ part, edges, neighbours }, layer) => {
+  const ROW = 56;
+  const W = 960;
+  const boxW = 280;
+  const label = (id) => neighbours.find((n) => n.id === id);
+  const sideOf = (isIn) => [
+    ...new Set(edges.filter((e) => (e.to === part.id) === isIn).map((e) => (isIn ? e.from : e.to))),
+  ];
+  const left = sideOf(true);
+  const right = sideOf(false);
+  const surface = layer === 'feature' ? (part.surface ?? []) : [];
+  const height = Math.max(left.length, right.length, 1) * ROW + 60 + surface.length * 18;
+  const mid = (Math.max(left.length, right.length, 1) * ROW) / 2 + 30;
+  const font = 'font-family="-apple-system, sans-serif"';
+  const box = (x, cy, text, [fill, stroke], title) =>
+    `<g><title>${esc(title ?? text)}</title><rect x="${x}" y="${cy - 20}" width="${boxW}" height="40" rx="8" fill="${fill}" stroke="${stroke}"/>` +
+    `<text x="${x + 12}" y="${cy + 5}" ${font} font-size="13" fill="${C.ink}">${esc(clip(text, 38))}</text></g>`;
+  const fillOf = (n) => (layer === 'feature' && STATUS_FILL[n?.status]) || [C.card, C.cardBorder];
+  const place = (ids, x) => ids.map((id, i) => ({ id, x, y: 30 + ROW / 2 + i * ROW }));
+  const spots = [...place(left, 20), ...place(right, W - boxW - 20)];
+  const partX = (W - boxW) / 2;
+  const lines = edges
+    .map((e) => {
+      const isIn = e.to === part.id;
+      const spot = spots.find((p) => p.id === (isIn ? e.from : e.to) && p.x < partX === isIn);
+      const x1 = isIn ? spot.x + boxW : partX + boxW;
+      const x2 = isIn ? partX : spot.x;
+      const y1 = isIn ? spot.y : mid;
+      const y2 = isIn ? mid : spot.y;
+      const text = e.label
+        ? `<text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 4}" text-anchor="middle" ${font} font-size="11" fill="${C.mut}">${esc(clip(e.label, 24))}</text>`
+        : '';
+      return `<path d="M ${x1} ${y1} L ${x2} ${y2}" fill="none" stroke="${C.gray}" stroke-width="1.5"/>${text}`;
+    })
+    .join('');
+  const sides = spots
+    .map((p) => box(p.x, p.y, label(p.id)?.label ?? p.id, fillOf(label(p.id))))
+    .join('');
+  const symbols = surface
+    .map(
+      (sym, i) =>
+        `<text x="${partX + 8}" y="${mid + 40 + i * 18}" ${font} font-size="12" fill="${C.mut}">${sym.verified ? '✔' : '·'} ${esc(clip(sym.name + (sym.use ? ' · ' + sym.use : ''), 40))}</text>`,
+    )
+    .join('');
+  return {
+    source: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${height}" viewBox="0 0 ${W} ${height}">${lines}${sides}${box(partX, mid, part.label, layer === 'feature' ? fillOf(part) : [C.card, C.clay], part.purpose)}${symbols}</svg>`,
+    width: W,
+    height,
+  };
+};
+
 const FLOW_SYSTEM =
   'You turn a software task spec into a runtime behaviour flowchart. Reply with JSON only, no prose: ' +
   '{"nodes":[{"id":"a","label":"short label","kind":"start|step|decision|end"}],"edges":[{"from":"a","to":"b","label":"optional, e.g. yes/no"}]}. ' +
@@ -446,6 +515,7 @@ const FLOW_SYSTEM =
 
 let diagram = 'change'; // which diagram the Diagrams tab shows
 let flow = null; // { nodes, edges } once generated
+const plans = {}; // task id → views from `crew plan <part> --json`, or [] when there is no plan for it
 let flowState = 'idle'; // idle → working → done | failed
 
 const generateFlow = async ($) => {
@@ -486,7 +556,13 @@ let clears = 0; // bumped to tell the composer to empty itself
 const ICON = { ok: '✔', edit: '✏', remove: '✖', ask: '?', add: '＋' };
 
 // The Diagrams tab: a picker, then the chosen diagram as an Svg on Desktop, or a text outline where Svg does not draw.
+const PLAN_POINTER =
+  'No plan covers this task. Map it with /pit-crew-planning:feature-map, then give the task a `part:`.';
+
 const diagramItems = ($, { Box, Text, Button, Markdown, Svg }, act) => {
+  const task = selectedTask();
+  const planned = Boolean(task?.part);
+  if (!planned && (diagram === 'architecture' || diagram === 'feature')) diagram = 'change';
   const chip = (id, label) =>
     Button({
       key: 'diagram-' + id,
@@ -504,6 +580,7 @@ const diagramItems = ($, { Box, Text, Button, Markdown, Svg }, act) => {
     children: [
       chip('change', 'Change map'),
       chip('flow', 'Behaviour flow'),
+      ...(planned ? [chip('architecture', 'Architecture'), chip('feature', 'Feature')] : []),
       Box({ flexGrow: 1, children: [] }),
       ...(diagram === 'flow'
         ? [
@@ -525,13 +602,48 @@ const diagramItems = ($, { Box, Text, Button, Markdown, Svg }, act) => {
         onPress: () =>
           sendChat(
             $,
-            `About the ${diagram === 'flow' ? 'behaviour flow' : 'change map'}: can you walk me through it?`,
+            `About the ${diagram === 'change' ? 'change map' : diagram === 'flow' ? 'behaviour flow' : diagram + ' view'}: can you walk me through it?`,
           ),
       }),
     ],
   });
   const out = [{ el: picker }];
-  if (diagram === 'change') {
+  if (!planned) out.push({ el: Text({ color: C.faint, children: [PLAN_POINTER] }) });
+  if (diagram === 'architecture' || diagram === 'feature') {
+    const view = (plans[task.id] ?? []).find((v) => v.layer === diagram);
+    const drawn = view && partSvg(view, diagram);
+    if (!view) out.push({ el: Text({ color: C.faint, children: [PLAN_POINTER] }) });
+    else if (Svg)
+      out.push({
+        el: Box({
+          key: 'diagram-view',
+          children: [
+            Svg({
+              source: drawn.source,
+              alt: `${view.part.label} and its neighbours in the ${diagram} map`,
+              width: drawn.width,
+              height: drawn.height,
+              isInteractive: true,
+            }),
+          ],
+        }),
+      });
+    else {
+      const names = (ids) => ids.map((id) => view.neighbours.find((n) => n.id === id)?.label ?? id);
+      out.push({
+        el: Markdown({
+          text: [
+            `**${view.part.label}**`,
+            ...view.edges.map((e) =>
+              e.to === view.part.id
+                ? `- ← ${names([e.from])} ${e.label ?? ''}`
+                : `- → ${names([e.to])} ${e.label ?? ''}`,
+            ),
+          ].join('\n'),
+        }),
+      });
+    }
+  } else if (diagram === 'change') {
     const map = changeMap(doc);
     const drawn = changeMapSvg(map, (path) => newFiles.has(path));
     out.push({

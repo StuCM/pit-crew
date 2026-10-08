@@ -78,6 +78,24 @@ const BOARD = {
   ],
 };
 
+const planView = (layer: string) => ({
+  layer,
+  part: {
+    id: 'p-x',
+    label: 'Wall mod',
+    status: 'extend',
+    surface: [{ name: 'diagramItems', use: 'modify', verified: true }],
+  },
+  edges: [
+    { from: 'p-in', to: 'p-x', label: 'board json' },
+    { from: 'p-x', to: 'p-out', label: 'svg' },
+  ],
+  neighbours: [
+    { id: 'p-in', label: 'Board command', status: 'exists' },
+    { id: 'p-out', label: 'Desktop pane', status: 'new' },
+  ],
+});
+
 // A fake crew: `board --json` answers from a board that `task` calls change, as the real files would.
 const stubs = (
   on: any,
@@ -95,6 +113,15 @@ const stubs = (
     const args = e.argv.slice(3);
     if (args[0] === 'board')
       return { value: boardRun ?? { exitCode: 0, stdout: JSON.stringify(board), stderr: '' } };
+    if (args[0] === 'plan') {
+      return {
+        value: {
+          exitCode: 0,
+          stdout: JSON.stringify([planView('architecture'), planView('feature')]),
+          stderr: '',
+        },
+      };
+    }
     if (args[0] === 'chat') {
       seen.chats.push({ args, stdin: e.init?.stdin, timeoutMs: e.init?.timeoutMs });
       const history = [
@@ -279,6 +306,33 @@ test('diagrams: the change map draws steps against files, and the flow comes fro
   await ui.press({ key: 'diagram-flow' });
   await ui.press({ key: 'generate-flow' });
   expect(await svg()).toContain('Held 500ms?');
+  await ui.unmount();
+});
+
+test('diagrams: a task with a part gets Architecture and Feature views, one without gets the pointer', async ($, on) => {
+  stubs(on);
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  await ui.press({ key: 'tab-diagram' });
+  expect(await ui.find({ key: 'diagram-architecture' })).toBeUndefined();
+  expect(await ui.find({ type: 'Text', text: /feature-map/ })).toBeDefined();
+  await ui.unmount();
+});
+
+test('diagrams: a task with a part gets Architecture and Feature views of it and its neighbours', async ($, on) => {
+  const withPart = structuredClone(BOARD);
+  (withPart.tasks[0] as any).part = 'p-x';
+  stubs(on, { boardRun: { exitCode: 0, stdout: JSON.stringify(withPart), stderr: '' } });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  await ui.press({ key: 'tab-diagram' });
+  const svg = async () =>
+    ((await ui.find({ key: 'diagram-view' }))?.children?.[0] as any)?.props.source as string;
+  await ui.press({ key: 'diagram-architecture' });
+  expect(await svg()).toContain('Wall mod');
+  expect(await svg()).toContain('Board command');
+  expect(await svg()).toContain('svg');
+  await ui.press({ key: 'diagram-feature' });
+  expect(await svg()).toContain('✔ diagramItems · modify');
+  expect(await svg()).toContain('Desktop pane');
   await ui.unmount();
 });
 
