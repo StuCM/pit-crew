@@ -277,12 +277,17 @@ const sendChat = async ($, text) => {
     try {
       spec = await $.fs.read(board.root + '/' + file);
     } catch {}
-    const r = await $.model.complete({
-      model: 'sonnet',
-      effort: 'low',
-      system: CHAT_SYSTEM,
-      prompt: `# The spec\n\n${spec}\n\n# The chat so far\n\n${history || '(none)'}\n\n# Their new message\n\n${text}`,
-    });
+    let r;
+    try {
+      r = await $.model.complete({
+        model: 'sonnet',
+        effort: 'low',
+        system: CHAT_SYSTEM,
+        prompt: `# The spec\n\n${spec}\n\n# The chat so far\n\n${history || '(none)'}\n\n# Their new message\n\n${text}`,
+      });
+    } catch (err) {
+      r = { isAnswered: false, reason: 'threw', error: String(err?.message ?? err) };
+    }
     let reply = r.isAnswered
       ? r.text
       : 'The model did not answer: ' + r.reason + (r.error ? ' (' + r.error + ')' : '');
@@ -351,6 +356,18 @@ const approve = async ($) => {
   log = 'approved · starting';
   startRun($);
   $.ui.invalidate('ui.render');
+};
+
+// The button is the person saying it was checked; the session merges and records it with crew-close.
+const signOff = async ($) => {
+  if (!(await crew($, ['task', selected, 'signoff']))) return;
+  log = 'signed off';
+  void $.prompt.submit({ text: `Close task ${selected} with /crew:crew-close`, asUser: true });
+  $.ui.invalidate('ui.render');
+};
+
+const sendBack = async ($) => {
+  if (await crew($, ['task', selected, 'sendback'])) log = 'sent back';
 };
 
 // ---- Diagrams: data comes from the spec or a model as nodes and edges; the mod does the drawing, so layout and colours stay its own.
@@ -1141,33 +1158,48 @@ export function register(on) {
     const found = findCard(selected);
     const status = selectedTask()?.status;
     const questions = openQuestions();
-    const runControls =
-      status === 'draft'
+    const waiting = board?.statuses?.[status]?.waitsOnUser;
+    const pendingEnv = board?.statuses?.[status]?.pendingEnv;
+    const runControls = pendingEnv
+      ? [
+          Button({
+            key: 'signoff',
+            label: `Sign off · checked in ${pendingEnv}`,
+            variant: 'primary',
+            onPress: () => signOff($),
+          }),
+        ]
+      : status === 'blocked'
         ? [
-            Button({
-              key: 'approve',
-              label: questions ? `Approve · ${questions} open` : 'Approve spec',
-              variant: 'primary',
-              onPress: () => approve($),
-            }),
+            Text({ color: C.mut, children: [waiting] }),
+            Button({ key: 'sendback', label: 'Send back', onPress: () => sendBack($) }),
           ]
-        : status === 'approved'
+        : status === 'draft'
           ? [
-              Text({ color: C.mut, children: ['Starting…'] }),
               Button({
-                key: 'start',
-                label: pad('▶ Start manually'),
-                plain: true,
-                onPress: () => {
-                  log = 'started manually';
-                  startRun($);
-                  redraw();
-                },
+                key: 'approve',
+                label: questions ? `Approve · ${questions} open` : 'Approve spec',
+                variant: 'primary',
+                onPress: () => approve($),
               }),
             ]
-          : status === 'building'
-            ? [Text({ color: C.green, children: ['● Running'] })]
-            : [];
+          : status === 'approved'
+            ? [
+                Text({ color: C.mut, children: ['Starting…'] }),
+                Button({
+                  key: 'start',
+                  label: pad('▶ Start manually'),
+                  plain: true,
+                  onPress: () => {
+                    log = 'started manually';
+                    startRun($);
+                    redraw();
+                  },
+                }),
+              ]
+            : status === 'building'
+              ? [Text({ color: C.green, children: ['● Running'] })]
+              : [];
     const meta = [
       doc.meta.id && '#' + doc.meta.id,
       doc.meta.env,

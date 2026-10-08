@@ -53,6 +53,8 @@ const BOARD = {
     draft: { waitsOnUser: 'spec needs your approval' },
     approved: {},
     building: { inFlight: true },
+    blocked: { waitsOnUser: 'review rounds disagreed' },
+    'pending-desktop': { waitsOnUser: 'only desktop can prove it', pendingEnv: 'desktop' },
     done: { terminal: true },
   },
   tasks: [
@@ -114,9 +116,17 @@ const stubs = (
     refuse,
     complete,
     slowEdit,
-  }: { boardRun?: any; refuse?: string; complete?: (e: any) => any; slowEdit?: boolean } = {},
+    status,
+  }: {
+    status?: string;
+    boardRun?: any;
+    refuse?: string;
+    complete?: (e: any) => any;
+    slowEdit?: boolean;
+  } = {},
 ) => {
   const board = structuredClone(BOARD);
+  if (status) board.tasks[0].status = status;
   const seen = {
     clock: mock.clock(on),
     store: new Map<string, unknown>([
@@ -161,6 +171,8 @@ const stubs = (
     if (refuse) return { value: { exitCode: 1, stdout: '', stderr: refuse + '\nmore' } };
     const task = board.tasks.find((t) => t.id === args[1])!;
     if (args[2] === 'approve') task.status = 'approved';
+    if (args[2] === 'signoff') task.status = 'done';
+    if (args[2] === 'sendback') task.status = 'approved';
     if (args[2] === 'set') (task as any)[args[3]] = args[4];
     return { value: { exitCode: 0, stdout: '{}', stderr: '' } };
   });
@@ -259,6 +271,8 @@ test('the column and model dropdowns set status and model', async ($, on) => {
 test('approve writes approval and asks the session to run it, with a manual start as the fallback', async ($, on) => {
   const seen = stubs(on);
   const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  expect(await ui.find({ key: 'signoff' })).toBeUndefined();
+  expect(await ui.find({ key: 'sendback' })).toBeUndefined();
   await ui.press({ key: 'approve' });
   expect(seen.calls.map((c) => c.args)).toEqual([['task', '001', 'approve']]);
   expect(seen.submitted).toEqual(['Run task 001 with /crew:crew-run']);
@@ -503,4 +517,55 @@ test('? on a line sends the quote to the model', async ($, on) => {
   );
   expect(await ui.find({ type: 'Markdown', text: 'Fine.' })).toBeDefined();
   await ui.unmount();
+});
+
+test('a throwing completion shows the error and leaves no status turn behind', async ($, on) => {
+  stubs(on, {
+    complete: () => {
+      throw new Error('socket closed');
+    },
+  });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  await ui.post({ send: 'Hello?' }, { in: 'composer' });
+  expect(
+    await ui.find({ type: 'Markdown', text: /The model did not answer: threw/ }),
+  ).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: /Reading the spec/ })).toBeUndefined();
+  await ui.unmount();
+});
+
+test('sign off appears for a pending task, records it and asks the session to close it', async ($, on) => {
+  const seen = stubs(on, { status: 'pending-desktop' });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  await ui.post({ select: '001' }, { in: 'card-001' });
+  expect(await ui.find({ key: 'signoff' })).toBeDefined();
+  expect(await ui.find({ key: 'sendback' })).toBeUndefined();
+  expect(await ui.find({ key: 'approve' })).toBeUndefined();
+  await ui.press({ key: 'signoff' });
+  expect(seen.calls.map((c) => c.args)).toEqual([['task', '001', 'signoff']]);
+  expect(seen.submitted).toEqual(['Close task 001 with /crew:crew-close']);
+  await ui.unmount();
+});
+
+test('a blocked task shows its reason and Send back', async ($, on) => {
+  const seen = stubs(on, { status: 'blocked' });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  await ui.post({ select: '001' }, { in: 'card-001' });
+  expect(await ui.find({ type: 'Text', text: 'review rounds disagreed' })).toBeDefined();
+  expect(await ui.find({ key: 'signoff' })).toBeUndefined();
+  await ui.press({ key: 'sendback' });
+  expect(seen.calls.map((c) => c.args)).toEqual([['task', '001', 'sendback']]);
+  expect(seen.submitted).toEqual([]);
+  await ui.unmount();
+});
+
+test('a done or building task offers neither', async ($, on) => {
+  stubs(on, { status: 'done' });
+  for (const key of ['card-001', 'card-002']) {
+    const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+    await ui.post({ select: key.slice(-3) }, { in: key });
+    expect(await ui.find({ key: 'signoff' })).toBeUndefined();
+    expect(await ui.find({ key: 'sendback' })).toBeUndefined();
+    await ui.unmount();
+  }
 });
