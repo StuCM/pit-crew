@@ -1,6 +1,6 @@
 ---
 name: crew-fixer
-description: Applies the person's suggested changes to a task's branch, each folded into the commit it belongs to, then re-runs the gate. Started from the pit wall once a worker has stopped. Edits only what a suggestion names.
+description: Applies the person's suggested changes to a task's branch, each folded into the commit it belongs to, then re-runs the gate. Started by `crew fix` once a worker has stopped. Edits only what a suggestion names.
 tools: Read, Grep, Glob, Edit, Bash
 model: sonnet
 ---

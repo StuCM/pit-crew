@@ -204,9 +204,9 @@ finds the real files, call sites, helpers and tests, and asks the graph about
 those exact paths. It returns a page, with every line tagged by where it came
 from.
 
-Then **record it for the pit wall** in `.claude/crew/work/<slug>.json`, so the
-person can read it, answer it and open the files from `crew serve` rather
-than scrolling back through this conversation:
+Then **record it** in `.claude/crew/work/<slug>.json`, so the person can
+read it and open the files rather than scrolling back through this
+conversation:
 
 ```json
 {
@@ -231,8 +231,7 @@ the work does.
 
 One file per piece of work, named for it, so several can be in flight in one
 repository without overwriting each other. Every task you write for it gets
-`work: <slug>` in its frontmatter; that is how the page groups them.
-Answers and gap decisions in `wall.json` are keyed `<slug>:<question id>`.
+`work: <slug>` in its frontmatter; that is how the pit wall groups them.
 
 Read what comes back and keep only what bears on the spec:
 
@@ -312,18 +311,9 @@ costs tokens in every downstream agent and says nothing new.
 
 ## 5. Get approval — this is a hard gate
 
-If `crew serve` is running, the person may answer and approve there instead.
-Before you write or revise a spec, read `.claude/crew/wall.json`:
-
-- `answers` — replies to the scout's questions, by id. They go into
-  Background, as if given here.
-- `gaps` — `follow` or `accept` for each place the scout stopped short.
-- `marks` — text they selected in a spec and called wrong, asked to change,
-  or asked about. Deal with each, then set its `status` to `resolved` and
-  give it a one-line `reply`, so the page shows it was read.
-
-A task the page approved already says `status: approved` and has its `spec`
-log line; do not ask again.
+Approval happens in the conversation, or in the pit wall mod. A task the
+mod approved already says `status: approved` and has its `spec` log line; do
+not ask again.
 
 Do not open with the whole spec and a yes/no question. That asks the person
 to find the gaps themselves, and they will skim it. Lead with what they can

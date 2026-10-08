@@ -28,7 +28,7 @@ jobs:
       - run: claude plugin test .
 
   package:
-    # `crew serve` loads its page and its agents from inside the installed
+    # `crew fix` loads its agents from inside the installed
     # package, so a file missing from `files` breaks it only after publish.
     name: package contents
     runs-on: ubuntu-latest
@@ -43,7 +43,6 @@ jobs:
             const files = new Set(require("./pack.json")[0].files.map((f) => f.path));
             const needed = [
               "src/cli.js",
-              "src/web/wall.html",
               "hooks/register.js",
               "hooks/card.js",
               "hooks/composer.js",

@@ -232,7 +232,7 @@ into tasks". See [Planning](#planning).
 | `crew scope <task> [base]` | changed files against the spec's `files:` |
 | `crew review <task>` | open a round, refusing one past the limit |
 | `crew board` | render `BOARD.md` from the task files |
-| `crew serve [--port=N]` | the pit wall: a local page for the work in flight |
+| `crew fix <id>` | apply a task's open suggestions to its branch with the fixer |
 | `crew log <task> <event>` | append one line to the cost log |
 | `crew commit-msg <file>` | the commit convention (git hook) |
 | `crew pre-commit` | staged-file format and lint (git hook) |
@@ -495,68 +495,25 @@ shape that works.
 
 ## The pit wall
 
-```bash
-crew serve            # http://localhost:9171
-```
-
-One local page for everything in flight on this machine, meant to sit open
-in the Claude desktop browser pane. It reads the task files and
+The pit wall is a mod inside Claude Code: the board, spec editing, the task
+chat and the diagrams in one pane beside your session. Open it with the
+**Pit wall** button or `/pitwall`. It reads the task files and
 `.claude/crew/work/<slug>.json`, which `/crew:crew-spec` writes after the
-scout runs, and reads them again every few seconds while the page is in
-front of you.
+scout runs, and writes through the `crew` CLI (`crew task`, `crew chat`).
 
-**One server, every project.** Run `crew serve` in a second repository and it
-joins the server already running instead of starting another: it prints the
-address and exits. It listens on 9171, pit 1. If something that is not crew
-already holds that port, it moves along to 9172, pit 2, and so on up to 9179,
-joining a crew server on any of them. `--port=N` pins one. The header gets a project picker, with how many tasks are
-waiting on you in each. Within a project, each piece of work has its own
-file and the tasks say which one they belong to with `work:`, so two things
-in flight in one repository do not overwrite each other. Switching is part of
-the address (`?p=coral-arches&w=v8-lists`), so two browser tabs can sit on
-two different pieces of work. The registry is
-`$XDG_CONFIG_HOME/crew/projects.json`.
+It needs Claude Code 2.1.287 or later in the terminal and 2.1.286 or later in
+the Desktop Code tab. Desktop bundles its own copy of Claude Code; an older
+bundle loads no mod at all and says nothing.
 
-| tab | what it is for |
-|---|---|
-| Overview | the stage, what is waiting on you, and the tasks by state |
-| Tasks | each spec, starting with what it assumed. Select any text to mark it wrong, ask for a change or ask a question. Approve and Run are here |
-| Tasks → Changes | what the worker has actually done, live from its worktree: every commit, uncommitted edits and new files, with any file outside `files:` flagged at the top. Click a line number to suggest a change |
-| Questions | the scout's questions, each with the files it is about, and where it stopped short |
-| Scout | what it found, and a chat with the scout itself |
-| Files | everything the work touches, a code viewer, and a browser for the repository |
-| Worktrees | every worktree of the repository, crew's or not: its task, branch, uncommitted files, ahead/behind and whether it is merged |
+**Known limit.** The pane scrolls as a whole: mods have no scrollable
+regions, so a long list pushes the rest of the pane down rather than
+scrolling inside its own box.
 
-**Try a branch in your main checkout.** On Worktrees, **Check out in main**
-switches your main checkout to a task's branch. If a worktree still holds
-the branch, that worktree is detached first. **Back to …** returns your main
-checkout to the branch it was on before. Both refuse while either checkout
-has uncommitted changes, and nothing is ever forced, stashed or discarded.
-If a `skip-worktree` file blocks the switch, the page names the file.
-**Remove** deletes a worktree but keeps its branch. It asks first if the
-branch is not merged, and refuses a dirty worktree. **Prune** clears entries
-whose folder is gone. **Open PR** pushes the branch if it has no upstream yet,
-then runs `gh pr create --fill`. If the branch already has a PR, it shows that
-one instead.
-
-**Files open in your editor.** Every file has View, which shows it in the
-page at the right line, and Editor, which runs `code -g path:line` on your
-machine. Set `CREW_EDITOR=cursor` (or any editor taking `-g`) to change it.
-
-**Reviewing a running worker.** The Changes tab diffs the task's worktree
-against the point it branched from, so it shows work in progress, not just
-what has been committed. Each file has **Side by side in editor**, which
-opens `code --diff` with the base version on the left and the live
-worktree file on the right. **Open worktree in editor** opens the whole
-worktree, for VS Code's Source Control view, and **Copy lazygit command**
-gives `lazygit -p <worktree>`. Each commit opens on its own.
-
-**Suggest a change, and keep the history clean.** Click a line number in a
-task's diff and say what should change, optionally with the replacement
-line. The page works out which commit the line belongs to (the commit that
-wrote it, or the last one on the branch to touch that file) and shows it.
-**Apply and fold into commits** hands the open suggestions to the
-`crew-fixer` agent in the task's worktree. It makes each edit as a
+**Suggest a change, and keep the history clean.** The mod records suggested
+edits against a task's diff in `.claude/crew/wall.json`, each tied to the
+commit that owns the line (the commit that wrote it, or the last one on the
+branch to touch that file). `crew fix <id>` hands the task's open suggestions
+to the `crew-fixer` agent in the task's worktree. It makes each edit as a
 `--fixup` of that commit, runs `git rebase -i --autosquash`, and re-runs the
 gate. The branch ends up with the same commits, each as if it had been right
 the first time. It refuses while the worker is still building, and while
@@ -565,24 +522,11 @@ fold in cleanly, because a later commit changed the lines next to it, the
 rebase is undone and the fix stays as a `fixup!` commit, reported as not
 applied.
 
-**The scout chat is the real agent.** It runs `claude -p` with
-`agents/crew-scout.md` as the agent: read-only tools, and `--resume` so it
-remembers the conversation until you start a new one. Set `CREW_CLAUDE` if
-`claude` is not on the server's `PATH`. It uses whatever login `claude` has
-on your machine, so on a Pro or Max subscription it counts against that
-plan's usage limits, not the API. The exception is `ANTHROPIC_API_KEY`: if
-it is set where you start `crew serve`, it takes precedence and every chat
-is billed to the API. `crew serve` warns you at startup when it is set.
-
-**What the page writes.** Approve sets `status: approved` and logs it, the
-same as approving in the conversation. Everything else goes into
-`.claude/crew/wall.json`: answers, marks, decisions on the scout's gaps, and
-Run requests. The orchestrator reads it back. Run queues the task; it does
-not start a worker from the page yet.
-
-It listens on 127.0.0.1 only, refuses any request whose Host is not
-localhost, and refuses every write without a token that exists only in the
-page it served. A site open in another tab can reach the port; it cannot act.
+**Agents run through `claude -p`.** `crew chat` and `crew fix` use whatever
+login `claude` has on your machine, so on a Pro or Max subscription they
+count against that plan's usage limits, not the API. The exception is
+`ANTHROPIC_API_KEY`: if it is set, it takes precedence and every run is
+billed to the API. Set `CREW_CLAUDE` if `claude` is not on your `PATH`.
 
 ## The memory graph
 

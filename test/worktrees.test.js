@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createWall } from '../src/commands/serve.js';
 import { backToBase, checkoutInMain, listWorktrees, removeWorktree } from '../src/lib/worktrees.js';
 import { config, sandbox, task, writeTask } from './helpers.js';
 
@@ -118,18 +117,4 @@ test('removing an unmerged or dirty worktree is not done on one click, and the b
   assert.ok(sh(root, 'branch', '--list', 'crew/007-thing'));
 
   assert.equal(removeWorktree(cfg, root, true).error, 'not a worktree of this repository');
-});
-
-test('the page reads the list through the server', async () => {
-  const { cfg, tree } = fixture();
-  const registry = () => [{ key: 't', name: 't', root: cfg.root, cfg }];
-  const { server } = createWall('t', { token: 'tok', registry });
-  await new Promise((done) => server.listen(0, '127.0.0.1', done));
-  try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/worktrees?p=t`);
-    assert.equal(res.status, 200);
-    assert.equal(byPath(await res.json())[tree].task.id, '007');
-  } finally {
-    server.close();
-  }
 });

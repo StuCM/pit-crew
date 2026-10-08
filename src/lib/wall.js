@@ -1,6 +1,6 @@
-// What `crew serve` shows, read from the files the loop already keeps. The
-// task files stay the source of truth; the page adds only what a person does
-// on it — answers, marks, decisions on the scout's gaps — in one state file.
+// What the pit wall shows, read from the files the loop already keeps. The
+// task files stay the source of truth; wall.json adds only the chats and
+// suggestions a person makes on them.
 
 import {
   existsSync,
@@ -15,17 +15,13 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { declaredFiles, readTasks } from './task.js';
 
 export const WORK_DIR = join('.claude', 'crew', 'work');
-// The one-file shape from before a repository could hold several pieces of
-// work at once. Still read, as the piece of work called `current`.
-export const WORK_FILE = join('.claude', 'crew', 'work.json');
 export const STATE_FILE = join('.claude', 'crew', 'wall.json');
 const MAX_BYTES = 512 * 1024;
 const HIDDEN = new Set(['.git', 'node_modules', '__pycache__', '.venv', 'venv', 'dist', 'build']);
 
 /**
  * A repo-relative path, resolved and checked to stay inside the repository —
- * symlinks included — or null. Every path the page asks for goes through
- * this, because the page is a browser tab and a browser tab is not trusted.
+ * symlinks included — or null. Every path a caller names goes through this.
  */
 export const safePath = (root, rel) => {
   if (typeof rel !== 'string' || rel.includes('\0')) return null;
@@ -87,7 +83,7 @@ export const mentions = (root, text) => {
   return [...found.values()];
 };
 
-/** One task as the page draws it. */
+/** One task as the pit wall draws it. */
 export const taskView = (root, task) => {
   const part = sections(task.text);
   const files = declaredFiles(task).map((path) => {
@@ -127,9 +123,7 @@ const readJson = (path, fallback) => {
   }
 };
 
-export const emptyState = () => ({ answers: {}, gaps: {}, marks: [], requests: {} });
-
-export const readState = (root) => ({ ...emptyState(), ...readJson(join(root, STATE_FILE), {}) });
+export const readState = (root) => readJson(join(root, STATE_FILE), {});
 
 export const writeState = (root, state) => {
   const path = join(root, STATE_FILE);
@@ -153,13 +147,10 @@ export const readWorks = (root) => {
     if (work)
       found.push({ ...work, slug: name.slice(0, -5), updated: statSync(join(dir, name)).mtimeMs });
   }
-  const legacy = join(root, WORK_FILE);
-  const old = readJson(legacy, null);
-  if (old) found.push({ ...old, slug: 'current', updated: statSync(legacy).mtimeMs });
   return found.sort((a, b) => b.updated - a.updated);
 };
 
-/** Everything the page needs in one read. */
+/** Everything the pit wall needs in one read. */
 export const snapshot = (cfg) => ({
   project: cfg.project,
   models: cfg.models,
@@ -199,16 +190,6 @@ export const listDir = (root, rel = '') => {
   return { path: relative(top, full), entries };
 };
 
-const SCOUT_TOOLS = [
-  'Read',
-  'Grep',
-  'Glob',
-  'Bash(git log:*)',
-  'Bash(git show:*)',
-  'Bash(git grep:*)',
-  'Bash(npx crew graph:*)',
-];
-
 // The fixer edits, commits and rewrites its own branch. Nothing else: no
 // push, no other git verbs, no shell beyond the gate.
 const FIXER_TOOLS = [
@@ -228,7 +209,7 @@ const FIXER_TOOLS = [
 
 /**
  * One of crew's agents as a `claude -p` invocation. Its own agent file is the
- * prompt, so the page talks to exactly the agent the loop spawns, with only
+ * prompt, so the caller talks to exactly the agent the loop spawns, with only
  * the tools listed here, whatever the caller's settings allow. The message
  * goes in on stdin, where nothing in it can be read as a flag.
  */
@@ -258,8 +239,5 @@ export const agentArgs = (agentFile, name, tools, sessionId) => {
   if (sessionId) args.push('--resume', sessionId);
   return args;
 };
-
-export const scoutArgs = (agentFile, sessionId) =>
-  agentArgs(agentFile, 'crew-scout', SCOUT_TOOLS, sessionId);
 
 export const fixerArgs = (agentFile) => agentArgs(agentFile, 'crew-fixer', FIXER_TOOLS);

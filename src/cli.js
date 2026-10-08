@@ -30,10 +30,10 @@ const USAGE = `crew — a task loop for agents
   crew scope <task> [base]  changed files against the spec's files:
   crew review <task>        open a review round, refusing one past the limit
   crew board                render BOARD.md from the task files (--json: print them instead)
-  crew serve [--port=N]     the pit wall: a local page for the work in flight
   crew log <task> <event>   append one line to the cost log
   crew task <id> <change>   set status|model|env, approve, or edit (JSON on stdin)
   crew chat <id>            ask the task's spec editor (message on stdin; --history)
+  crew fix <id>             apply a task's open suggestions to its branch with the fixer
 
   crew commit-msg <file>    the commit convention (git hook)
   crew pre-commit           staged-file format and lint (git hook)
@@ -57,7 +57,7 @@ const COMMANDS = {
   review: () => import('./commands/review.js'),
   graph: () => import('./commands/graph.js'),
   plan: () => import('./commands/plan.js'),
-  serve: () => import('./commands/serve.js'),
+  fix: () => import('./commands/fix.js'),
   init: () => import('./commands/init.js'),
   'spec-template': () => import('./commands/init.js').then((m) => ({ run: m.template })),
 };
