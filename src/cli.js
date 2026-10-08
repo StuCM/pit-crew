@@ -32,7 +32,6 @@ const USAGE = `crew — a task loop for agents
   crew board                render BOARD.md from the task files (--json: print them instead)
   crew log <task> <event>   append one line to the cost log
   crew task <id> <change>   set status|model|env, approve, or edit (JSON on stdin)
-  crew chat <id>            ask the task's spec editor (message on stdin; --history)
   crew fix <id>             apply a task's open suggestions to its branch with the fixer
 
   crew commit-msg <file>    the commit convention (git hook)
@@ -53,7 +52,6 @@ const COMMANDS = {
   doctor: () => import('./commands/doctor.js'),
   log: () => import('./commands/log.js'),
   task: () => import('./commands/task.js'),
-  chat: () => import('./commands/chat.js'),
   review: () => import('./commands/review.js'),
   graph: () => import('./commands/graph.js'),
   plan: () => import('./commands/plan.js'),

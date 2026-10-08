@@ -1,4 +1,4 @@
-// Runs crew's agents headless through `claude -p`, for `crew chat` and `crew fix`.
+// Runs crew's agents headless through `claude -p`, for `crew fix`.
 
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';

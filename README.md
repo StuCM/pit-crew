@@ -499,7 +499,9 @@ The pit wall is a mod inside Claude Code: the board, spec editing, the task
 chat and the diagrams in one pane beside your session. Open it with the
 **Pit wall** button or `/pitwall`. It reads the task files and
 `.claude/crew/work/<slug>.json`, which `/crew:crew-spec` writes after the
-scout runs, and writes through the `crew` CLI (`crew task`, `crew chat`).
+scout runs, and writes through the `crew` CLI (`crew task`). The task chat
+runs on the Desktop session's own model access, one quick call per message,
+and changes the spec only through `crew task edit`.
 
 It needs Claude Code 2.1.287 or later in the terminal and 2.1.286 or later in
 the Desktop Code tab. Desktop bundles its own copy of Claude Code; an older
@@ -522,8 +524,8 @@ fold in cleanly, because a later commit changed the lines next to it, the
 rebase is undone and the fix stays as a `fixup!` commit, reported as not
 applied.
 
-**Agents run through `claude -p`.** `crew chat` and `crew fix` use whatever
-login `claude` has on your machine, so on a Pro or Max subscription they
+**`crew fix` runs its agent through `claude -p`.** It uses whatever
+login `claude` has on your machine, so on a Pro or Max subscription its runs
 count against that plan's usage limits, not the API. The exception is
 `ANTHROPIC_API_KEY`: if it is set, it takes precedence and every run is
 billed to the API. Set `CREW_CLAUDE` if `claude` is not on your `PATH`.
