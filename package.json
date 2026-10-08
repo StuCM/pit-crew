@@ -45,7 +45,7 @@
     "access": "public"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test \"test/**/*.test.js\"",
     "eval": "claude plugin eval . --scaffold --trust-plugin --no-publish --allow-tools Edit \"Bash(git log:*)\" \"Bash(git show:*)\"",
     "version": "node scripts/version.js && git add .claude-plugin planning/.claude-plugin",
     "lint": "oxlint",
