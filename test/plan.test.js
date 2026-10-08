@@ -123,3 +123,43 @@ test('a task with no part: says so rather than guessing one', () => {
 test('a part id that is in no map is an error, not an empty report', () => {
   assert.throws(() => run(config(withPlan()), ['p-nope']), /no part "p-nope"/);
 });
+
+test('--json prints each architecture and feature map holding the part, with edges and neighbours', () => {
+  const root = withPlan();
+  const plans = join(root, '.claude', 'plans');
+  writeFileSync(
+    join(plans, 'plan.json'),
+    JSON.stringify({
+      name: 'Mermaid export',
+      maps: { feature: { file: 'maps/feature.json' }, architecture: { file: 'maps/arch.json' } },
+    }),
+  );
+  writeFileSync(
+    join(plans, 'maps', 'arch.json'),
+    JSON.stringify({
+      parts: [
+        { id: 'p-build', label: 'Builder', kind: 'service', status: 'extend' },
+        { id: 'p-db', label: 'Store', kind: 'store', not: ['Rendering'] },
+      ],
+      edges: [{ from: 'p-db', to: 'p-build', kind: 'data', label: 'rows' }],
+    }),
+  );
+  const views = JSON.parse(capture(() => run(config(root), ['p-build', '--json'])));
+  assert.deepEqual(views.map((v) => v.layer).sort(), ['architecture', 'feature']);
+  const feature = views.find((v) => v.layer === 'feature');
+  assert.equal(feature.part.label, 'Build script');
+  assert.deepEqual(feature.edges.map((e) => e.label).sort(), ['cli', 'map json']);
+  assert.deepEqual(feature.neighbours.map((n) => n.id).sort(), ['p-cli', 'p-render']);
+  const arch = views.find((v) => v.layer === 'architecture');
+  assert.deepEqual(arch.neighbours, [
+    { id: 'p-db', label: 'Store', kind: 'store', not: ['Rendering'] },
+  ]);
+});
+
+test('--json resolves a task file and still rejects an unknown part', () => {
+  const root = withPlan();
+  const path = writeTask(root, '007-thing.md', task({ extra: 'part: p-build\n' }));
+  const views = JSON.parse(capture(() => run(config(root), [path, '--json'])));
+  assert.equal(views[0].part.id, 'p-build');
+  assert.throws(() => run(config(root), ['p-nope', '--json']), /no part "p-nope"/);
+});

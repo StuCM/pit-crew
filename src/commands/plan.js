@@ -60,6 +60,26 @@ const findPart = (plan, id) => {
   return null;
 };
 
+const edgesOf = (entry, part) =>
+  (entry.map?.edges || []).filter((e) => e.from === part.id || e.to === part.id);
+
+/** The part as each architecture and feature map holds it: the part, its edges, and the parts at their other ends. */
+export const partView = (plan, id) => {
+  const views = [];
+  for (const entry of plan.maps) {
+    if (entry.layer === 'brainstorm') continue;
+    const part = partsOf(entry).find((p) => p.id === id);
+    if (!part) continue;
+    const edges = edgesOf(entry, part);
+    const ends = new Set(edges.map((e) => (e.from === id ? e.to : e.from)));
+    const neighbours = partsOf(entry)
+      .filter((p) => ends.has(p.id))
+      .map((p) => ({ id: p.id, label: p.label, kind: p.kind, status: p.status, not: p.not }));
+    views.push({ layer: entry.layer, part, edges, neighbours });
+  }
+  return views;
+};
+
 const label = (entry, id) => partsOf(entry).find((p) => p.id === id)?.label || id;
 
 const bullets = (heading, items) => {
@@ -99,7 +119,7 @@ const showPart = (plan, entry, part) => {
     for (const s of using) console.log(symbolLine(s));
   }
 
-  const edges = (entry.map?.edges || []).filter((e) => e.from === part.id || e.to === part.id);
+  const edges = edgesOf(entry, part);
   if (edges.length) {
     console.log('\n  Connected to:');
     for (const edge of edges) {
@@ -159,6 +179,7 @@ export const run = (cfg, args) => {
 
   const hit = findPart(plan, id);
   if (!hit) fail(`no part "${id}" in any map of ${plan.path}`);
-  showPart(plan, hit.entry, hit.part);
+  if (args.includes('--json')) console.log(JSON.stringify(partView(plan, id)));
+  else showPart(plan, hit.entry, hit.part);
   return 0;
 };
