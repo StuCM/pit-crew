@@ -31,10 +31,10 @@ const MODELS = [
   { value: 'sonnet', label: 'Sonnet 5.5' },
   { value: 'haiku', label: 'Haiku 4.5' },
 ];
-const model = {};
 
 // Columns come from `crew board --json`: one per crew status, cards are [title, id, who, attention].
 let COLUMNS = [];
+let board = null; // the last `crew board --json`, for each task's file and status
 let boardError = '';
 let isLoaded = false;
 
@@ -59,7 +59,8 @@ const loadBoard = async ($) => {
       const why = run.stderr.trim().split('\n')[0] || 'exit ' + run.exitCode;
       throw new Error(why);
     }
-    COLUMNS = buildColumns(JSON.parse(run.stdout));
+    board = JSON.parse(run.stdout);
+    COLUMNS = buildColumns(board);
     boardError = '';
     if (!findCard(selected)) selected = COLUMNS.flatMap((c) => c.cards)[0]?.[1] ?? selected;
   } catch (err) {
@@ -70,8 +71,25 @@ const loadBoard = async ($) => {
 
 const refreshBoard = async ($) => {
   await loadBoard($);
+  doc = null;
   $.ui.invalidate('ui.render');
 };
+
+const selectedTask = () => board?.tasks.find((t) => t.id === selected);
+
+// Every write goes through the crew CLI, which owns the task files; a refusal is toasted and the view reloaded.
+const crew = async ($, args, stdin) => {
+  const run = await $.process.run(
+    ['npx', '--no-install', 'crew', ...args],
+    stdin === undefined ? undefined : { stdin },
+  );
+  if (run.exitCode !== 0)
+    $.ui.toast(run.stderr.trim().split('\n')[0] || 'crew exited ' + run.exitCode);
+  await refreshBoard($);
+  return run.exitCode === 0;
+};
+
+const editSpec = ($, change) => crew($, ['task', selected, 'edit'], JSON.stringify(change));
 
 let selected = '';
 // Desktop draws a plain Button's hover itself with no padding prop, so spaces in the label widen it.
@@ -88,16 +106,9 @@ const findCard = (id) => {
   }
 };
 
-const moveCard = (id, to) => {
-  const found = findCard(id);
-  const target = COLUMNS.find((c) => c.name === to);
-  if (!found || !target || found.col === target) return;
-  found.col.cards = found.col.cards.filter((c) => c[1] !== id);
-  target.cards.push(found.card);
-};
-
 const select = ($, id) => {
   selected = id;
+  doc = null;
   isSpecOpen = true;
   if (isPoppedOut) $.ui.open({ id: SPEC_PANE, title: 'Spec · ' + id });
   $.ui.invalidate('ui.render');
@@ -180,10 +191,6 @@ const boardView = ($, { Box, Text, Svg, Client }, width, surface) => {
   return Box({ flexDirection: 'row', columnGap: S.sm, children });
 };
 
-// A real crew spec, read (never written) so the view is judged against what /crew:crew-spec produces.
-const SAMPLE =
-  '/home/stuart/git/personal/Reflex/.claude/tasks/031-long-press-opens-a-menu-on-an-episode.md';
-
 // Agreement is what approval signs; context informs it; the build record is appended by the worker later.
 const AGREEMENT = new Set(['Goal', 'Assumed', 'Approach', 'Out of scope', 'Definition of done']);
 const CONTEXT = new Set([
@@ -230,7 +237,7 @@ export const parseSpec = (source) => {
 let doc = null;
 let newFiles = new Set(); // files: entries not yet in the repository
 let editing = null; // { s, b } of the block being edited, or { s, b: 'new' } for an added line
-let status = 'draft'; // draft → approved (starting) → running
+const marks = {}; // block text → 'ok' | 'asked': view-only, never written, so kept across reloads
 let chat = [
   {
     who: 'planner',
@@ -239,31 +246,34 @@ let chat = [
 ];
 
 const loadDoc = async ($) => {
-  if (doc) return doc;
-  try {
-    doc = parseSpec(await $.fs.read(SAMPLE));
-    const repo = SAMPLE.slice(0, SAMPLE.indexOf('/.claude/'));
-    for (const path of doc.files) if (!(await $.fs.exists(repo + '/' + path))) newFiles.add(path);
-  } catch {
-    doc = { meta: {}, files: [], title: 'Could not read ' + SAMPLE, sections: [] };
+  const task = selectedTask();
+  if (!task) {
+    doc = { meta: {}, files: [], title: 'No task selected', sections: [] };
+    return;
   }
-  return doc;
+  try {
+    doc = parseSpec(await $.fs.read(board.root + '/' + task.file));
+  } catch {
+    doc = { meta: {}, files: [], title: 'Could not read ' + task.file, sections: [] };
+  }
+  for (const block of doc.sections.flatMap((s) => s.blocks))
+    block.state = marks[block.text] ?? 'open';
+  newFiles = new Set(task.files.filter((f) => !f.exists).map((f) => f.path));
 };
 
 const openQuestions = () =>
   doc.sections.flatMap((s) => s.blocks).filter((b) => b.state === 'asked').length;
 
-const approve = ($) => {
-  status = 'approved';
+// The main session runs crew-run itself; the mod only asks, and the board shows when it has started.
+const startRun = ($) => {
+  void $.prompt.submit({ text: `Run task ${selected} with /crew:crew-run`, asUser: true });
+};
+
+const approve = async ($) => {
+  if (!(await crew($, ['task', selected, 'approve']))) return;
   log = 'approved · starting';
-  // ponytail: stands in for crew-run; the real mod starts the worker here and only falls back to the button if it never reports in
-  $.clock.after(4000, () => {
-    if (status !== 'approved') return;
-    status = 'running';
-    moveCard(selected, 'building');
-    log = 'running on ' + (model[selected] ?? 'sonnet');
-    $.ui.invalidate('ui.render');
-  });
+  startRun($);
+  $.ui.invalidate('ui.render');
 };
 
 // ---- Diagrams: data comes from the spec or a model as nodes and edges; the mod does the drawing, so layout and colours stay its own.
@@ -273,16 +283,14 @@ const clip = (t, n) => (t.length > n ? t.slice(0, n - 1) + '…' : t);
 // Approach steps against the files they name: a step "touches" a file whose path or file name it mentions.
 export const changeMap = (spec) => {
   const approach = spec.sections.find((s) => s.heading === 'Approach');
-  const steps = (approach?.blocks ?? [])
-    .filter((b) => b.state !== 'removed')
-    .map((b, i) => {
-      const text = b.text.replace(/^\s*\d+\.\s*/, '');
-      return {
-        id: 's' + (i + 1),
-        label: i + 1 + '. ' + text.split('\n')[0].replace(/[`*]/g, ''),
-        text,
-      };
-    });
+  const steps = (approach?.blocks ?? []).map((b, i) => {
+    const text = b.text.replace(/^\s*\d+\.\s*/, '');
+    return {
+      id: 's' + (i + 1),
+      label: i + 1 + '. ' + text.split('\n')[0].replace(/[`*]/g, ''),
+      text,
+    };
+  });
   const files = spec.files.map((path) => ({ id: path, label: path }));
   const edges = [];
   for (const step of steps)
@@ -415,8 +423,7 @@ const generateFlow = async ($) => {
   const part = (h) =>
     doc.sections
       .find((s) => s.heading === h)
-      ?.blocks.filter((b) => b.state !== 'removed')
-      .map((b) => b.text)
+      ?.blocks.map((b) => b.text)
       .join('\n') ?? '';
   const r = await $.model.complete({
     model: 'haiku',
@@ -445,7 +452,7 @@ let tab = 'agreement';
 
 let clears = 0; // bumped to tell the composer to empty itself
 
-const ICON = { ok: '✔', edit: '✏', remove: '✖', ask: '?', restore: '↺', add: '＋' };
+const ICON = { ok: '✔', edit: '✏', remove: '✖', ask: '?', add: '＋' };
 
 // The Diagrams tab: a picker, then the chosen diagram as an Svg on Desktop, or a text outline where Svg does not draw.
 const diagramItems = ($, { Box, Text, Button, Markdown, Svg }, act) => {
@@ -589,7 +596,7 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Client, Svg }, width)
     redraw();
   };
   const ask = (block, note) => {
-    block.state = 'asked';
+    block.state = marks[block.text] = 'asked';
     chat.push({ who: 'you', text: '> ' + block.text.split('\n')[0].slice(0, 120) + '\n\n' + note });
   };
 
@@ -603,15 +610,12 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Client, Svg }, width)
         autoFocus: true,
         onSubmit: (value) => {
           const prefix = (block.text.match(/^\s*([-*]|\d+\.) (\[[ x]\] )?/) ?? [''])[0];
-          block.text = prefix + value;
-          block.state = 'edited';
           editing = null;
-          redraw();
+          editSpec($, { old: block.text, new: prefix + value });
         },
       });
     }
-    const isRemoved = block.state === 'removed';
-    const tint = block.state === 'asked' ? C.vioBg : block.state === 'edited' ? C.ambBg : undefined;
+    const tint = block.state === 'asked' ? C.vioBg : undefined;
     const controls =
       section.tier !== 'agreement'
         ? [
@@ -623,54 +627,40 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Client, Svg }, width)
               onPress: act(() => ask(block, 'Why this?')),
             }),
           ]
-        : isRemoved
-          ? [
-              Button({
-                key: `restore-${si}-${bi}`,
-                label: pad(ICON.restore),
-                plain: true,
-                dimColor: true,
-                onPress: act(() => {
-                  block.state = 'open';
-                }),
+        : [
+            Button({
+              key: `ok-${si}-${bi}`,
+              label: pad(ICON.ok),
+              plain: true,
+              dimColor: block.state !== 'ok',
+              onPress: act(() => {
+                block.state = marks[block.text] = block.state === 'ok' ? 'open' : 'ok';
               }),
-            ]
-          : [
-              Button({
-                key: `ok-${si}-${bi}`,
-                label: pad(ICON.ok),
-                plain: true,
-                dimColor: block.state !== 'ok',
-                onPress: act(() => {
-                  block.state = block.state === 'ok' ? 'open' : 'ok';
-                }),
+            }),
+            Button({
+              key: `edit-btn-${si}-${bi}`,
+              label: pad(ICON.edit),
+              plain: true,
+              dimColor: true,
+              onPress: act(() => {
+                editing = { s: si, b: bi };
               }),
-              Button({
-                key: `edit-btn-${si}-${bi}`,
-                label: pad(ICON.edit),
-                plain: true,
-                dimColor: true,
-                onPress: act(() => {
-                  editing = { s: si, b: bi };
-                }),
-              }),
-              Button({
-                key: `rm-${si}-${bi}`,
-                label: pad(ICON.remove),
-                plain: true,
-                dimColor: true,
-                onPress: act(() => {
-                  block.state = 'removed';
-                }),
-              }),
-              Button({
-                key: `ask-${si}-${bi}`,
-                label: pad(ICON.ask),
-                plain: true,
-                dimColor: block.state !== 'asked',
-                onPress: act(() => ask(block, 'Can we talk this one through?')),
-              }),
-            ];
+            }),
+            Button({
+              key: `rm-${si}-${bi}`,
+              label: pad(ICON.remove),
+              plain: true,
+              dimColor: true,
+              onPress: () => editSpec($, { old: block.text, new: '' }),
+            }),
+            Button({
+              key: `ask-${si}-${bi}`,
+              label: pad(ICON.ask),
+              plain: true,
+              dimColor: block.state !== 'asked',
+              onPress: act(() => ask(block, 'Can we talk this one through?')),
+            }),
+          ];
     return Box({
       key: `block-${si}-${bi}`,
       flexDirection: 'row',
@@ -680,11 +670,7 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Client, Svg }, width)
           flexGrow: 1,
           flexDirection: 'column',
           backgroundColor: tint,
-          children: [
-            isRemoved
-              ? Text({ color: C.faint, strikethrough: true, children: [block.text] })
-              : Markdown({ text: block.text, dimColor: section.tier === 'record' }),
-          ],
+          children: [Markdown({ text: block.text, dimColor: section.tier === 'record' })],
         }),
         Box({ flexDirection: 'row', children: controls }),
       ],
@@ -719,11 +705,10 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Client, Svg }, width)
                   label: pad(ICON.remove + ' section'),
                   plain: true,
                   dimColor: true,
-                  onPress: act(() => {
-                    section.blocks.forEach((b) => {
-                      b.state = 'removed';
-                    });
-                  }),
+                  onPress: async () => {
+                    for (const block of section.blocks)
+                      if (!(await editSpec($, { old: block.text, new: '' }))) return;
+                  },
                 }),
               ]
             : []),
@@ -741,9 +726,8 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Client, Svg }, width)
           submitLabel: 'add',
           autoFocus: true,
           onSubmit: (value) => {
-            section.blocks.push({ text: '- ' + value, state: 'edited' });
             editing = null;
-            redraw();
+            editSpec($, { section: section.heading, append: value });
           },
         }),
       });
@@ -879,8 +863,8 @@ export function register(on) {
 
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
     if (e.requestId !== PANE && e.requestId !== SPEC_PANE) return next(e);
-    await loadDoc($);
     if (!isLoaded) await loadBoard($);
+    if (!doc) await loadDoc($);
     const width = e.props.bodyColumns ?? 80;
     const ui = $.ui.resolve(e);
     const { Box, Text, Button } = ui;
@@ -923,6 +907,7 @@ export function register(on) {
       Box({ flexDirection: 'column', padding: S.sm, rowGap: S.sm, children: [children].flat() });
 
     const found = findCard(selected);
+    const status = selectedTask()?.status;
     const questions = openQuestions();
     const runControls =
       status === 'draft'
@@ -931,10 +916,7 @@ export function register(on) {
               key: 'approve',
               label: questions ? `Approve · ${questions} open` : 'Approve spec',
               variant: 'primary',
-              onPress: () => {
-                approve($);
-                redraw();
-              },
+              onPress: () => approve($),
             }),
           ]
         : status === 'approved'
@@ -945,14 +927,15 @@ export function register(on) {
                 label: pad('▶ Start manually'),
                 plain: true,
                 onPress: () => {
-                  status = 'running';
-                  moveCard(selected, 'building');
                   log = 'started manually';
+                  startRun($);
                   redraw();
                 },
               }),
             ]
-          : [Text({ color: C.green, children: ['● Running'] })];
+          : status === 'building'
+            ? [Text({ color: C.green, children: ['● Running'] })]
+            : [];
     const meta = [
       doc.meta.id && '#' + doc.meta.id,
       doc.meta.env,
@@ -980,21 +963,17 @@ export function register(on) {
                 label: '',
                 options: COLUMNS.map((c) => ({ value: c.name, label: c.name })),
                 value: found.col.name,
-                onSelect: (to) => {
-                  moveCard(selected, to);
-                  log = `${selected} → ${to}`;
-                  redraw();
+                onSelect: async (to) => {
+                  if (await crew($, ['task', selected, 'set', 'status', to]))
+                    log = `${selected} → ${to}`;
                 },
               }),
               ui.Select({
                 key: 'model',
                 label: '',
                 options: MODELS,
-                value: model[selected] ?? 'sonnet',
-                onSelect: (m) => {
-                  model[selected] = m;
-                  redraw();
-                },
+                value: selectedTask()?.model ?? 'sonnet',
+                onSelect: (m) => crew($, ['task', selected, 'set', 'model', m]),
               }),
             ]
           : []),
@@ -1057,7 +1036,7 @@ export function register(on) {
         Button({ key: 'new-task', label: 'New task', variant: 'primary', onPress: () => {} }),
       ],
     );
-    const board = window(
+    const boardWindow = window(
       'board-window',
       Text({ bold: true, color: C.mut, children: ['Board'] }),
       boardError
@@ -1065,9 +1044,9 @@ export function register(on) {
         : boardView($, ui, inner, e.surface),
       { flexShrink: 0 },
     );
-    if (isPoppedOut || !isSpecOpen) return frame([header, board]);
+    if (isPoppedOut || !isSpecOpen) return frame([header, boardWindow]);
     if (isFull) return frame([header, spec]);
-    return frame([header, board, spec]);
+    return frame([header, boardWindow, spec]);
   });
 
   on('ui.message', async ($, e, next) => {
