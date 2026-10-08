@@ -238,12 +238,43 @@ let doc = null;
 let newFiles = new Set(); // files: entries not yet in the repository
 let editing = null; // { s, b } of the block being edited, or { s, b: 'new' } for an added line
 const marks = {}; // block text → 'ok' | 'asked': view-only, never written, so kept across reloads
-let chat = [
-  {
-    who: 'planner',
-    text: 'Drafted this from the task packet. One thing I am unsure of: whether the rail gets the long press too, or only episodes.',
-  },
-];
+const chats = {}; // task id → [{ who, text, suggestions? }], so a late reply lands in its own task's chat
+
+// `crew chat` keeps the conversation; the mod only shows it, so the main session never sees it.
+const loadChat = async ($, id) => {
+  chats[id] = [];
+  const run = await $.process.run(['npx', '--no-install', 'crew', 'chat', id, '--history']);
+  if (run.exitCode !== 0) return;
+  try {
+    chats[id] = JSON.parse(run.stdout).map(({ who, text }) => ({ who, text }));
+  } catch {}
+};
+
+const sendChat = async ($, text) => {
+  const id = selected;
+  const thread = (chats[id] ??= []);
+  const reply = { who: 'planner', text: 'planner is thinking…', suggestions: [] };
+  thread.push({ who: 'you', text }, reply);
+  $.ui.invalidate('ui.render');
+  let out = null;
+  let why = '';
+  try {
+    const run = await $.process.run(['npx', '--no-install', 'crew', 'chat', id], {
+      stdin: text,
+      timeoutMs: 600000,
+    });
+    why = run.stderr.trim().split('\n')[0] || 'crew chat exited ' + run.exitCode;
+    out = JSON.parse(run.stdout.trim().split('\n').at(-1));
+  } catch (err) {
+    why ||= err.message;
+  }
+  reply.text = out?.text || why;
+  reply.suggestions = out?.suggestions ?? [];
+  if (out?.reverted?.length)
+    reply.text += '\n\n_Reverted its changes to ' + out.reverted.join(', ') + '._';
+  if (out?.edited) await refreshBoard($);
+  else $.ui.invalidate('ui.render');
+};
 
 const loadDoc = async ($) => {
   const task = selectedTask();
@@ -491,12 +522,11 @@ const diagramItems = ($, { Box, Text, Button, Markdown, Svg }, act) => {
         label: pad('? Ask about this'),
         plain: true,
         dimColor: true,
-        onPress: act(() => {
-          chat.push({
-            who: 'you',
-            text: `About the ${diagram === 'flow' ? 'behaviour flow' : 'change map'}: can you walk me through it?`,
-          });
-        }),
+        onPress: () =>
+          sendChat(
+            $,
+            `About the ${diagram === 'flow' ? 'behaviour flow' : 'change map'}: can you walk me through it?`,
+          ),
       }),
     ],
   });
@@ -597,7 +627,7 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Client, Svg }, width)
   };
   const ask = (block, note) => {
     block.state = marks[block.text] = 'asked';
-    chat.push({ who: 'you', text: '> ' + block.text.split('\n')[0].slice(0, 120) + '\n\n' + note });
+    void sendChat($, '> ' + block.text.split('\n')[0].slice(0, 120) + '\n\n' + note);
   };
 
   const blockRow = (section, si, block, bi) => {
@@ -776,15 +806,58 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Client, Svg }, width)
     ],
   });
 
-  const message = ({ who, text }) =>
-    Box({
+  const suggestion = (thread, m, s) => {
+    const { old, new: replacement } = thread[m].suggestions[s];
+    const drop = () => thread[m].suggestions.splice(s, 1);
+    return Box({
+      key: `suggestion-${m}-${s}`,
       flexDirection: 'column',
+      rowGap: S.xs,
+      borderStyle: 'round',
+      borderColor: C.cardBorder,
+      backgroundColor: C.card,
+      paddingX: S.xs,
+      children: [
+        Text({ color: C.mut, children: ['− ' + old] }),
+        Text({ color: C.ink, children: [replacement ? '+ ' + replacement : '+ (delete it)'] }),
+        Box({
+          flexDirection: 'row',
+          columnGap: S.sm,
+          children: [
+            Button({
+              key: `apply-${m}-${s}`,
+              label: 'Apply',
+              variant: 'primary',
+              onPress: async () => {
+                if (await editSpec($, { old, new: replacement })) drop();
+                redraw();
+              },
+            }),
+            Button({
+              key: `dismiss-${m}-${s}`,
+              label: pad('Dismiss'),
+              plain: true,
+              dimColor: true,
+              onPress: act(drop),
+            }),
+          ],
+        }),
+      ],
+    });
+  };
+  const thread = chats[selected] ?? [];
+  const message = ({ who, text, suggestions = [] }, m) =>
+    Box({
+      key: 'message-' + m,
+      flexDirection: 'column',
+      rowGap: S.xs,
       alignSelf: who === 'you' ? 'flex-end' : 'flex-start',
       backgroundColor: who === 'you' ? C.well : undefined,
       paddingX: who === 'you' ? S.xs : 0,
       children: [
         ...(who === 'you' ? [] : [Text({ color: C.faint, children: [who] })]),
         Markdown({ text }),
+        ...suggestions.map((_, s) => suggestion(thread, m, s)),
       ],
     });
   // Newest first with the composer on top: the pane scrolls as a whole, so the input sits by the spec's title,
@@ -822,7 +895,11 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Client, Svg }, width)
           card: C.card,
         },
       }),
-      Box({ flexDirection: 'column', rowGap: S.sm, children: chat.toReversed().map(message) }),
+      Box({
+        flexDirection: 'column',
+        rowGap: S.sm,
+        children: thread.map((item, m) => message(item, m)).toReversed(),
+      }),
     ],
   });
   return Box({
@@ -865,6 +942,7 @@ export function register(on) {
     if (e.requestId !== PANE && e.requestId !== SPEC_PANE) return next(e);
     if (!isLoaded) await loadBoard($);
     if (!doc) await loadDoc($);
+    if (selected && !chats[selected]) await loadChat($, selected);
     const width = e.props.bodyColumns ?? 80;
     const ui = $.ui.resolve(e);
     const { Box, Text, Button } = ui;
@@ -1056,10 +1134,9 @@ export function register(on) {
     }
     if (e.element !== 'composer') return next(e);
     if (typeof e.data?.send === 'string' && e.data.send.trim()) {
-      chat.push({ who: 'you', text: e.data.send });
       clears += 1;
       log = 'sent to planner';
-      $.ui.invalidate('ui.render');
+      void sendChat($, e.data.send);
     }
     return {};
   });

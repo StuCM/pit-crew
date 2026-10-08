@@ -79,10 +79,14 @@ const BOARD = {
 };
 
 // A fake crew: `board --json` answers from a board that `task` calls change, as the real files would.
-const stubs = (on: any, { boardRun, refuse }: { boardRun?: any; refuse?: string } = {}) => {
+const stubs = (
+  on: any,
+  { boardRun, refuse, reply }: { boardRun?: any; refuse?: string; reply?: any } = {},
+) => {
   const board = structuredClone(BOARD);
   const seen = {
     calls: [] as any[],
+    chats: [] as any[],
     reads: [] as string[],
     submitted: [] as string[],
     toasts: [] as string[],
@@ -91,6 +95,15 @@ const stubs = (on: any, { boardRun, refuse }: { boardRun?: any; refuse?: string 
     const args = e.argv.slice(3);
     if (args[0] === 'board')
       return { value: boardRun ?? { exitCode: 0, stdout: JSON.stringify(board), stderr: '' } };
+    if (args[0] === 'chat') {
+      seen.chats.push({ args, stdin: e.init?.stdin, timeoutMs: e.init?.timeoutMs });
+      const history = [
+        { who: 'you', text: 'Earlier question', at: 'x' },
+        { who: 'planner', text: 'Earlier answer', at: 'x' },
+      ];
+      const out = args[2] === '--history' ? history : (reply ?? { text: 'Fine.', suggestions: [] });
+      return { value: { exitCode: 0, stdout: JSON.stringify(out), stderr: '' } };
+    }
     seen.calls.push({ args, stdin: e.init?.stdin && JSON.parse(e.init.stdin) });
     if (refuse) return { value: { exitCode: 1, stdout: '', stderr: refuse + '\nmore' } };
     const task = board.tasks.find((t) => t.id === args[1])!;
@@ -266,5 +279,46 @@ test('diagrams: the change map draws steps against files, and the flow comes fro
   await ui.press({ key: 'diagram-flow' });
   await ui.press({ key: 'generate-flow' });
   expect(await svg()).toContain('Held 500ms?');
+  await ui.unmount();
+});
+
+test('the task chat loads its history, sends to crew chat, and Apply writes the suggestion', async ($, on) => {
+  const seen = stubs(on, {
+    reply: {
+      text: 'Reword the second step.',
+      suggestions: [{ old: '2. Second step', new: '2. Second step, clearer' }],
+      edited: false,
+    },
+  });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  expect(seen.chats[0].args).toEqual(['chat', '001', '--history']);
+  expect(await ui.find({ type: 'Markdown', text: 'Earlier answer' })).toBeDefined();
+  await ui.post({ send: 'Is step two clear?' }, { in: 'composer' });
+  expect(seen.chats[1]).toEqual({
+    args: ['chat', '001'],
+    stdin: 'Is step two clear?',
+    timeoutMs: 600000,
+  });
+  expect(await ui.find({ type: 'Markdown', text: 'Reword the second step.' })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: '+ 2. Second step, clearer' })).toBeDefined();
+  await ui.press({ key: 'apply-3-0' });
+  expect(seen.calls).toEqual([
+    {
+      args: ['task', '001', 'edit'],
+      stdin: { old: '2. Second step', new: '2. Second step, clearer' },
+    },
+  ]);
+  expect(await ui.find({ key: 'apply-3-0' })).toBeUndefined();
+  await ui.unmount();
+});
+
+test('a reply that edited the spec reloads it, and ? on a line sends the quote', async ($, on) => {
+  const seen = stubs(on, { reply: { text: 'Done.', suggestions: [], edited: true } });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const reads = seen.reads.length;
+  await ui.press({ key: 'ask-0-0' });
+  expect(seen.chats[1].stdin).toBe('> Holding OK opens a menu.\n\nCan we talk this one through?');
+  expect(await ui.find({ type: 'Markdown', text: 'Done.' })).toBeDefined();
+  expect(seen.reads.length).toBeGreaterThan(reads);
   await ui.unmount();
 });
