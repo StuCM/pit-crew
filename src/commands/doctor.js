@@ -5,6 +5,7 @@
 // deploy block being the common one. One command that reports all of it beats
 // six that each crash differently.
 
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { branches, git } from '../lib/git.js';
@@ -13,6 +14,18 @@ import { readTasks } from '../lib/task.js';
 import { onPath } from './preflight.js';
 
 const HOOKS = join('.claude', 'crew', 'githooks');
+const MODS_MIN = [2, 1, 286];
+
+/** Is a `claude --version` string older than the mods minimum? null when unparseable. */
+export const tooOldForMods = (output) => {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(String(output).trim());
+  if (!match) return null;
+  const have = match.slice(1).map(Number);
+  for (let i = 0; i < 3; i++) {
+    if (have[i] !== MODS_MIN[i]) return have[i] < MODS_MIN[i];
+  }
+  return false;
+};
 
 export const run = (cfg) => {
   const notes = [];
@@ -60,6 +73,19 @@ export const run = (cfg) => {
     const missing = (env.requires || []).filter((bin) => !onPath(bin));
     if (missing.length)
       notes.push(`note: ${name} cannot run: ${missing.join(', ')} is not on PATH`);
+  }
+
+  if (!onPath('claude')) {
+    notes.push('note: claude is not on PATH — cannot check the version mods need');
+  } else {
+    let version = '';
+    try {
+      version = execFileSync('claude', ['--version'], { encoding: 'utf8' });
+    } catch {}
+    if (tooOldForMods(version))
+      fails.push(
+        `Claude Code ${version.trim()} is too old for mods — mods need 2.1.286+; Desktop bundles its own copy, update the app`,
+      );
   }
 
   const known = statuses(cfg);

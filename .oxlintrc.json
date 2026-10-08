@@ -17,6 +17,12 @@
     "node_modules",
     "planning/**"
   ],
+  "overrides": [
+    {
+      "files": ["hooks/tests/*.test.ts"],
+      "rules": { "no-await-in-loop": "off" }
+    }
+  ],
   "rules": {
     "no-console": "off",
     "unicorn/no-array-sort": "off"

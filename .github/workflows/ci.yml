@@ -24,6 +24,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run verify
+      - run: npm install --global @anthropic-ai/claude-code
+      - run: claude plugin test .
 
   package:
     # `crew serve` loads its page and its agents from inside the installed
@@ -42,6 +44,9 @@ jobs:
             const needed = [
               "src/cli.js",
               "src/web/wall.html",
+              "hooks/register.js",
+              "hooks/card.js",
+              "hooks/composer.js",
               "agents/crew-scout.md",
               "agents/crew-fixer.md",
               "agents/crew-reviewer.md",
