@@ -33,6 +33,7 @@ const USAGE = `crew — a task loop for agents
   crew serve [--port=N]     the pit wall: a local page for the work in flight
   crew log <task> <event>   append one line to the cost log
   crew task <id> <change>   set status|model|env, approve, or edit (JSON on stdin)
+  crew chat <id>            ask the task's spec editor (message on stdin; --history)
 
   crew commit-msg <file>    the commit convention (git hook)
   crew pre-commit           staged-file format and lint (git hook)
@@ -52,6 +53,7 @@ const COMMANDS = {
   doctor: () => import('./commands/doctor.js'),
   log: () => import('./commands/log.js'),
   task: () => import('./commands/task.js'),
+  chat: () => import('./commands/chat.js'),
   review: () => import('./commands/review.js'),
   graph: () => import('./commands/graph.js'),
   plan: () => import('./commands/plan.js'),
