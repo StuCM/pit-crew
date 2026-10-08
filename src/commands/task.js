@@ -12,6 +12,8 @@ import { run as renderBoard } from './board.js';
 
 const USAGE = `usage: crew task <id> set <status|model|env> <value>
        crew task <id> approve
+       crew task <id> signoff    (from a pending-<env> status)
+       crew task <id> sendback   (from blocked)
        crew task <id> edit    (JSON on stdin: {"old","new"} or {"section","append"})`;
 const FENCE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
 const MODEL_ID = /^(opus|sonnet|haiku|claude-[a-z0-9.-]+)$/;
@@ -84,6 +86,15 @@ export const run = (cfg, [id, verb, ...rest] = [], input) => {
     if (task.meta.status !== 'draft') return refuse(`task is ${task.meta.status}, not draft`);
     setField(task.path, 'status', 'approved');
     logEvent(cfg, [task.path, 'spec']);
+  } else if (verb === 'signoff') {
+    const env = statuses(cfg)[task.meta.status]?.pendingEnv;
+    if (!env) return refuse(`task is ${task.meta.status}, not waiting on an environment`);
+    setField(task.path, 'status', 'done');
+    logEvent(cfg, [task.path, `signoff ${env}`]);
+  } else if (verb === 'sendback') {
+    if (task.meta.status !== 'blocked') return refuse(`task is ${task.meta.status}, not blocked`);
+    setField(task.path, 'status', 'approved');
+    logEvent(cfg, [task.path, 'sendback']);
   } else if (verb === 'edit') {
     let change;
     try {

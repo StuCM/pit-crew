@@ -101,6 +101,49 @@ test('approve refuses a task that is not a draft', () => {
   assert.equal(frontmatter(readFileSync(path, 'utf8')).status, 'building');
 });
 
+const DESKTOP = { environments: { desktop: { reachableFromAgents: false, proves: ['ui'] } } };
+const statusOf = (path) => frontmatter(readFileSync(path, 'utf8')).status;
+
+test('signoff moves a pending task to done, logs the environment and renders the board', () => {
+  const { cfg, path, root } = setup('pending-desktop');
+  assert.equal(call({ ...cfg, ...DESKTOP }, ['007', 'signoff']).code, 0);
+  assert.equal(statusOf(path), 'done');
+  const logged = readFileSync(join(root, cfg.log), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.deepEqual(
+    logged.map((e) => [e.event, e.status]),
+    [['signoff desktop', 'done']],
+  );
+  assert.match(
+    readFileSync(join(root, cfg.tasksDir, 'BOARD.md'), 'utf8'),
+    /\| 007 \| A thing \| `done`/,
+  );
+});
+
+test('signoff refuses a task that is not waiting on an environment', () => {
+  for (const status of ['approved', 'building', 'done']) {
+    const { cfg, path } = setup(status);
+    const { code, err } = call({ ...cfg, ...DESKTOP }, ['007', 'signoff']);
+    assert.equal(code, 1);
+    assert.match(err[0], new RegExp(`task is ${status}, not waiting`));
+    assert.equal(statusOf(path), status);
+  }
+});
+
+test('sendback returns a blocked task to approved and logs it', () => {
+  const { cfg, path, root } = setup('blocked');
+  assert.equal(call(cfg, ['007', 'sendback']).code, 0);
+  assert.equal(statusOf(path), 'approved');
+  assert.match(readFileSync(join(root, cfg.log), 'utf8'), /"event":"sendback"/);
+});
+
+test('sendback refuses a task that is not blocked', () => {
+  const { cfg, path } = setup('pending-desktop');
+  const { code, err } = call({ ...cfg, ...DESKTOP }, ['007', 'sendback']);
+  assert.equal(code, 1);
+  assert.match(err[0], /not blocked/);
+  assert.equal(statusOf(path), 'pending-desktop');
+});
+
 test('edit replaces one block, multi-line included', () => {
   const { cfg, path } = setup();
   const { code } = edit(cfg, {
