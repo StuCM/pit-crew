@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// One version, in four files. npm bumps package.json; the plugin manifests
+// One version, in five files. npm bumps package.json; the plugin manifests
 // are what `/plugin update` compares, so a release that bumps only npm is
 // one no Claude Code install ever sees.
 //
 //   node scripts/version.js            copy package.json's version into the others
-//   node scripts/version.js --check X  fail unless all four say X
+//   node scripts/version.js --check X  fail unless all five say X
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -14,6 +14,7 @@ export const MANIFESTS = [
   '.claude-plugin/plugin.json',
   '.claude-plugin/marketplace.json',
   'planning/.claude-plugin/plugin.json',
+  'mods/pit-wall/.claude-plugin/plugin.json',
 ];
 
 const VERSION = /("version"\s*:\s*")([^"]*)(")/g;

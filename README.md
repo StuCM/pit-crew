@@ -232,6 +232,10 @@ into tasks". See [Planning](#planning).
 | `crew scope <task> [base]` | changed files against the spec's `files:` |
 | `crew review <task>` | open a round, refusing one past the limit |
 | `crew board` | render `BOARD.md` from the task files |
+| `crew tasks [--json]` | the tasks with their worktrees, branches and commits, as data for a pane |
+| `crew approve <task>` | `draft` → `approved`: the first human gate, as a command a button can press |
+| `crew dispatch <task> [--force]` | `approved` → `building`: refuse on collisions, cut the worktree, print the session's brief |
+| `crew checkout <task>` | put the task's tip on the test bench; `--back` returns it, `--status` says what is there |
 | `crew serve [--port=N]` | the pit wall: a local page for the work in flight |
 | `crew log <task> <event>` | append one line to the cost log |
 | `crew commit-msg <file>` | the commit convention (git hook) |
@@ -280,6 +284,7 @@ The keys worth understanding rather than accepting:
 | `commit.banned` | substrings rejected anywhere in a message. The default strips attribution footers |
 | `comments.warnAddedRatio` | the comment-to-code ratio that earns a warning, counted on code files only |
 | `plansDir` | where the planning plugin keeps `plan.json`; `crew plan` reads it |
+| `bench` | where `crew checkout` puts a task's work to test it. Unset: a worktree `<project>-bench` beside the task worktrees. `"."`: the main checkout, for a stack that only runs from there |
 
 **Statuses are derived, not listed.** Six are intrinsic — `draft`, `approved`,
 `building`, `review`, `blocked`, `done` — and every environment with
@@ -570,6 +575,53 @@ not start a worker from the page yet.
 It listens on 127.0.0.1 only, refuses any request whose Host is not
 localhost, and refuses every write without a token that exists only in the
 page it served. A site open in another tab can reach the port; it cannot act.
+
+## The pit wall pane
+
+The board as a pane in the orchestrator's own session, in the Claude
+desktop app or the terminal. It is a mod — a plugin of function hooks —
+and every button is a `crew` command, so it refuses exactly what the CLI
+refuses.
+
+```
+/plugin install pit-wall@pit-crew
+```
+
+It opens by itself in a session started in a crew repository's main
+checkout, and never in a task worktree; `/pitwall` opens it anywhere. It
+reads `crew tasks --json` every few seconds while open.
+
+| task is | buttons |
+|---|---|
+| `draft` | **Approve & run** — approve, then dispatch, in one press. **Approve only** |
+| `approved` | **Run** |
+| in flight | **Brief** — the worktree, model and brief for its session. **Check out**, **Worktree** |
+| anything with commits | **Check out** — put its tip on the bench |
+| all | **Spec** — the task file, inline |
+
+**One step is still yours: opening the task's chat.** Nothing a plugin can
+call creates a desktop session, so after a dispatch the pane shows the
+worktree, the model and the brief. Start a new session in that folder and
+paste the brief. In a terminal the brief is also copied for you; the
+desktop app gives plugins no clipboard yet.
+
+**A refused dispatch says why and offers Run anyway.** Another in-flight
+task on the same files, or an unmerged branch already touching them, stops
+it exactly as `crew dispatch` does. Run anyway is `--force`, and it is your
+call to make, never the orchestrator's.
+
+**Testing a task's work: the bench.** **Check out** runs `crew checkout`,
+which puts the task's tip on one fixed worktree, `<project>-bench`, so a
+dev server or a compose file pointed at it once follows every checkout.
+The task's own worktree is never touched, so the worker can go on
+committing while you test; what it has not committed is not on the bench,
+and the pane says how much that is. **Back** returns the bench. Set
+`bench: "."` to use the main checkout instead, for a stack that only runs
+from there — commit the task files and the board first, since a dispatch
+changes them and git will not switch over them.
+
+`CREW_EDITOR` picks the editor **Worktree** and **Open bench** run, as for
+`crew serve`.
 
 ## The memory graph
 

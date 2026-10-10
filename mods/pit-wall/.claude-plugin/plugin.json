@@ -1,0 +1,6 @@
+{
+  "name": "pit-wall",
+  "version": "0.1.0",
+  "description": "The crew board as a pane: approve and run a task in one press, test a task's work on the bench, open its worktree.",
+  "types": "./types/index.d.ts"
+}
