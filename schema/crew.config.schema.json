@@ -13,6 +13,7 @@
     "baseBranch": { "type": "string", "default": "main" },
     "branchPrefix": { "type": "string", "default": "crew/", "description": "Task branches are <branchPrefix><id>-<slug>." },
     "worktreeDir": { "type": "string", "default": "..", "description": "Where /crew-run puts each task's worktree." },
+    "bench": { "type": ["string", "null"], "default": null, "description": "Where `crew checkout` puts a task's work to test it, relative to the main checkout. Unset: a worktree beside the task worktrees, `<project>-bench`. \".\" uses the main checkout itself, for a stack that only runs from there." },
     "tasksDir": { "type": "string", "default": ".claude/tasks" },
     "projectBrief": { "type": "string", "default": ".claude/crew/project.md", "description": "Markdown the worker and reviewer roles include. All project-specific prose lives here." },
     "plansDir": { "type": "string", "default": ".claude/plans", "description": "Where the planning plugin keeps plan.json and its maps. `crew plan` reads them; nothing breaks if the directory is absent." },

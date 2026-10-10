@@ -30,6 +30,13 @@ const USAGE = `crew — a task loop for agents
   crew scope <task> [base]  changed files against the spec's files:
   crew review <task>        open a review round, refusing one past the limit
   crew board                render BOARD.md from the task files
+  crew tasks [--json]       the tasks, their worktrees and branches, as data
+
+  crew approve <task>       draft → approved: the first human gate
+  crew dispatch <task>      approved → building: refuse on collisions, cut
+                            the worktree, print the session's brief
+  crew checkout <task>      detach the main checkout at the task's tip, to
+                            run it there; --back returns it, --status says
   crew serve [--port=N]     the pit wall: a local page for the work in flight
   crew log <task> <event>   append one line to the cost log
 
@@ -46,6 +53,10 @@ const COMMANDS = {
   'pre-commit': () => import('./commands/pre-commit.js'),
   scope: () => import('./commands/scope-check.js'),
   board: () => import('./commands/board.js'),
+  tasks: () => import('./commands/tasks.js'),
+  approve: () => import('./commands/approve.js'),
+  dispatch: () => import('./commands/dispatch.js'),
+  checkout: () => import('./commands/checkout.js'),
   preflight: () => import('./commands/preflight.js'),
   gate: () => import('./commands/gate.js'),
   doctor: () => import('./commands/doctor.js'),

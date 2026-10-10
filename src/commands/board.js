@@ -72,7 +72,8 @@ export const render = (tasks, known, live, cfg) => {
   return { text: out.join('\n'), waiting, total: ordered.length };
 };
 
-export const run = (cfg) => {
+/** Re-render BOARD.md from the task files, for any command that moves one. */
+export const writeBoard = (cfg) => {
   const dir = join(cfg.root, cfg.tasksDir);
   const tasks = readTasks(dir);
   const known = statuses(cfg);
@@ -82,6 +83,11 @@ export const run = (cfg) => {
 
   const { text, waiting, total } = render(tasks, known, live, cfg);
   writeFileSync(join(dir, 'BOARD.md'), text);
+  return { tasks, known, waiting, total };
+};
+
+export const run = (cfg) => {
+  const { tasks, known, waiting, total } = writeBoard(cfg);
 
   const unknown = tasks.filter((task) => !known[task.meta.status]);
   console.log(`board: ${total} task(s), ${waiting.length} waiting on you`);

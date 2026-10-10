@@ -19,6 +19,23 @@ export const git = (args, cwd) => {
   }
 };
 
+/**
+ * Run git for a change the caller has to report on: `{ ok, out, err }`, with
+ * git's own words on failure, since "worktree add failed" alone helps nobody.
+ */
+export const gitTry = (args, cwd) => {
+  try {
+    const out = execFileSync('git', args, {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return { ok: true, out, err: '' };
+  } catch (error) {
+    return { ok: false, out: '', err: String(error.stderr || error.message).trim() };
+  }
+};
+
 /** Run git and return stdout split into non-blank lines. Empty on failure. */
 export const gitLines = (args, cwd) => {
   const out = git(args, cwd);

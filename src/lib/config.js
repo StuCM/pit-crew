@@ -15,6 +15,7 @@ export const DEFAULTS = {
   baseBranch: 'main',
   branchPrefix: 'crew/',
   worktreeDir: '..',
+  bench: null,
   tasksDir: '.claude/tasks',
   projectBrief: '.claude/crew/project.md',
   plansDir: '.claude/plans',

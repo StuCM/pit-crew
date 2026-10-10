@@ -14,42 +14,37 @@ the board.
 
 A task can also be queued from `crew serve`: its id appears under `requests`
 in `.claude/crew/wall.json`. Treat that as the person saying "run task N",
-and remove the entry once it is dispatched.
+and remove the entry once it is dispatched. A task started from the
+`pit-wall` pane has already been dispatched: its status is `building`, and
+there is nothing for you to do but read the board.
 
-## 1. Check it can run alongside what is already in flight
-
-Read the board. If another in-flight task declares any of the same `files:`,
-**do not start this one** — say which task it collides with and offer to queue
-it. Two sessions editing the same module will conflict at merge and you pay for
-both.
-
-Then ask git the same question, because the board only sees tasks:
+## 1. Dispatch it
 
 ```sh
-npx crew collisions .claude/tasks/<id>-<slug>.md
+npx crew dispatch <id>
 ```
 
-Any output is a hit: an unmerged branch already carries commits touching these
-files. **Do not dispatch.** Name the branch and the commits, and offer to land
-them, respec around them, or proceed anyway. The user may say proceed; you may
-not decide it for them, exactly as with a `draft`.
+It does everything here that never needed a model, in one place, so the
+skill, the pit wall and the pane cannot drift apart:
 
-It exits 0 whether or not it finds anything — the advisory layer never stalls
-the loop, so read what it printed rather than its status.
+- refuses unless `status:` is `approved`;
+- refuses if another in-flight task declares any of the same `files:`, or an
+  unmerged branch already carries commits touching them (`crew collisions`);
+- cuts `<worktreeDir>/<project>-<id>` on the task's `branch:` from the base
+  branch — the branch name matters, the scope hook identifies the task by it;
+- copies the spec into the worktree if it was never committed;
+- sets `status: building`, re-renders the board and logs the dispatch;
+- prints the session's model and the exact command to start it.
 
-## 2. Worktree
+**On a refusal, do not dispatch.** Name the task or the branch and its
+commits, and offer to land them, respec around them, or proceed anyway. The
+user may say proceed — then `npx crew dispatch <id> --force`. You may not
+decide it for them, exactly as with a `draft`.
 
-The branch name is the one in the task file's `branch:`, and it matters: the
-scope hook identifies the task from it.
+## 2. Hand over
 
-```sh
-git worktree add <worktreeDir>/<project>-<id> -b <branch>
-```
-
-## 3. Hand over
-
-Set `status: building`, run `npx crew board` and `npx crew log <task> dispatch`,
-then start the session in that worktree with exactly this brief — nothing more:
+Start the session in that worktree with exactly the brief `dispatch` printed
+— nothing more:
 
 ```
 Use the crew-worker skill for task .claude/tasks/<id>-<slug>.md.
@@ -68,20 +63,18 @@ rename, or the cheap one on the code that must not be wrong.
 
 If a tool for spawning a session is available, spawn it there with that
 prompt and that model, and record the session id in the task file's
-`session:`. Otherwise give the user one line to paste:
+`session:`. Otherwise give the user the one line `dispatch` printed to paste,
+or tell them to open a new session in the worktree folder on that model with
+that brief.
 
-```sh
-cd <worktreeDir>/<project>-<id> && claude --model <model> "Use the crew-worker skill for task .claude/tasks/<id>-<slug>.md. You are in a worktree; the spec is the brief."
-```
-
-## 4. Mirror it, if the project has a board
+## 3. Mirror it, if the project has a board
 
 If `.claude/taiga.json` exists, use the `taiga-mirror` skill to move the card
 to In progress with a dispatch comment. One way only, and never a blocker: if
 the push fails, say so in a line and carry on. The loop must not stall on a
 reporting layer, for the same reason the graph degrades silently.
 
-## 5. Then stop
+## 4. Then stop
 
 The task session owns the loop from here: it implements, runs the gate, opens
 its rounds with `crew review`, spawns `crew-reviewer` itself, and writes its
@@ -90,7 +83,7 @@ own status back into the task file.
 **Do not poll it and do not narrate it.** Re-render the board when the user
 asks where things stand, or when a session reports back.
 
-## 6. When a session reports
+## 5. When a session reports
 
 The task file's `status:` tells you what happened:
 

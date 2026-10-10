@@ -8,13 +8,8 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { gitLines } from '../lib/git.js';
 import { declaredFiles, readTask } from '../lib/task.js';
 
-export const run = (cfg, [taskArg, event]) => {
-  if (!taskArg || !event) {
-    console.error('usage: crew log <task-file> <event>   (spec|dispatch|gate|review|close|block)');
-    return 2;
-  }
-
-  const path = resolve(cfg.root, taskArg);
+/** Append one event for the task file at `path`. */
+export const appendLog = (cfg, path, event) => {
   const task = readTask(path, relative(cfg.root, path));
   const base = task.meta.gateSha ? `${cfg.baseBranch}...${task.meta.gateSha}` : null;
 
@@ -35,6 +30,16 @@ export const run = (cfg, [taskArg, event]) => {
   const file = join(cfg.root, cfg.log);
   mkdirSync(dirname(file), { recursive: true });
   appendFileSync(file, `${JSON.stringify(entry)}\n`);
+  return task;
+};
+
+export const run = (cfg, [taskArg, event]) => {
+  if (!taskArg || !event) {
+    console.error('usage: crew log <task-file> <event>   (spec|dispatch|gate|review|close|block)');
+    return 2;
+  }
+
+  const task = appendLog(cfg, resolve(cfg.root, taskArg), event);
   console.log(`log: ${event} ${task.id}`);
   return 0;
 };

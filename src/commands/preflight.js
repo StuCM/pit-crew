@@ -66,21 +66,13 @@ const environment = (cfg, target) => {
 };
 
 /**
- * Unmerged local branches whose commits already touch a task's declared files.
- * Advisory: it informs the spec and the dispatch, and never blocks — the board
- * only knows about tasks, and a commit on a branch nobody turned into a task
- * is invisible to it.
+ * Unmerged local branches whose commits already touch a task's declared files,
+ * as `{ branch, commit, path }`. Shared by `crew collisions`, which prints
+ * them, and `crew dispatch`, which refuses on them.
  */
-const collisions = (cfg, taskArg) => {
-  if (!taskArg) {
-    console.error('usage: crew collisions <task-file>');
-    return 2;
-  }
-
-  const path = resolve(cfg.root, taskArg);
-  const task = readTask(path, relative(cfg.root, path));
+export const findCollisions = (cfg, task) => {
   const declared = declaredFiles(task);
-  if (!declared.length) return 0;
+  if (!declared.length) return [];
 
   const finished = new Set(
     readTasks(join(cfg.root, cfg.tasksDir))
@@ -90,7 +82,7 @@ const collisions = (cfg, taskArg) => {
   );
   const skip = new Set([currentBranch(cfg.root), task.meta.branch, ...finished]);
 
-  let hits = 0;
+  const hits = [];
   for (const branch of branches(cfg.root)) {
     if (skip.has(branch)) continue;
 
@@ -106,17 +98,29 @@ const collisions = (cfg, taskArg) => {
     // for a header line — git's own `--name-only` output has no such marker.
     let commit = '';
     for (const line of lines) {
-      if (line.startsWith('commit ')) {
-        commit = line.slice('commit '.length);
-      } else if (commit) {
-        console.log(`${branch}  ${commit}  [${line}]`);
-        hits++;
-      }
+      if (line.startsWith('commit ')) commit = line.slice('commit '.length);
+      else if (commit) hits.push({ branch, commit, path: line });
     }
   }
+  return hits;
+};
 
-  if (hits) {
-    console.log(`\n${hits} unmerged commit(s) already touch these files.`);
+/**
+ * Advisory: it informs the spec and never blocks — the board only knows about
+ * tasks, and a commit on a branch nobody turned into a task is invisible to it.
+ */
+const collisions = (cfg, taskArg) => {
+  if (!taskArg) {
+    console.error('usage: crew collisions <task-file>');
+    return 2;
+  }
+
+  const path = resolve(cfg.root, taskArg);
+  const hits = findCollisions(cfg, readTask(path, relative(cfg.root, path)));
+  for (const hit of hits) console.log(`${hit.branch}  ${hit.commit}  [${hit.path}]`);
+
+  if (hits.length) {
+    console.log(`\n${hits.length} unmerged commit(s) already touch these files.`);
     console.log('Read them before starting: git log -p HEAD..<branch> -- <file>');
   }
   return 0;
