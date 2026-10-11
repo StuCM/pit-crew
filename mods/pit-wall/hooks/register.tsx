@@ -125,6 +125,25 @@ async function dispatchTask(
   }
 
   const brief = String(result.brief);
+  const extra = result.specCopied
+    ? ['The spec was not committed, so it was copied into the worktree.']
+    : [];
+
+  // The desktop app's card: one click there starts the task's own session on
+  // this machine. Its server is the host's, so it is only there in the app.
+  if (await queueCard($, result.card as Card | undefined)) {
+    await say($, {
+      tone: 'ok',
+      title: `Task ${id} is building`,
+      lines: [
+        `A card for it is in the app: click it to start the task's session on your machine (not in a fresh worktree; it moves into ${result.worktree} itself).`,
+        `The spec chose ${result.model}; the card starts on your default model.`,
+        ...extra,
+      ],
+    });
+    return;
+  }
+
   // A desktop surface has no clipboard path yet, so the brief is also drawn
   // for copying; say which happened rather than leave the person guessing.
   const copied = await $.ui.copy({ text: brief, surface }).then(
@@ -140,12 +159,23 @@ async function dispatchTask(
       copied
         ? 'Brief copied. Start a new session in that folder and paste it.'
         : 'Start a new session in that folder, on that model, with this brief:',
-      ...(result.specCopied
-        ? ['The spec was not committed, so it was copied into the worktree.']
-        : []),
+      ...extra,
     ],
     code: brief,
   });
+}
+
+type Card = { title: string; tldr: string; prompt: string };
+
+/** Queue the task's card in the desktop app; false where there is no app. */
+async function queueCard($: EngineInterface, card: Card | undefined): Promise<boolean> {
+  if (!card) return false;
+  try {
+    const answer = await $.mcp.call('ccd_session', 'spawn_task', card);
+    return !answer.isError;
+  } catch {
+    return false;
+  }
 }
 
 async function openInEditor($: EngineInterface, path: string) {

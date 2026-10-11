@@ -38,3 +38,27 @@ export const modelFor = (cfg, task) => task.meta.model || cfg.models.default;
 export const briefFor = (cfg, task) =>
   `Use the crew-worker skill for task ${join(cfg.tasksDir, basename(task.path))}. ` +
   'You are in a worktree; the spec is the brief.';
+
+/**
+ * The card the desktop app shows for a task: one click starts a session on
+ * this machine, in the main checkout. The card cannot pick a folder or a
+ * model, so its prompt moves the session into the task's worktree before
+ * anything else — the scope hook identifies the task from the branch there —
+ * and says which model the spec chose.
+ */
+export const cardFor = (cfg, task, worktree) => {
+  const title = `Task ${task.id}: ${task.title}`;
+  return {
+    title: title.length > 58 ? `${title.slice(0, 57)}…` : title,
+    tldr:
+      `Builds task ${task.id} in its own worktree, ${basename(worktree)}, on ${branchFor(cfg, task)}. ` +
+      'Start it on your machine, without a fresh worktree: it moves into its own.',
+    prompt: [
+      `Task ${task.id}: ${task.title}. You are the crew worker for this task.`,
+      '',
+      `1. Before anything else, enter the task's worktree: load the EnterWorktree tool and call it with \`path: ${JSON.stringify(worktree)}\`. Do not read or change anything in the checkout you started in.`,
+      `2. The spec chose the model \`${modelFor(cfg, task)}\`. If you are running on another, say so in one line so the person can switch with /model, then carry on.`,
+      `3. ${briefFor(cfg, task)}`,
+    ].join('\n'),
+  };
+};

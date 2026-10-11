@@ -8,7 +8,9 @@
 // description could not be: unconditional.
 //
 // A worker session is on a task branch and must implement, so it hears
-// nothing from this.
+// nothing from this. One started from a desktop card opens here, on the base
+// branch, and only then moves into its worktree: the last sentence keeps it
+// from mistaking itself for the orchestrator.
 
 import { git } from '../lib/git.js';
 
@@ -17,6 +19,7 @@ export const CONTEXT = [
   'Before changing any code for a bug fix, feature or other change, load the crew:crew-spec skill and follow it, however small the change looks.',
   'It decides whether the work is done inline, specified for a worker, or planned first, and it asks what the person knows before anything is searched.',
   'A question about how the code works needs no skill: answer it.',
+  'If your prompt hands you a crew task for the crew-worker skill, you are its worker, not the orchestrator: enter its worktree as the prompt says and follow crew-worker instead.',
 ].join(' ');
 
 export const run = (cfg) => {

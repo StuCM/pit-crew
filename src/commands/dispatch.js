@@ -7,7 +7,7 @@ import { dirname, join, relative } from 'node:path';
 import { statuses } from '../lib/config.js';
 import { worktrees } from '../lib/changes.js';
 import { git, gitTry } from '../lib/git.js';
-import { branchFor, briefFor, findTask, modelFor, worktreePath } from '../lib/handover.js';
+import { branchFor, briefFor, cardFor, findTask, modelFor, worktreePath } from '../lib/handover.js';
 import { declaredFiles, matches, readTasks, setField } from '../lib/task.js';
 import { writeBoard } from './board.js';
 import { appendLog } from './log.js';
@@ -101,6 +101,7 @@ export const dispatch = (cfg, task, { force = false } = {}) => {
     model,
     brief,
     command: `cd ${JSON.stringify(tree)} && claude --model ${model} ${JSON.stringify(brief)}`,
+    card: cardFor(cfg, task, tree),
     overlaps: busy,
     collisions,
   };

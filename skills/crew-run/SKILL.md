@@ -61,11 +61,20 @@ wrong — and nothing else carries that choice to the session. A session that
 starts on whatever the machine defaults to spends the critical model on a
 rename, or the cheap one on the code that must not be wrong.
 
-If a tool for spawning a session is available, spawn it there with that
-prompt and that model, and record the session id in the task file's
-`session:`. Otherwise give the user the one line `dispatch` printed to paste,
-or tell them to open a new session in the worktree folder on that model with
-that brief.
+**In the Claude desktop app, queue the task's card.** If
+`mcp__ccd_session__spawn_task` is available, run
+`npx crew dispatch <id> --json` instead and pass its `card` — `title`,
+`tldr` and `prompt`, verbatim — to `spawn_task`. One click on the card
+starts the task's session on this machine. The card's prompt moves that
+session into the worktree first and names the spec's model, because a card
+can set neither. Tell the user in one line that the card is there and to
+start it on their machine, not in a fresh worktree.
+
+If another tool for spawning a session is available, spawn it there with
+the brief and the model, and record the session id in the task file's
+`session:`. Otherwise give the user the one line `dispatch` printed to
+paste, or tell them to open a new session in the worktree folder on that
+model with that brief.
 
 ## 3. Mirror it, if the project has a board
 

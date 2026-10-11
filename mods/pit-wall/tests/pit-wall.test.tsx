@@ -141,3 +141,35 @@ test('a task with commits can be put on the bench', async ($, on) => {
   expect(await ui.find({ text: /\/p-bench is at abcdef1/ })).toBeDefined();
   expect(await ui.find({ text: /1 uncommitted change/ })).toBeDefined();
 });
+
+test('in the desktop app, a dispatch queues the task card instead of showing the brief', async ($, on) => {
+  fakeCrew(on, (args) => {
+    if (args[0] === 'tasks') return { out: board([task('011', 'approved')]) };
+    if (args[0] === 'dispatch') {
+      return {
+        out: {
+          ok: true,
+          worktree: '/p-011',
+          model: 'opus',
+          brief: 'B',
+          card: { title: 'Task 011: task 011', tldr: 'T', prompt: 'P' },
+        },
+      };
+    }
+    return { out: {} };
+  });
+  const cards: unknown[] = [];
+  on('mcp.call', (_$: unknown, e: { server: string; tool: string; args?: unknown }) => {
+    cards.push([e.server, e.tool, e.args]);
+    return { value: { content: [{ type: 'text', text: 'Noted' }], isError: false } };
+  });
+
+  const ui = await $.ui.mount({ plugin: 'pit-wall', surface: 'desktop', ...PANE });
+  await ui.press({ key: 'refresh' });
+  await ui.press({ key: 'run:011' });
+  expect(cards).toEqual([
+    ['ccd_session', 'spawn_task', { title: 'Task 011: task 011', tldr: 'T', prompt: 'P' }],
+  ]);
+  expect(await ui.find({ text: /A card for it is in the app/ })).toBeDefined();
+  expect(await ui.find({ type: 'Code' })).toBeUndefined();
+});

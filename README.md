@@ -599,11 +599,19 @@ reads `crew tasks --json` every few seconds while open.
 | anything with commits | **Check out** — put its tip on the bench |
 | all | **Spec** — the task file, inline |
 
-**One step is still yours: opening the task's chat.** Nothing a plugin can
-call creates a desktop session, so after a dispatch the pane shows the
-worktree, the model and the brief. Start a new session in that folder and
-paste the brief. In a terminal the brief is also copied for you; the
-desktop app gives plugins no clipboard yet.
+**In the desktop app, a dispatch leaves a card.** After Approve & run or
+Run, the pane queues a card for the task in the app; one click on it starts
+the task's own session on your machine. Start it on your machine, not in a
+fresh worktree: a card always opens in the main checkout, so its prompt has
+the session enter the task's worktree before anything else, and the
+SessionStart hook tells it it is the worker, not the orchestrator. A card
+cannot choose a model either, so it starts on your default and says so if
+the spec chose another; `/model` switches it.
+
+Outside the app — or if the app's session tools are not reachable from a
+plugin — the pane shows the worktree, the model and the brief instead:
+start a new session in that folder and paste it. In a terminal the brief is
+also copied for you.
 
 **A refused dispatch says why and offers Run anyway.** Another in-flight
 task on the same files, or an unmerged branch already touching them, stops

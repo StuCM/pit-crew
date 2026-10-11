@@ -59,6 +59,13 @@ test('dispatch cuts the worktree from base, sets building, and gives the brief',
   assert.equal(find().meta.status, 'building');
   assert.equal(result.specCopied, false, 'the spec was committed, so it is already there');
   assert.match(result.brief, /crew-worker skill for task \.claude\/tasks\/007-thing\.md/);
+  assert.match(result.card.title, /^Task 007: A thing$/);
+  assert.ok(
+    result.card.prompt.includes(
+      `EnterWorktree tool and call it with \`path: ${JSON.stringify(result.worktree)}\``,
+    ),
+  );
+  assert.ok(result.card.prompt.endsWith(result.brief), 'the card ends with the same brief');
   assert.match(readFileSync(join(root, '.claude', 'crew', 'log.jsonl'), 'utf8'), /"dispatch"/);
 });
 
