@@ -169,6 +169,18 @@ test('an uncommitted worktree edit beats the branch commit', () => {
   assert.equal(boardStatus(root), 'blocked');
 });
 
+test('a just-cut branch shows its worktree copy, though it counts as merged', () => {
+  const root = sandbox();
+  writeTask(root, '007-thing.md', taskFile({ status: 'approved' }));
+  sh(root, 'git init -q -b main && git config user.email a@b.c && git config user.name t');
+  sh(root, 'git add -A && git commit -qm base');
+  const tree = `${root}-fresh`;
+  sh(root, `git worktree add -q -b crew/007-thing ${tree}`);
+  const copy = join(tree, '.claude', 'tasks', '007-thing.md');
+  writeFileSync(copy, readFileSync(copy, 'utf8').replace('status: approved', 'status: building'));
+  assert.equal(boardStatus(root), 'building');
+});
+
 test('a deleted branch falls back to the main checkout copy', () => {
   const { root } = liveRepo('done');
   sh(root, 'git branch -D crew/007-thing');
