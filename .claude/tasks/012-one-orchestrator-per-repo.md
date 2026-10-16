@@ -1,11 +1,11 @@
 ---
 id: 012
 slug: one-orchestrator-per-repo
-status: building
+status: review
 branch: crew/012-one-orchestrator-per-repo
 model: sonnet
 env: laptop
-rounds: 0
+rounds: 1
 files:
   - src/commands/orchestrator.js
   - src/commands/hook-session.js
@@ -16,6 +16,9 @@ files:
   - skills/crew-spec/SKILL.md
   - skills/crew-run/SKILL.md
   - skills/crew-close/SKILL.md
+gate: pass
+gateSha: 06370de4b0fbf370c80ee020387134d340a04c23
+gateAt: 2026-10-16T08:07:40.894Z
 ---
 
 # One chat per repo is the orchestrator; every other chat knows it is a side chat
@@ -178,5 +181,9 @@ None.
 ## Scout requests
 
 ## Review rounds
+
+Round 1: PASS. Gate passed (127 tests). Reviewer did not independently confirm that tests fail with the claim check removed.
+
+Changed: orchestrator.js (claim file, claim/show/release); cli.js (registers command, reads hook stdin session_id); hook-session.js (three role texts); two test files; crew-orchestrate skill new; crew-spec, crew-run, crew-close carry Approach 5-7 lines. Spec errors: none.
 
 ## Graph writes proposed
