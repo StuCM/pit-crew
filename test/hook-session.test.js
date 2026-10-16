@@ -47,6 +47,15 @@ test('the orchestrator, a side chat and an unclaimed repo each hear their own ro
   );
 });
 
+test('every role text tells a card-started worker that its prompt wins', () => {
+  const root = repo(true);
+  const worker = /you are its worker, not the orchestrator: enter its worktree/;
+  assert.match(say(root, 'a'), worker);
+  claim(root, 'a');
+  assert.match(say(root, 'a'), worker);
+  assert.match(say(root, 'b'), worker);
+});
+
 test('empty or invalid stdin still gets the no-orchestrator text', () => {
   const root = repo(true);
   for (const input of ['', 'not json']) {
