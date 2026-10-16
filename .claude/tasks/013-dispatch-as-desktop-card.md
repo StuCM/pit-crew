@@ -1,14 +1,17 @@
 ---
 id: 013
 slug: dispatch-as-desktop-card
-status: approved
+status: building
 branch: crew/013-dispatch-as-desktop-card
 model: sonnet
 env: laptop
 rounds: 0
 files:
   - src/lib/handover.js
+  - src/lib/worktrees.js
+  - test/board.test.js
   - src/commands/dispatch.js
+  - src/commands/preflight.js
   - src/cli.js
   - src/commands/hook-session.js
   - test/handover.test.js
@@ -138,6 +141,12 @@ None. (The cloud branch origin/ccr-80437362-jqsb6o is the source being ported, n
    **foreground** and wait for its verdict before doing anything else; never
    hand back with a round open.
 6. `skills/crew-close/SKILL.md`: the archive step as in Assumed.
+6a. `src/lib/worktrees.js` `readLiveTasks` (from 011): a dirty task file in the
+   task's live worktree wins **before** the merged check. A just-dispatched
+   branch has no commits, so `isMerged` is true and the worktree copy saying
+   `building` was ignored. Only the `git show <branch>:` path stays gated on
+   unmerged. Add a case to `test/board.test.js`: branch at base tip, worktree
+   copy edited to `building`, board shows `building`.
 7. `test/handover.test.js`, ported and extended, using `sandbox()`:
    - dispatch cuts the worktree from base on the task's branch;
    - the worktree has crew.config.json and project.md;
@@ -164,6 +173,8 @@ None. (The cloud branch origin/ccr-80437362-jqsb6o is the source being ported, n
       while the main checkout's says `status: approved`
 - [ ] `crew dispatch` on a draft task exits non-zero, and no worktree or branch
       is created
+- [ ] with a branch at the base tip and its worktree's task file edited to
+      `building`, `crew board --json` reports `building`
 - [ ] the SessionStart hook text contains the worker sentence for the
       orchestrator, side-chat and no-orchestrator cases
 - [ ] crew-run, crew-worker and crew-close carry the lines in Approach 4–6
@@ -174,6 +185,9 @@ None. (The cloud branch origin/ccr-80437362-jqsb6o is the source being ported, n
 - [ ] commits follow the convention (the hook enforces it)
 
 ## Scout requests
+- Q: is there a function returning (not printing) collisions or in-flight overlaps for dispatch to call?
+  A: no; `collisions` in preflight.js:74 is private and prints, only `run` calls it, no tests cover it.
+  Changed the build: yes — exported `findCollisions(cfg, task)` from preflight.js (added to `files:`, as Assumed pre-authorised).
 
 ## Review rounds
 
