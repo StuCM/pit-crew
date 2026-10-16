@@ -1,7 +1,7 @@
 ---
 id: 012
 slug: one-orchestrator-per-repo
-status: review
+status: done
 branch: crew/012-one-orchestrator-per-repo
 model: sonnet
 env: laptop
