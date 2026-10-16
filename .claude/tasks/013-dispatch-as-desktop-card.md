@@ -1,11 +1,11 @@
 ---
 id: 013
 slug: dispatch-as-desktop-card
-status: building
+status: done
 branch: crew/013-dispatch-as-desktop-card
 model: sonnet
 env: laptop
-rounds: 0
+rounds: 1
 files:
   - src/lib/handover.js
   - src/lib/worktrees.js
@@ -19,6 +19,9 @@ files:
   - skills/crew-run/SKILL.md
   - skills/crew-worker/SKILL.md
   - skills/crew-close/SKILL.md
+gate: pass
+gateSha: 4850ec0b90dfd6259a576d942699ec9b74da6870
+gateAt: 2026-10-16T09:17:56.952Z
 ---
 
 # Running a task leaves a desktop card that opens the task as its own chat
@@ -190,5 +193,22 @@ None. (The cloud branch origin/ccr-80437362-jqsb6o is the source being ported, n
   Changed the build: yes — exported `findCollisions(cfg, task)` from preflight.js (added to `files:`, as Assumed pre-authorised).
 
 ## Review rounds
+- Round 1 (gate 4850ec0): PASS — all DoD items met; no findings.
+
+## What changed
+- `src/lib/handover.js`: ported; card's model step now switches the session via `set_session_model`, `/model` as fallback.
+- `src/commands/dispatch.js`: ported; collisions via preflight's `findCollisions`, copies config/brief/uncommitted spec, `building` on the worktree copy only, board+log routed to stderr.
+- `src/commands/preflight.js`: `findCollisions(cfg, task)` extracted and exported; `crew collisions` output unchanged.
+- `src/cli.js`: `dispatch` registered with a USAGE line.
+- `src/commands/hook-session.js`: worker sentence appended to every role text.
+- `src/lib/worktrees.js`: dirty worktree copy wins before the merged check.
+- skills crew-run / crew-worker / crew-close: dispatch + card, foreground reviewer, archive by title.
+- tests: handover.test.js (new), board and hook-session cases.
+
+## Where the spec was off
+- Main has no `gitTry` and no in-flight overlap helper; dispatch uses `git()` (null on failure) and only git collisions. Board-level in-flight overlap stays a manual step in crew-run §1.
+- Unverified (as spec said): `set_session_model` refuses to target the calling session — confirmed live in this very session ("Refused for this session"), so the `/model` fallback line is what runs.
 
 ## Graph writes proposed
+- Pattern "set_session_model cannot switch its own session": the desktop tool refuses the calling session; a card-started chat must ask the person to pick the model. Consider dropping the tool step from `cardFor` or having the orchestrator switch the new chat after it appears.
+- Pattern "worktree-isolated session refuses compound git shells": a session entered via EnterWorktree refuses Bash commands that mix `git` with heredocs/pipes; split into plain commands or use Edit.
