@@ -148,8 +148,10 @@ npx crew review <task-file>
 
 This opens a round — it refuses to open one past the configured limit, and
 refuses at all if the gate has not passed on the code that is actually here.
-Then spawn the `crew-reviewer` subagent with the task file path and your diff.
-It judges; it never edits.
+Then spawn the `crew-reviewer` subagent with the task file path and your diff,
+**in the foreground**, and wait for its verdict before doing anything else. A
+reviewer in the background delivers its verdict to whoever started you, not to
+you. Never hand back with a round open. It judges; it never edits.
 
 - **PASS** → go to *Finishing*.
 - **CHANGES** → fix them, re-run the gate, `crew review` again.

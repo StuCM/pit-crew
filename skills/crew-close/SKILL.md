@@ -63,9 +63,12 @@ git checkout <baseBranch> && git merge --no-ff <branch>
 git worktree remove <worktree>
 ```
 
-Once the merge and `git worktree remove` have succeeded, archive the chat in
-the task's `session:` with the session-archive tool if it is available;
-otherwise tell the person which chat to close.
+Once the merge and `git worktree remove` have succeeded, archive the task's
+chat with the session-archive tool if it is available. A card returns a chip
+id, not a session id, so find the chat by the task's `session:` if the worker
+recorded one, else with `list_sessions` by its title `Task <id>: …`. If
+neither finds it, or there is no archive tool, tell the person which chat to
+close.
 
 ```sh
 git branch -d <branch>

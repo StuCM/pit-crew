@@ -19,33 +19,30 @@ Read the board. If another in-flight task declares any of the same `files:`,
 it. Two sessions editing the same module will conflict at merge and you pay for
 both.
 
-Then ask git the same question, because the board only sees tasks:
-
-```sh
-npx crew collisions .claude/tasks/<id>-<slug>.md
-```
-
-Any output is a hit: an unmerged branch already carries commits touching these
-files. **Do not dispatch.** Name the branch and the commits, and offer to land
-them, respec around them, or proceed anyway. The user may say proceed; you may
-not decide it for them, exactly as with a `draft`.
-
-It exits 0 whether or not it finds anything — the advisory layer never stalls
-the loop, so read what it printed rather than its status.
+Git's half of the question — unmerged branches already carrying commits on
+these files — is asked by the dispatch itself in step 2.
 
 ## 2. Worktree
 
-The branch name is the one in the task file's `branch:`, and it matters: the
-scope hook identifies the task from it.
-
 ```sh
-git worktree add <worktreeDir>/<project>-<id> -b <branch>
+npx crew dispatch <id> --json
 ```
+
+It cuts `<worktreeDir>/<project>-<id>` on the task's `branch:` from the base
+branch (the scope hook identifies the task from that branch), copies in the
+crew config, the project brief and an uncommitted spec, sets `status:
+building` in the **worktree's** copy only, and runs `crew board` and
+`crew log <task> dispatch`.
+
+If it refuses with `collisions`, an unmerged branch already touches these
+files. **Do not dispatch.** Name the branch and the commits, and offer to land
+them, respec around them, or proceed anyway. The user may say proceed — then
+pass `--force` — but you may not decide it for them, exactly as with a `draft`.
 
 ## 3. Hand over
 
-Set `status: building`, run `npx crew board` and `npx crew log <task> dispatch`,
-then start the session in that worktree with exactly this brief — nothing more:
+The JSON carries `brief`, `model`, `worktree`, `command` and `card`. The brief
+is exactly this, and nothing more is added to it:
 
 ```
 Use the crew-worker skill for task .claude/tasks/<id>-<slug>.md.
@@ -56,19 +53,20 @@ No conversation summary, no context dump. If the session needs something, it
 belongs in the spec — that is the artifact that gets reused, and re-explaining
 in a prompt is exactly the cost this system exists to remove.
 
-**Start it on the task's `model:`.** The spec chose it — `models.default` for
+**The task runs on its `model:`.** The spec chose it — `models.default` for
 well-specified work, `models.critical` for the code the brief says must not be
-wrong — and nothing else carries that choice to the session. A session that
-starts on whatever the machine defaults to spends the critical model on a
-rename, or the cheap one on the code that must not be wrong.
+wrong. A session on whatever the machine defaults to spends the critical model
+on a rename, or the cheap one on the code that must not be wrong.
 
-If a tool for spawning a session is available, spawn it there, titled
-`Task <id> · <slug>`, with that prompt and that model, and record the session id in the task file's
-`session:`. Otherwise give the user one line to paste:
+If `mcp__ccd_session__spawn_task` is available, pass it `card` — its `title`,
+`tldr` and `prompt`, verbatim — and tell the person in one line that the card
+is in the app. Its prompt moves the chat into the worktree and onto the model
+before the brief. Otherwise give the person `command` as the one line to
+paste.
 
-```sh
-cd <worktreeDir>/<project>-<id> && claude --model <model> "Use the crew-worker skill for task .claude/tasks/<id>-<slug>.md. You are in a worktree; the spec is the brief."
-```
+Use a background Agent only when the person asks for it ("just run it"). Its
+brief must then also say to spawn `crew-reviewer` in the foreground and wait
+for the verdict, or the verdict comes back to you instead of the worker.
 
 ## 4. Mirror it, if the project has a board
 
