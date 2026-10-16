@@ -1,17 +1,20 @@
 ---
 id: 011
 slug: board-reads-live-task-branch
-status: building
+status: review
 branch: crew/011-board-reads-live-task-branch
 model: sonnet
 env: laptop
-rounds: 0
+rounds: 1
 files:
   - src/lib/worktrees.js
   - src/lib/wall.js
   - src/commands/board.js
   - test/board.test.js
   - test/wall.test.js
+gate: pass
+gateSha: adc2c058c0d7e7b167c910d12a5620d7af6d605a
+gateAt: 2026-10-16T08:07:27.524Z
 ---
 
 # The board and pit wall show a task's in-flight status, not its dispatch-time one
@@ -120,5 +123,6 @@ None queried — scout skipped; the person named the files and the fix.
 ## Scout requests
 
 ## Review rounds
+Round 1: CHANGES. readLiveTasks read a dirty worktree copy unguarded, so a task file deleted in the worktree threw ENOENT. Fixed with a guarded read falling back to the branch copy, plus a test. Residual, left alone: taskFor also matches a worktree by path regardless of branch.
 
 ## Graph writes proposed
