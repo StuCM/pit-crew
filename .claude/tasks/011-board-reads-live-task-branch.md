@@ -1,11 +1,11 @@
 ---
 id: 011
 slug: board-reads-live-task-branch
-status: review
+status: done
 branch: crew/011-board-reads-live-task-branch
 model: sonnet
 env: laptop
-rounds: 1
+rounds: 2
 files:
   - src/lib/worktrees.js
   - src/lib/wall.js
@@ -13,8 +13,8 @@ files:
   - test/board.test.js
   - test/wall.test.js
 gate: pass
-gateSha: adc2c058c0d7e7b167c910d12a5620d7af6d605a
-gateAt: 2026-10-16T08:07:27.524Z
+gateSha: 383daa24298505d32fc54f8a4f3f67389c4db3b2
+gateAt: 2026-10-16T08:08:37.132Z
 ---
 
 # The board and pit wall show a task's in-flight status, not its dispatch-time one
@@ -125,4 +125,14 @@ None queried — scout skipped; the person named the files and the fix.
 ## Review rounds
 Round 1: CHANGES. readLiveTasks read a dirty worktree copy unguarded, so a task file deleted in the worktree threw ENOENT. Fixed with a guarded read falling back to the branch copy, plus a test. Residual, left alone: taskFor also matches a worktree by path regardless of branch.
 
+Round 2: PASS.
+
+## Done
+- src/lib/worktrees.js: readLiveTasks (branch or dirty-worktree copy over main copy, guarded read, silent fallback); listWorktrees uses it.
+- src/lib/wall.js: snapshot uses readLiveTasks.
+- src/commands/board.js: run uses readLiveTasks.
+- test/board.test.js: five tests (unmerged, merged, dirty worktree, deleted branch, deleted worktree file).
+- Spec gap: parseTask not added (task.js not in files:); title regex duplicated in worktrees.js.
+
 ## Graph writes proposed
+- Pattern: .claude/crew.config.json and .claude/crew/project.md are untracked in the main checkout, so a fresh worktree lacks them and `crew gate` fails; copy the config and symlink node_modules.
