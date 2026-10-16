@@ -23,6 +23,11 @@ export const CONTEXT = [
 const NONE =
   'No orchestrator is set for this repo. Mention this once when the person starts work that crew would spec. Suggest making this chat the orchestrator; do not claim it without being told.';
 
+// A desktop card's chat starts here in the main checkout, before it moves
+// into the task's worktree, so it hears a role text it must not follow.
+const WORKER =
+  'If your prompt hands you a crew task for the crew-worker skill, you are its worker, not the orchestrator: enter its worktree as the prompt says and follow crew-worker instead.';
+
 const roleText = (cfg, id) => {
   const claim = readClaim(cfg);
   if (!claim) return NONE;
@@ -37,7 +42,7 @@ export const run = (cfg, _args, id = null) => {
   const branch = git(['symbolic-ref', '--short', 'HEAD'], cfg.root)?.trim() ?? '';
   if (branch.startsWith(cfg.branchPrefix)) return 0;
   const idText = id ? ` Your session id is ${id}.` : '';
-  const additionalContext = `${CONTEXT} ${roleText(cfg, id)}${idText}`;
+  const additionalContext = `${CONTEXT} ${roleText(cfg, id)} ${WORKER}${idText}`;
   process.stdout.write(
     `${JSON.stringify({
       hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext },
