@@ -58,15 +58,26 @@ well-specified work, `models.critical` for the code the brief says must not be
 wrong. A session on whatever the machine defaults to spends the critical model
 on a rename, or the cheap one on the code that must not be wrong.
 
-If `mcp__ccd_session__spawn_task` is available, pass it `card` — its `title`,
-`tldr` and `prompt`, verbatim — and tell the person in one line that the card
-is in the app. Its prompt moves the chat into the worktree and onto the model
-before the brief. Otherwise give the person `command` as the one line to
-paste.
+**Run it as a background Agent.** Workers are not meant to be intercepted:
+the spec is the brief, the gate and the reviewer are the checks, and the
+person steps in at the merge. Spawn the Agent tool with `run_in_background:
+true`, `model` set to the task's `model`, and this prompt — `brief`, then
+three lines, nothing else:
 
-Use a background Agent only when the person asks for it ("just run it"). Its
-brief must then also say to spawn `crew-reviewer` in the foreground and wait
-for the verdict, or the verdict comes back to you instead of the worker.
+```
+<brief>
+Your worktree is <worktree>. Your shell starts elsewhere: run every command as `cd <worktree> && ...` and use absolute paths under it for every Read, Edit and Write. Keep to `files:` yourself; the scope hook cannot see your branch from here.
+Spawn crew-reviewer in the foreground and wait for its verdict. Do not hand back with a round open.
+Finish by committing the task file on the branch, then `git switch --detach`.
+```
+
+Then stop. You are told when the Agent finishes; read the task file on its
+branch (`git show <branch>:<task file>`), not the Agent's report, for the
+status — a report has said `done` over a file that still said `review`.
+
+Queue `card` with `mcp__ccd_session__spawn_task` instead only when the person
+asks to watch or steer the task in its own chat, and give `command` to paste
+only when they ask for a terminal.
 
 ## 4. Mirror it, if the project has a board
 
