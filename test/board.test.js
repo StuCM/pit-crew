@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { render, run } from '../src/commands/board.js';
 import { statuses } from '../src/lib/config.js';
@@ -110,4 +111,74 @@ test('--json prints the tasks and statuses, and leaves BOARD.md alone', () => {
   );
   assert.ok(board.statuses.draft.waitsOnUser);
   assert.equal(existsSync(join(root, '.claude', 'tasks', 'BOARD.md')), false);
+});
+
+const sh = (cwd, cmd) => execSync(cmd, { cwd, stdio: 'pipe' });
+
+// base has the task `building` on main; crew/007-thing carries `status`.
+const liveRepo = (branchStatus) => {
+  const root = sandbox();
+  const file = join(root, '.claude', 'tasks', '007-thing.md');
+  writeTask(root, '007-thing.md', taskFile({ status: 'building' }));
+  sh(root, 'git init -q -b main && git config user.email a@b.c && git config user.name t');
+  sh(root, 'git add -A && git commit -qm base');
+  sh(root, 'git switch -qc crew/007-thing');
+  writeFileSync(
+    file,
+    readFileSync(file, 'utf8').replace('status: building', `status: ${branchStatus}`),
+  );
+  sh(root, 'git commit -qam work && git switch -q main');
+  return { root, file };
+};
+
+const boardStatus = (root) => {
+  const lines = [];
+  const log = console.log;
+  console.log = (line) => lines.push(line);
+  try {
+    run(config(root), ['--json']);
+  } finally {
+    console.log = log;
+  }
+  return JSON.parse(lines.join('\n')).tasks[0].status;
+};
+
+test('an unmerged branch commit is what the board shows, in BOARD.md too', () => {
+  const { root } = liveRepo('done');
+  assert.equal(boardStatus(root), 'done');
+  run(config(root), []);
+  assert.match(
+    readFileSync(join(root, '.claude', 'tasks', 'BOARD.md'), 'utf8'),
+    /\| 007 \| A thing \| `done`/,
+  );
+});
+
+test('a merged branch shows the main checkout copy', () => {
+  const { root } = liveRepo('done');
+  sh(root, 'git merge -q crew/007-thing');
+  writeTask(root, '007-thing.md', taskFile({ status: 'blocked' }));
+  assert.equal(boardStatus(root), 'blocked');
+});
+
+test('an uncommitted worktree edit beats the branch commit', () => {
+  const { root } = liveRepo('done');
+  const tree = `${root}-wt`;
+  sh(root, `git worktree add -q ${tree} crew/007-thing`);
+  const copy = join(tree, '.claude', 'tasks', '007-thing.md');
+  writeFileSync(copy, readFileSync(copy, 'utf8').replace('status: done', 'status: blocked'));
+  assert.equal(boardStatus(root), 'blocked');
+});
+
+test('a deleted branch falls back to the main checkout copy', () => {
+  const { root } = liveRepo('done');
+  sh(root, 'git branch -D crew/007-thing');
+  assert.equal(boardStatus(root), 'building');
+});
+
+test('a task file deleted in the worktree falls back to the branch copy', () => {
+  const { root } = liveRepo('done');
+  const tree = `${root}-wt2`;
+  sh(root, `git worktree add -q ${tree} crew/007-thing`);
+  rmSync(join(tree, '.claude', 'tasks', '007-thing.md'));
+  assert.equal(boardStatus(root), 'done');
 });

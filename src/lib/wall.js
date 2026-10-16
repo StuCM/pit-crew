@@ -12,7 +12,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
-import { declaredFiles, readTasks } from './task.js';
+import { declaredFiles } from './task.js';
+import { readLiveTasks } from './worktrees.js';
 
 export const WORK_DIR = join('.claude', 'crew', 'work');
 export const STATE_FILE = join('.claude', 'crew', 'wall.json');
@@ -155,7 +156,7 @@ export const snapshot = (cfg) => ({
   project: cfg.project,
   models: cfg.models,
   works: readWorks(cfg.root),
-  tasks: readTasks(join(cfg.root, cfg.tasksDir)).map((task) => taskView(cfg.root, task)),
+  tasks: readLiveTasks(cfg).map((task) => taskView(cfg.root, task)),
   state: readState(cfg.root),
 });
 

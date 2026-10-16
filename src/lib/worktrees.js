@@ -9,7 +9,7 @@ import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { branches, git, gitLines } from './git.js';
 import { worktrees } from './changes.js';
-import { readTasks } from './task.js';
+import { frontmatter, readTasks } from './task.js';
 
 const exec = promisify(execFile);
 
@@ -55,11 +55,45 @@ const taskFor = (cfg, tasks, tree) =>
       resolve(cfg.root, cfg.worktreeDir, `${cfg.project}-${t.id}`) === tree.path,
   ) ?? null;
 
+const readText = (path) => {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch {
+    return null;
+  }
+};
+
+const withText = (task, text) => ({
+  ...task,
+  text,
+  meta: frontmatter(text),
+  title: /^#\s+(.+)$/m.exec(text)?.[1].trim() ?? task.file,
+});
+
+/** The tasks as workers have left them: an unmerged task's own branch or dirty worktree copy over the main checkout's. */
+export const readLiveTasks = (cfg) => {
+  const tasks = readTasks(join(cfg.root, cfg.tasksDir));
+  const base = baseRef(cfg);
+  const local = branches(cfg.root);
+  const trees = worktrees(cfg.root);
+  return tasks.map((task) => {
+    const branch = task.meta.branch;
+    if (!local.includes(branch) || isMerged(cfg, base, branch)) return task;
+    const rel = `${cfg.tasksDir}/${task.file}`;
+    const tree = trees.find((t) => taskFor(cfg, [task], t));
+    const dirty =
+      tree && !isGone(tree) && gitLines(['status', '--porcelain', '--', rel], tree.path).length;
+    const text =
+      (dirty && readText(join(tree.path, rel))) || git(['show', `${branch}:${rel}`], cfg.root);
+    return text ? withText(task, text) : task;
+  });
+};
+
 /** Every worktree, crew's or not, with what state it is in against the base branch. */
 export const listWorktrees = (cfg) => {
   const base = baseRef(cfg);
   const local = branches(cfg.root);
-  const tasks = readTasks(join(cfg.root, cfg.tasksDir));
+  const tasks = readLiveTasks(cfg);
   const list = worktrees(cfg.root).map((tree, i) => {
     const task = taskFor(cfg, tasks, tree);
     const ref = tree.branch ?? tree.head;
