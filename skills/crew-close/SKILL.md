@@ -51,12 +51,23 @@ body from `.github/pull_request_template.md` when there is one. Set the task
 file's `branch:` to the new name. The merge, the worktree removal and step 4
 wait until the PR lands.
 
+The board reads the branch's copy of the task file until merge, so do not
+hand-edit the main checkout's copy first: the merge brings the worker's copy
+in, and a local edit makes `git merge` refuse or conflict.
+
 Otherwise merge locally:
 
 ```sh
 git checkout <baseBranch> && git merge --no-ff <branch>
 <the project's verify command>
 git worktree remove <worktree>
+```
+
+Once the merge and `git worktree remove` have succeeded, archive the chat in
+the task's `session:` with the session-archive tool if it is available;
+otherwise tell the person which chat to close.
+
+```sh
 git branch -d <branch>
 npx crew board
 npx crew log .claude/tasks/<id>-<slug>.md close

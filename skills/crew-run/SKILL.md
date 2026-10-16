@@ -62,8 +62,8 @@ wrong — and nothing else carries that choice to the session. A session that
 starts on whatever the machine defaults to spends the critical model on a
 rename, or the cheap one on the code that must not be wrong.
 
-If a tool for spawning a session is available, spawn it there with that
-prompt and that model, and record the session id in the task file's
+If a tool for spawning a session is available, spawn it there, titled
+`Task <id> · <slug>`, with that prompt and that model, and record the session id in the task file's
 `session:`. Otherwise give the user one line to paste:
 
 ```sh

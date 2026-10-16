@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // One entry point. Everything crew knows how to do without a model.
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CONFIG_PATH, loadConfig } from './lib/config.js';
 import { repoRoot } from './lib/git.js';
@@ -36,6 +36,7 @@ const USAGE = `crew — a task loop for agents
 
   crew commit-msg <file>    the commit convention (git hook)
   crew pre-commit           staged-file format and lint (git hook)
+  crew orchestrator <cmd>   claim <session-id> [--force], show, release: this repo's orchestrator chat
   crew hook scope           PreToolUse: refuse a write outside files:
   crew hook session         SessionStart: route work through crew-spec
 `;
@@ -56,8 +57,19 @@ const COMMANDS = {
   graph: () => import('./commands/graph.js'),
   plan: () => import('./commands/plan.js'),
   fix: () => import('./commands/fix.js'),
+  orchestrator: () => import('./commands/orchestrator.js'),
   init: () => import('./commands/init.js'),
   'spec-template': () => import('./commands/init.js').then((m) => ({ run: m.template })),
+};
+
+// The session_id Claude Code puts on the hook's stdin; null if there is none.
+const sessionId = () => {
+  try {
+    if (process.stdin.isTTY) return null;
+    return JSON.parse(readFileSync(0, 'utf8')).session_id ?? null;
+  } catch {
+    return null;
+  }
 };
 
 const main = async (argv) => {
@@ -82,7 +94,7 @@ const main = async (argv) => {
       const root = repoRoot();
       if (!root || !existsSync(join(root, CONFIG_PATH))) return 0;
       const { run } = await import('./commands/hook-session.js');
-      return run(loadConfig(root), args);
+      return run(loadConfig(root), args, sessionId());
     } catch {
       return 0;
     }
