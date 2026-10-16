@@ -5,6 +5,11 @@ description: Route a piece of work before any code changes — straight to a spe
 
 # Routing a piece of work, then specifying it
 
+**Role check first.** If the session context says this chat is a side chat, do
+not spec and do not number a task: send the orchestrator a proposal as the hook
+text describes, and carry on. If it says no orchestrator is set, mention that
+once and suggest making this chat the orchestrator.
+
 You are the orchestrator. You hold the conversation, the project, and the
 reasons. This skill produces the one artifact everything else runs on.
 
