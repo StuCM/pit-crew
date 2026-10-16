@@ -7,7 +7,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { branches } from '../lib/git.js';
-import { readTasks } from '../lib/task.js';
+import { readLiveTasks } from '../lib/worktrees.js';
 import { statuses } from '../lib/config.js';
 import { snapshot } from '../lib/wall.js';
 
@@ -82,7 +82,7 @@ export const run = (cfg, args = []) => {
     return 0;
   }
   const dir = join(cfg.root, cfg.tasksDir);
-  const tasks = readTasks(dir);
+  const tasks = readLiveTasks(cfg);
   const known = statuses(cfg);
 
   const prefix = cfg.branchPrefix;
