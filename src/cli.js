@@ -28,6 +28,7 @@ const USAGE = `crew — a task loop for agents
   crew gate <task>          prepare + scope + verify, then stamp the commit
   crew gate --check <task>  has the gate passed on the code that is here?
   crew scope <task> [base]  changed files against the spec's files:
+  crew dispatch <id>        cut an approved task's worktree and print its card (--json, --force)
   crew review <task>        open a review round, refusing one past the limit
   crew board                render BOARD.md from the task files (--json: print them instead)
   crew log <task> <event>   append one line to the cost log
@@ -48,6 +49,7 @@ const COMMANDS = {
   'pre-commit': () => import('./commands/pre-commit.js'),
   scope: () => import('./commands/scope-check.js'),
   board: () => import('./commands/board.js'),
+  dispatch: () => import('./commands/dispatch.js'),
   preflight: () => import('./commands/preflight.js'),
   gate: () => import('./commands/gate.js'),
   doctor: () => import('./commands/doctor.js'),
