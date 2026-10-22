@@ -1,4 +1,6 @@
 import { expect, test } from 'claude-code/testing';
+import { buildSections } from '../register.js';
+import STARCHES from './starches-board.ts';
 
 const SPEC = `---
 id: 031
@@ -404,6 +406,31 @@ test('the terminal draws the same sections as plain rows', async ($, on) => {
     await ui.find({ type: 'Text', text: '001  First thing · ⚑ spec needs your approval' }),
   ).toBeDefined();
   expect(await ui.find({ key: 'card-007' })).toBeDefined();
+  await ui.unmount();
+});
+
+// Desktop drops a whole pane tree past 2,000 nodes or 262,144 characters (props JSON-encoded here, so a little stricter).
+const desktopSize = (el: any): { nodes: number; chars: number } =>
+  typeof el === 'string'
+    ? { nodes: 1, chars: el.length }
+    : (el.children ?? []).map(desktopSize).reduce(
+        (sum: any, child: any) => ({
+          nodes: sum.nodes + child.nodes,
+          chars: sum.chars + child.chars,
+        }),
+        { nodes: 1, chars: JSON.stringify(el.props ?? {}).length },
+      );
+
+test('a real-sized board stays within what Desktop draws, the overflow as plain rows', async ($, on) => {
+  stubs(on, { boardRun: { exitCode: 0, stdout: JSON.stringify(STARCHES), stderr: '' } });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  const size = desktopSize(await ui.drawn());
+  expect(size.nodes).toBeLessThan(2000);
+  expect(size.chars).toBeLessThan(262144);
+  expect((await svgs(ui)).length).toBeGreaterThan(0);
+  expect(await ui.find({ type: 'Text', text: 'Done · 5' })).toBeDefined();
+  for (const { tasks } of buildSections(STARCHES))
+    for (const { id } of tasks) expect(await ui.find({ key: 'card-' + id })).toBeDefined();
   await ui.unmount();
 });
 

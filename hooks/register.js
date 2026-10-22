@@ -355,10 +355,23 @@ const sectionSvg = (title, count, W) =>
     `<text x="0" y="20" font-family="${FONT}" font-size="12" font-weight="600"><tspan class="t">${esc(title)}</tspan><tspan class="m"> · ${count}</tspan></text>`,
   );
 
+// Desktop drops a pane's whole tree past 262,144 characters, Svg sources included, and shows only its placeholder;
+// rows past this budget are drawn as the terminal's plain rows instead.
+const SVG_BUDGET = 180_000;
+
 // Each row is a keyed Box holding the drawing, with card.js laid over it to take the click an Svg cannot.
 const boardList = ({ Box, Text, Svg, Client }, width, surface) => {
-  const isDrawn = surface === 'desktop' && Svg;
   const W = Math.max(240, Math.min(900, width * 8 - 8));
+  let budget = surface === 'desktop' && Svg ? SVG_BUDGET : 0;
+  const drawn = (draw, alt, height, text) => {
+    const source = budget ? draw() : '';
+    if (!source || source.length + alt.length > budget) {
+      budget = 0;
+      return text;
+    }
+    budget -= source.length + alt.length;
+    return Svg({ source, alt, width: W, height });
+  };
   const row = (task, costume) => {
     const meta = board.statuses[task.status] ?? {};
     const waiting = meta.waitsOnUser ? ' · ⚑ ' + meta.waitsOnUser : '';
@@ -367,14 +380,12 @@ const boardList = ({ Box, Text, Svg, Client }, width, surface) => {
       position: 'relative',
       flexShrink: 0,
       children: [
-        isDrawn
-          ? Svg({
-              source: rowSvg(task, meta, W, costume),
-              alt: `${task.id} ${task.title}: ${task.status}${waiting}`,
-              width: W,
-              height: ROW_H,
-            })
-          : Text({ children: [`${task.id}  ${task.title}${waiting}`] }),
+        drawn(
+          () => rowSvg(task, meta, W, costume),
+          `${task.id} ${task.title}: ${task.status}${waiting}`,
+          ROW_H,
+          Text({ children: [`${task.id}  ${task.title}${waiting}`] }),
+        ),
         Box({
           position: 'absolute',
           top: 0,
@@ -398,14 +409,12 @@ const boardList = ({ Box, Text, Svg, Client }, width, surface) => {
   for (const section of buildSections(board)) {
     const count = section.tasks.length;
     children.push(
-      isDrawn
-        ? Svg({
-            source: sectionSvg(section.name, count, W),
-            alt: `${section.name}, ${count}`,
-            width: W,
-            height: SECTION_H,
-          })
-        : Text({ bold: true, children: [`${section.name} · ${count}`] }),
+      drawn(
+        () => sectionSvg(section.name, count, W),
+        `${section.name}, ${count}`,
+        SECTION_H,
+        Text({ bold: true, children: [`${section.name} · ${count}`] }),
+      ),
     );
     for (const task of section.tasks) children.push(row(task, section.costume));
   }
