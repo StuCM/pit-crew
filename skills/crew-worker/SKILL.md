@@ -184,13 +184,18 @@ worth a broken one. The rebase rewrites commits, so re-run the gate after it.
 
 ## Finishing
 
-Set `status:`:
+Set `status:` with the command, not by hand. `crew review` left it at
+`review`, and a report that says `done` over a file that says `review` is
+the most common way a finished task gets lost:
 
-- `done` if this environment can prove it
-- `pending-<env>` if only an environment no agent can reach can prove it —
-  `npx crew doctor` lists the statuses this project has
+- `npx crew task <id> set status done` if this environment can prove it
+- `npx crew task <id> set status pending-<env>` if only an environment no
+  agent can reach can prove it — `npx crew doctor` lists the statuses this
+  project has
 
-Append to the task file: what changed per file (one line each), anything the
+Append to the task file, under the headings it already has. Never add a
+second copy of a heading: the gate lints every tracked markdown file, so a
+duplicate breaks the next task's gate, not yours: what changed per file (one line each), anything the
 spec got wrong, and — under **Graph writes proposed** — anything durable you
 learnt. A Decision with its rationale, or a Pattern for a trap that cost you
 time. The orchestrator decides what gets committed to the graph; you only
