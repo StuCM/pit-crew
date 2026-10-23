@@ -495,23 +495,35 @@ shape that works.
 
 ## The pit wall
 
-The pit wall is a mod inside Claude Code. Open it with the **Pit wall**
-button or `/pitwall`. Its board is the crew list: every task as a row in one
-of four sections by who has it, each with its own pixel crab.
+The pit wall is a mod inside Claude Code. In a crew repository it opens by
+itself when the session starts and stays open; on Desktop it sits in the
+panel beside the conversation. Close it and it stays closed for that
+session; the **Pit wall** button or `/pitwall` brings it back. Where the
+pane sits is the app's choice: a mod can open a pane but not pick its slot.
 
-| Section | Statuses | Crab |
-| --- | --- | --- |
-| Scout | `draft` | astronaut |
-| Worker | `approved`, `building` | engineer |
-| Reviewer | `review`, `blocked` | detective |
-| Done | `done` (the five newest), `pending-<env>` | racer |
+Its board is the crew list: every task as a plain row in one of four
+sections by who has it.
 
-A task waiting on you carries a ⚑ with what it needs; a task in flight
-animates, unless your system asks for reduced motion. Click a row to open its
-spec in its own pane: a header in the same style, then the Spec, Context,
+| Section | Statuses |
+| --- | --- |
+| Scout | `draft` |
+| Worker | `approved`, `building` |
+| Reviewer | `review`, `blocked` |
+| Done | `done` (the five newest), `pending-<env>` |
+
+Each row is its mark (● running, ✔ done, ○ waiting), a button with the id and
+title, its status, and a ⚑ with what it needs from you. Click a row to open
+its spec in its own pane: the title and status, then the Spec, Context,
 Build record and Diagrams tabs, with editing, approve and sign-off. The
-drawing follows the light or dark theme, and is adapted from the agents panel
-of johnnyvizz's savvy-progress mod (MIT).
+diagrams are Markdown: steps against the files they touch, the behaviour
+flow, and the task's part from the plan. Nothing is drawn as SVG.
+
+**What it costs while it sits there.** Every 15 seconds, and only while one
+of its panes is open, it lists the tasks folder and compares file times.
+It runs `crew board --json` (the plugin's own copy, with `node`, not `npx`)
+only when a task file changed or the board is over two minutes old, redraws
+only when the board differs, and re-reads the open spec only when its file
+changed. With the pane closed it does nothing.
 
 It reads the task files and `.claude/crew/work/<slug>.json`, which
 `/crew:crew-spec` writes after the scout runs, and writes through the `crew` CLI (`crew task`). There is no task chat; the

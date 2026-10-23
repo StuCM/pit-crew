@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing';
+import { expect, mock, test } from 'claude-code/testing';
 
 const SPEC = `---
 id: 031
@@ -58,6 +58,7 @@ const BOARD = {
     'pending-desktop': { waitsOnUser: 'only desktop can prove it', pendingEnv: 'desktop' },
     done: { terminal: true },
   },
+  tasksDir: '/repo/.claude/tasks',
   tasks: [
     {
       id: '001',
@@ -124,7 +125,9 @@ const stubs = (
     refuse,
     complete,
     status,
+    panes = ['crew-wall'],
   }: {
+    panes?: string[];
     status?: string;
     boardRun?: any;
     refuse?: string;
@@ -133,22 +136,37 @@ const stubs = (
 ) => {
   const board = structuredClone(BOARD);
   if (status) board.tasks[0].status = status;
+  // The mod reads the time to know how old its board is; a test moves this clock itself.
+  const clock = mock.clock(on);
   const seen = {
+    clock,
     calls: [] as any[],
     prompts: [] as any[],
     reads: [] as string[],
     submitted: [] as string[],
     toasts: [] as string[],
     opens: [] as any[],
+    boardRuns: 0,
+    listings: 0,
+    // task file name → mtime, as the folder listing reports it; a test bumps one to say the file changed
+    times: Object.fromEntries(board.tasks.map((t) => [t.file.split('/').pop()!, 1])) as Record<
+      string,
+      number
+    >,
+    panes,
   };
   on('model.complete', async ($: any, e: any) => {
     seen.prompts.push(e);
     return { value: complete ? await complete(e) : answer('{"reply":"Fine.","replacements":[]}') };
   });
   on('process.run', async ($: any, e: any) => {
-    const args = e.argv.slice(3);
-    if (args[0] === 'board')
+    expect(e.argv[0]).toBe('node');
+    expect(e.argv[1]).toMatch(/\/src\/cli\.js$/);
+    const args = e.argv.slice(2);
+    if (args[0] === 'board') {
+      seen.boardRuns++;
       return { value: boardRun ?? { exitCode: 0, stdout: JSON.stringify(board), stderr: '' } };
+    }
     if (args[0] === 'plan') {
       return {
         value: {
@@ -184,6 +202,30 @@ const stubs = (
     return { value: { isPlaced: true } };
   });
   on('ui.scroll', () => ({}));
+  // What the engine answers beneath the plugin when a session starts.
+  on('session.start', (_: any, e: any) => ({ cwd: e.cwd }));
+  on('command.register', () => ({ value: undefined }));
+  on('ui.panes', () => ({
+    value: seen.panes.map((id) => ({
+      id,
+      title: id,
+      isShown: true,
+      isFocused: false,
+      isPlaced: true,
+    })),
+  }));
+  on('fs.list', () => {
+    seen.listings++;
+    return {
+      value: Object.entries(seen.times).map(([name, mtimeMs]) => ({
+        name,
+        kind: 'file',
+        size: 100,
+        mtimeMs,
+        isLink: false,
+      })),
+    };
+  });
   return seen;
 };
 
@@ -206,16 +248,15 @@ test('tabs: spec first, context and build record on their own tabs', async ($, o
   }
 });
 
-test('the spec pane has the Svg header, the controls and four tabs, and no chat or ? controls', async ($, on) => {
+test('the spec pane has its header, the controls and four tabs, and no chat or ? controls', async ($, on) => {
   stubs(on);
   const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
-  const [{ source: head }] = await svgs(ui);
-  expect(await ui.findAll({ type: 'Svg' })).toHaveLength(1);
-  expect(head).toContain('c-astronaut');
-  expect(head).toContain('Holding OK opens a menu');
-  expect(head).toContain('#031 · laptop · 2 files · crew/031-x');
-  expect(head).toContain('⚑ spec needs your approval');
-  expect(head).toContain('prefers-color-scheme: dark');
+  expect(await ui.find({ type: 'Markdown', text: '## Holding OK opens a menu' })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: 'draft' })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: '⚑ spec needs your approval' })).toBeDefined();
+  expect(
+    await ui.find({ type: 'Text', text: '#031 · laptop · 2 files · crew/031-x' }),
+  ).toBeDefined();
   for (const key of [
     'column',
     'model',
@@ -318,39 +359,31 @@ test('a refused write toasts the reason and leaves the spec as the file has it',
   await ui.unmount();
 });
 
-const svgs = async (ui: any) =>
-  (await ui.findAll({ type: 'Svg' })).map((el: any) => el.props as { source: string; alt: string });
-
 test('the board lists tasks under Scout, Worker, Reviewer and Done, flagging those waiting on the person', async ($, on) => {
   stubs(on);
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
-  expect(await ui.find({ type: 'Text', text: '7 tasks · 3 waiting on you' })).toBeDefined();
-  expect((await svgs(ui)).map((s) => s.alt)).toEqual([
-    'Scout, 1',
-    '001 First thing: draft · ⚑ spec needs your approval',
-    'Worker, 2',
-    '002 Second thing: building',
-    '003 approved task: approved',
-    'Reviewer, 2',
-    '004 review task: review',
-    '005 blocked task: blocked · ⚑ review rounds disagreed',
-    'Done, 2',
-    '006 pending-desktop task: pending-desktop · ⚑ only desktop can prove it',
-    '007 done task: done',
-  ]);
-  const row = async (id: string) =>
-    ((await ui.find({ key: 'row-' + id }))?.children?.[0] as any)?.props.source as string;
-  expect(await row('005')).toContain('⚑ review rounds disagreed');
-  expect(await row('002')).toContain('c-engineer run');
-  expect(await row('003')).toContain('class="c-engineer"');
-  expect(await row('004')).toContain('c-detective run');
-  for (const { source } of await svgs(ui)) {
-    expect(source).toContain('@media (prefers-color-scheme: dark){.t{fill:#ececec}');
-    expect(source).toContain('prefers-reduced-motion');
-    expect(source).not.toMatch(/\$\d/);
-    expect(source.length).toBeLessThan(131072);
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...pane('crew-wall'), surface });
+    expect(await ui.find({ type: 'Text', text: '7 tasks · 3 waiting on you' })).toBeDefined();
+    const sections = (
+      await ui.findAll({ type: 'Text', text: /^(Scout|Worker|Reviewer|Done) · \d+$/ })
+    ).map((el: any) => el.children.join(''));
+    expect(sections).toEqual(['Scout · 1', 'Worker · 2', 'Reviewer · 2', 'Done · 2']);
+    const rows = (await ui.findAll({ type: 'Button' }))
+      .filter((el: any) => String(el.key).startsWith('open-'))
+      .map((el: any) => el.props.label.trim());
+    expect(rows).toEqual([
+      '001  First thing',
+      '002  Second thing',
+      '003  approved task',
+      '004  review task',
+      '005  blocked task',
+      '006  pending-desktop task',
+      '007  done task',
+    ]);
+    expect(await ui.find({ type: 'Text', text: '⚑ review rounds disagreed' })).toBeDefined();
+    expect(await ui.find({ type: 'Text', text: '⚑ only desktop can prove it' })).toBeDefined();
+    await ui.unmount();
   }
-  await ui.unmount();
 });
 
 test('an empty section is left out, and Done keeps the five newest finished tasks', async ($, on) => {
@@ -368,24 +401,19 @@ test('an empty section is left out, and Done keeps the five newest finished task
   ];
   stubs(on, { boardRun: { exitCode: 0, stdout: JSON.stringify(crowded), stderr: '' } });
   const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
-  expect((await svgs(ui)).map((s) => s.alt.split(':')[0])).toEqual([
-    'Worker, 1',
-    '002 Second thing',
-    'Done, 5',
-    '15 Finished 15',
-    '14 Finished 14',
-    '13 Finished 13',
-    '12 Finished 12',
-    '11 Finished 11',
-  ]);
+  const texts = async (pattern: RegExp) =>
+    (await ui.findAll({ type: 'Text', text: pattern })).map((el: any) => el.children.join(''));
+  expect(await texts(/^(Scout|Worker|Reviewer|Done) · \d+$/)).toEqual(['Worker · 1', 'Done · 5']);
+  expect(await ui.find({ key: 'open-10' })).toBeUndefined();
+  for (const id of ['15', '14', '13', '12', '11'])
+    expect(await ui.find({ key: 'open-' + id })).toBeDefined();
   await ui.unmount();
 });
 
 test('clicking a row opens that task in the crew-spec pane', async ($, on) => {
   const seen = stubs(on);
   const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
-  expect((await ui.find({ key: 'card-004' }))?.props.props).toEqual({ id: '004' });
-  await ui.post({ select: '004' }, { in: 'card-004' });
+  await ui.press({ key: 'open-004' });
   expect(seen.opens).toEqual([
     expect.objectContaining({ id: 'crew-spec', title: '004 · review task' }),
   ]);
@@ -395,16 +423,26 @@ test('clicking a row opens that task in the crew-spec pane', async ($, on) => {
   await spec.unmount();
 });
 
-test('the terminal draws the same sections as plain rows', async ($, on) => {
-  stubs(on);
-  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'terminal' });
-  expect(await ui.findAll({ type: 'Svg' })).toEqual([]);
-  expect(await ui.find({ type: 'Text', text: 'Reviewer · 2' })).toBeDefined();
-  expect(
-    await ui.find({ type: 'Text', text: '001  First thing · ⚑ spec needs your approval' }),
-  ).toBeDefined();
-  expect(await ui.find({ key: 'card-007' })).toBeDefined();
-  await ui.unmount();
+test('no view draws an Svg or a Client, on either surface', async ($, on) => {
+  stubs(on, {
+    complete: () => answer('{"nodes":[{"id":"a","label":"OK","kind":"start"}],"edges":[]}'),
+  });
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const wall = await $.ui.mount({ ...pane('crew-wall'), surface });
+    expect(await wall.findAll({ type: 'Svg' })).toEqual([]);
+    expect(await wall.findAll({ type: 'Client' })).toEqual([]);
+    await wall.unmount();
+    const spec = await $.ui.mount({ ...pane('crew-spec'), surface });
+    for (const key of ['tab-agreement', 'tab-context', 'tab-record', 'tab-diagram']) {
+      await spec.press({ key });
+      expect(await spec.findAll({ type: 'Svg' })).toEqual([]);
+    }
+    for (const key of ['diagram-change', 'diagram-flow']) {
+      await spec.press({ key });
+      expect(await spec.findAll({ type: 'Svg' })).toEqual([]);
+    }
+    await spec.unmount();
+  }
 });
 
 test('a failing crew call draws one error line instead of an empty board', async ($, on) => {
@@ -413,11 +451,11 @@ test('a failing crew call draws one error line instead of an empty board', async
   expect(
     await ui.find({ type: 'Text', text: 'Could not read the board: crew: not found' }),
   ).toBeDefined();
-  expect(await ui.find({ key: 'card-001' })).toBeUndefined();
+  expect(await ui.find({ key: 'open-001' })).toBeUndefined();
   await ui.unmount();
 });
 
-test('diagrams: the change map draws steps against files, and the flow comes from the model', async ($, on) => {
+test('diagrams: the change map lists steps against files, and the flow comes from the model', async ($, on) => {
   stubs(on, {
     complete: () =>
       answer(
@@ -426,14 +464,15 @@ test('diagrams: the change map draws steps against files, and the flow comes fro
   });
   const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   await ui.press({ key: 'tab-diagram' });
-  const svg = async () =>
-    ((await ui.find({ key: 'diagram-view' }))?.children?.[0] as any)?.props.source as string;
-  expect(await svg()).toContain('src/a.ts');
-  expect(await svg()).toContain('+ src/new.ts');
+  const view = async () =>
+    ((await ui.find({ key: 'diagram-view' }))?.children?.[0] as any)?.props.text as string;
+  expect(await view()).toContain('**1. First step in src/a.ts** → `src/a.ts`');
+  expect(await view()).toContain('**2. Second step** → no file named');
   expect(await ui.find({ type: 'Text', text: /No step names src\/new.ts/ })).toBeDefined();
   await ui.press({ key: 'diagram-flow' });
   await ui.press({ key: 'generate-flow' });
-  expect(await svg()).toContain('Held 500ms?');
+  expect(await view()).toContain('- OK pressed → Held 500ms?');
+  expect(await view()).toContain('- Held 500ms? → Open menu (yes)');
   await ui.unmount();
 });
 
@@ -452,15 +491,16 @@ test('diagrams: a task with a part gets Architecture and Feature views of it and
   stubs(on, { boardRun: { exitCode: 0, stdout: JSON.stringify(withPart), stderr: '' } });
   const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   await ui.press({ key: 'tab-diagram' });
-  const svg = async () =>
-    ((await ui.find({ key: 'diagram-view' }))?.children?.[0] as any)?.props.source as string;
+  const view = async () =>
+    ((await ui.find({ key: 'diagram-view' }))?.children?.[0] as any)?.props.text as string;
   await ui.press({ key: 'diagram-architecture' });
-  expect(await svg()).toContain('Wall mod');
-  expect(await svg()).toContain('Board command');
-  expect(await svg()).toContain('svg');
+  expect(await view()).toContain('**Wall mod**');
+  expect(await view()).toContain('- ← Board command · board json');
+  expect(await view()).toContain('- → Desktop pane · svg');
   await ui.press({ key: 'diagram-feature' });
-  expect(await svg()).toContain('✔ diagramItems · modify');
-  expect(await svg()).toContain('Desktop pane');
+  expect(await view()).toContain('**Wall mod** _(extend)_');
+  expect(await view()).toContain('- ✔ `diagramItems` · modify');
+  expect(await view()).toContain('- → Desktop pane _(new)_ · svg');
   await ui.unmount();
 });
 
@@ -489,13 +529,65 @@ test('a blocked task shows its reason and Send back', async ($, on) => {
 
 test('a done or building task offers neither', async ($, on) => {
   stubs(on, { status: 'done' });
-  for (const key of ['card-001', 'card-002']) {
+  for (const key of ['open-001', 'open-002']) {
     const wall = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
-    await wall.post({ select: key.slice(-3) }, { in: key });
+    await wall.press({ key });
     await wall.unmount();
     const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
     expect(await ui.find({ key: 'signoff' })).toBeUndefined();
     expect(await ui.find({ key: 'sendback' })).toBeUndefined();
     await ui.unmount();
   }
+});
+
+test('the session opens the pit wall where crew is set up, and nothing where it is not', async ($, on) => {
+  const seen = stubs(on);
+  await $.session.start({ cwd: '/repo', surface: 'desktop', isInteractive: true });
+  expect(seen.opens).toEqual([expect.objectContaining({ id: 'crew-wall', title: 'Pit wall' })]);
+  expect(seen.opens[0].focus).toBeUndefined();
+});
+
+test('with crew missing, the session starts without opening anything', async ($, on) => {
+  const seen = stubs(on, {
+    boardRun: { exitCode: 1, stdout: '', stderr: 'no .claude/crew.config.json' },
+  });
+  await $.session.start({ cwd: '/elsewhere', surface: 'desktop', isInteractive: true });
+  expect(seen.opens).toEqual([]);
+});
+
+test('with no pit wall pane open, the timer does no work at all', async ($, on) => {
+  const seen = stubs(on, { panes: [] });
+  const { clock } = seen;
+  await $.session.start({ cwd: '/repo', surface: 'desktop', isInteractive: true });
+  const runs = seen.boardRuns;
+  await clock.advance(10 * 60_000);
+  expect(seen.boardRuns).toBe(runs);
+  expect(seen.listings).toBe(0);
+});
+
+test('while open, an unchanged task folder costs a listing, and a changed file reloads the board', async ($, on) => {
+  const seen = stubs(on);
+  const { clock } = seen;
+  await $.session.start({ cwd: '/repo', surface: 'desktop', isInteractive: true });
+  await clock.advance(15_000); // the first check records the folder
+  const runs = seen.boardRuns;
+  const listings = seen.listings;
+  await clock.advance(45_000);
+  expect(seen.listings).toBe(listings + 3);
+  expect(seen.boardRuns).toBe(runs);
+  seen.times['002-second.md'] = 2;
+  await clock.advance(15_000);
+  expect(seen.boardRuns).toBe(runs + 1);
+});
+
+test('a quiet folder is still reloaded once the board is two minutes old', async ($, on) => {
+  const seen = stubs(on);
+  const { clock } = seen;
+  await $.session.start({ cwd: '/repo', surface: 'desktop', isInteractive: true });
+  await clock.advance(15_000);
+  const runs = seen.boardRuns;
+  await clock.advance(120_000); // two minutes old exactly: not yet past it
+  expect(seen.boardRuns).toBe(runs);
+  await clock.advance(15_000); // the next check finds it older, and reloads
+  expect(seen.boardRuns).toBe(runs + 1);
 });
