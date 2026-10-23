@@ -1,7 +1,7 @@
 ---
 id: 014
 slug: crew-without-npx
-status: approved
+status: building
 branch: crew/014-crew-without-npx
 model: sonnet
 env: laptop
