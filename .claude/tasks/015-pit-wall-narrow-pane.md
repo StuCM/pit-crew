@@ -1,7 +1,7 @@
 ---
 id: 015
 slug: pit-wall-narrow-pane
-status: pending-desktop
+status: done
 branch: crew/015-pit-wall-narrow-pane
 model: sonnet
 env: laptop
