@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing';
-import { buildSections } from '../register.js';
+import { buildSections, isStale } from '../register.js';
 import STARCHES from './starches-board.ts';
 
 const SPEC = `---
@@ -142,13 +142,15 @@ const stubs = (
     submitted: [] as string[],
     toasts: [] as string[],
     opens: [] as any[],
+    argv: [] as string[][],
   };
   on('model.complete', async ($: any, e: any) => {
     seen.prompts.push(e);
     return { value: complete ? await complete(e) : answer('{"reply":"Fine.","replacements":[]}') };
   });
   on('process.run', async ($: any, e: any) => {
-    const args = e.argv.slice(3);
+    seen.argv.push(e.argv);
+    const args = e.argv.slice(2);
     if (args[0] === 'board')
       return { value: boardRun ?? { exitCode: 0, stdout: JSON.stringify(board), stderr: '' } };
     if (args[0] === 'plan') {
@@ -525,4 +527,33 @@ test('a done or building task offers neither', async ($, on) => {
     expect(await ui.find({ key: 'sendback' })).toBeUndefined();
     await ui.unmount();
   }
+});
+
+test('crew runs as node on the plugin cli, and nothing runs or polls until the pane renders', async ($, on) => {
+  const seen = stubs(on);
+  const polls: any[] = [];
+  on('session.start', (_$: any, e: any) => e);
+  on('command.register', () => ({ value: undefined }));
+  on('clock.every', (_$: any, e: any) => {
+    polls.push(e);
+    return { value: { cancel() {} } };
+  });
+  await $.session.start({ cwd: '/x' });
+  expect(seen.argv).toHaveLength(0);
+  expect(polls).toHaveLength(0);
+
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  await ui.find({ key: 'composer' });
+  expect(polls).toEqual([{ ms: 10000 }]);
+  expect(seen.argv.length).toBeGreaterThan(0);
+  for (const argv of seen.argv) {
+    expect(argv[0]).toBe('node');
+    expect(argv[1]).toMatch(/\/src\/cli\.js$/);
+  }
+  await ui.unmount();
+});
+
+test('polling goes stale once the last pane render is over 30 s old', () => {
+  expect(isStale(40000, 20000)).toBe(false);
+  expect(isStale(50001, 20000)).toBe(true);
 });

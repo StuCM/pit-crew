@@ -1,15 +1,18 @@
 ---
 id: 014
 slug: crew-without-npx
-status: approved
+status: done
 branch: crew/014-crew-without-npx
 model: sonnet
 env: laptop
-rounds: 0
+rounds: 2
 files:
   - hooks/hooks.json
   - hooks/register.js
   - hooks/tests/panes.test.ts
+gate: pass
+gateSha: 9e4f619cfae186fff7844127b6f6b8e79738b9d1
+gateAt: 2026-10-23T10:39:12.278Z
 ---
 
 # The pit wall and the scope hook stop starting npm on every call
@@ -105,5 +108,9 @@ None.
 ## Scout requests
 
 ## Review rounds
+- Round 1: CHANGES. Polling start raced (two intervals possible) and the stop path was untested. Fixed with a synchronous `isPolling` flag and an exported, unit-tested `isStale`.
+- Round 2: PASS. Fix is a separate fixup commit (rebase conflicted on the task-file commit, so it was left unfolded).
+- Not proved: the test kit cannot fire `clock.every` callbacks, so the stop-on-stale tick is covered only through `isStale`. The `clock.every` handle having `.cancel()` and the engine not re-rendering closed panes are assumed. A reopened pane may show the old board for up to 10 s.
 
 ## Graph writes proposed
+- Pattern: the mod test kit cannot call a `clock.every` callback (the handler sees only `{ms}`); keep tick logic in an exported pure helper and test that. `import.meta.url` works in the mod runtime.

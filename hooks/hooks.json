@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "npx --no-install crew hook scope",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/src/cli.js\" hook scope",
             "timeout": 10
           }
         ]
