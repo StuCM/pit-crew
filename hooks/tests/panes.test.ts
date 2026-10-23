@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing';
-import { buildSections } from '../register.js';
+import { buildSections, isStale } from '../register.js';
 import STARCHES from './starches-board.ts';
 
 const SPEC = `---
@@ -551,4 +551,9 @@ test('crew runs as node on the plugin cli, and nothing runs or polls until the p
     expect(argv[1]).toMatch(/\/src\/cli\.js$/);
   }
   await ui.unmount();
+});
+
+test('polling goes stale once the last pane render is over 30 s old', () => {
+  expect(isStale(40000, 20000)).toBe(false);
+  expect(isStale(50001, 20000)).toBe(true);
 });

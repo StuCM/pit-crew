@@ -62,16 +62,20 @@ const refreshBoard = async ($) => {
 };
 
 let poll = null;
+let isPolling = false;
 let lastRender = 0;
+
+export const isStale = (now, last) => now - last > STALE_MS;
 
 // Polls only while the pane keeps rendering; the engine reports no close, so a stale render stops it.
 const startPolling = async ($) => {
   lastRender = Date.now();
-  if (poll) return;
+  if (isPolling) return;
+  isPolling = true;
   poll = await $.clock.every(POLL_MS, () => {
-    if (Date.now() - lastRender > STALE_MS) {
+    if (isStale(Date.now(), lastRender)) {
       poll.cancel();
-      poll = null;
+      isPolling = false;
       return;
     }
     refreshBoard($);

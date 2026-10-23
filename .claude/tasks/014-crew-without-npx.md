@@ -1,15 +1,18 @@
 ---
 id: 014
 slug: crew-without-npx
-status: building
+status: review
 branch: crew/014-crew-without-npx
 model: sonnet
 env: laptop
-rounds: 0
+rounds: 1
 files:
   - hooks/hooks.json
   - hooks/register.js
   - hooks/tests/panes.test.ts
+gate: pass
+gateSha: 69ecfba84fe5119ebd49f00289b21b6b68073835
+gateAt: 2026-10-23T10:38:21.260Z
 ---
 
 # The pit wall and the scope hook stop starting npm on every call
