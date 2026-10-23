@@ -9,7 +9,7 @@ Cheap and mechanical. Render the board and read it — do not read task bodies,
 and do not spawn anything.
 
 ```sh
-npx crew board
+crew board
 cat .claude/tasks/BOARD.md
 git worktree list
 ```
@@ -34,6 +34,6 @@ Then, in a couple of lines each, the three things the user actually wants:
 - Worktrees with no matching task file, or branches whose task is `done` —
   these are leftovers; offer to clean them up.
 - Tasks `done` but never merged, or `done` with no gate stamp — run
-  `npx crew doctor`, which names both.
+  `crew doctor`, which names both.
 - More than two tasks pending the same unreachable environment — that queue is
   backing up, and a batch is worth one trip rather than four.

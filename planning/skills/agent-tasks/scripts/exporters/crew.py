@@ -2,7 +2,7 @@
 
 Deliberately emitted as `status: draft`. crew's approval gate is the point of
 that system, and a generated spec has not been through it — the orchestrator
-still runs `npx crew collisions`, fills Graph context from the memory graph,
+still runs `crew collisions`, fills Graph context from the memory graph,
 and gets the user to approve before anything dispatches.
 """
 
@@ -23,7 +23,7 @@ def _spec(t, meta):
           "## Why now", t["why"] or "TODO", "",
           "## Existing work",
           "<!-- Not run by the generator. The orchestrator must run "
-          "`npx crew collisions` on this file before approval. -->", "",
+          "`crew collisions` on this file before approval. -->", "",
           "## Graph context",
           "<!-- Generated from the plan maps, not the memory graph. The orchestrator "
           "should prime the graph and merge anything that bears on these files. -->"]
@@ -50,7 +50,7 @@ def _spec(t, meta):
     L += ["", "## Definition of done"]
     L += [f"- [ ] {s}" for s in t["done"]]
     L += ["- [ ] tests cover the behaviour, and fail if it regresses",
-          "- [ ] the gate passes (`npx crew gate <this file>`)",
+          "- [ ] the gate passes (`crew gate <this file>`)",
           "- [ ] no file outside `files:` is touched",
           "- [ ] commits follow the convention (the hook enforces it)"]
     if t["blockers"]:

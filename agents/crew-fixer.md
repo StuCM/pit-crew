@@ -57,7 +57,7 @@ commits as they are, and report it. A clean history is not worth a broken one.
 ## Then prove it still works
 
 ```sh
-npx crew gate <task file>
+crew gate <task file>
 ```
 
 The rebase rewrote the commits, so the old gate stamp no longer counts.

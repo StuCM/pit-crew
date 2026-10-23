@@ -124,7 +124,7 @@ Generated specs are `status: draft` and stay there. crew's approval gate is the
 point of that system, and a spec assembled from maps has not been through it.
 What the orchestrator still owns, and this skill does not touch:
 
-- `npx crew collisions` on each file — the generator does not run git, and the
+- `crew collisions` on each file — the generator does not run git, and the
   **Existing work** section says so rather than pretending it was checked
 - priming the memory graph and merging anything that bears on these files into
   **Graph context** — what is there came from the plan maps, which is a

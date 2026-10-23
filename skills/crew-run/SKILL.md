@@ -25,7 +25,7 @@ these files — is asked by the dispatch itself in step 2.
 ## 2. Worktree
 
 ```sh
-npx crew dispatch <id> --json
+crew dispatch <id> --json
 ```
 
 It cuts `<worktreeDir>/<project>-<id>` on the task's `branch:` from the base

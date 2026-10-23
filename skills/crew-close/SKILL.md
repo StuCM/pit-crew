@@ -16,7 +16,7 @@ Only the orchestrator does this. Workers never push and never deploy.
 - `blocked` → not yours to close. Put the disagreement to the user first.
 
 ```sh
-npx crew gate --check .claude/tasks/<id>-<slug>.md
+crew gate --check .claude/tasks/<id>-<slug>.md
 ```
 
 This is not a formality. It says whether the gate passed on the code that is
@@ -73,8 +73,8 @@ close.
 
 ```sh
 git branch -d <branch>
-npx crew board
-npx crew log .claude/tasks/<id>-<slug>.md close
+crew board
+crew log .claude/tasks/<id>-<slug>.md close
 ```
 
 Verify on the base branch after merging, not just in the worktree — two tasks
@@ -146,7 +146,7 @@ drift, and crew queries one.
 ## 5. Deploy, or say why not
 
 ```sh
-npx crew preflight <env>
+crew preflight <env>
 ```
 
 If it reports the environment is unreachable, **stop**. Do not attempt the

@@ -36,7 +36,7 @@ without it.
    something is *absent* and so passes on nothing, is a finding.
 4. **Scope creep.** Compare against **Out of scope**. The gate already caught
    stray *files*; you are looking for stray *behaviour* in permitted files.
-   If the task has a `part:`, run `npx crew plan <task-file>` and check the
+   If the task has a `part:`, run `crew plan <task-file>` and check the
    diff against that part's **not** list and its neighbours. Behaviour that
    belongs in a neighbouring part is a finding even when it sits in a
    permitted file — that is the drift the boundary was drawn to catch, and
@@ -48,7 +48,7 @@ without it.
 6. **Simplification.** Only where it is clearly simpler and behaviour is
    identical. Do not redesign, and do not raise style preferences.
 
-Run the project's verify command yourself — `npx crew preflight` prints it. Do
+Run the project's verify command yourself — `crew preflight` prints it. Do
 not take the worker's word for it, and run any prepare step first: a failure
 that is the missing bench setup is not the diff's fault, and chasing it is a
 wasted round. The baseline is whatever the base branch scores, so any failure,
