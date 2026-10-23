@@ -48,8 +48,9 @@ npx crew graph traps
 npx crew graph decisions
 ```
 
-`chain` starts from every node matching all the words and walks the links out
-from them, two hops by default, so a Pattern recorded against this project
+`chain` starts from the nodes that best match the words and, at each hop,
+follows only the edges that score best against them, two hops by default, so
+a Pattern recorded against this project
 leads you to the Decision that fixed it and on to the files where that lives.
 It is not scoped to this project on purpose: similar work in a sibling
 project is often the most useful thing in the store. Each line names the
@@ -62,8 +63,9 @@ Read the last lines of every chain. They say where it could have gone further:
 
 - `not expanded, depth N reached` — rerun once at `--depth=3`, or seed a new
   chain from the names it lists if they look relevant
-- `not followed, too many links` — a hub. Do not query the hub; seed a
-  narrower chain from the words that brought you there
+- `not followed, ranked below the best edges` — the edges each named node
+  had beyond the best few. If the ones followed miss what you need, seed a
+  narrower chain with the words that would pick the others
 - `stopped at N nodes` — the words were too broad. Narrow them
 - `stopped early` — a query failed; the chain is incomplete
 

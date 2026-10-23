@@ -576,16 +576,15 @@ subsystem in general. That is one query per task instead of one per
 agent, filtered by judgement, and it keeps workers hermetic — no MCP, no
 network, no dependence on a store that may not exist in CI or a container.
 
-`crew graph chain <text>` is the one read that crosses links. It starts from
-every node whose name or description holds all the words, then walks the open
-links out from them — two hops by default, three at most — so a Pattern about
-this project leads to the Decision that fixed it and on to the Pattern
-anchored where that fix lives. It is deliberately **not** scoped to the
-project, because the same fix in a sibling project is often the best lead in
-the store; each line names the project it came from instead. A node with more
-than 25 links (a Project, or a Technology half the store points at) is named
-and not walked through, which is what kept `recall --depth 2` from being
-readable.
+`crew graph chain <text>` is the one read that crosses links, and it is
+`claude-memory-graph chain` underneath. It starts from the nodes that best
+match the words, then at each hop follows only the open links that score best
+against them — two hops by default, three at most — so a Pattern about this
+project leads to the Decision that fixed it and on to the Pattern anchored
+where that fix lives. It is deliberately **not** scoped to the project,
+because the same fix in a sibling project is often the best lead in the store;
+each line names the project it came from instead. The edges it did not follow
+are counted at the end, so a reader can ask for them by narrowing the words.
 
 Traps are the highest-value writes. *"A 403 here is the agent proxy, not the
 app"* recorded once stops every future agent chasing it.
