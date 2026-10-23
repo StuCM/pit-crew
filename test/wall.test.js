@@ -92,6 +92,17 @@ test('the snapshot marks a declared file that does not exist yet as new', () => 
   assert.ok(view.mentions.some((m) => m.path === 'src/labels.py' && m.line === 1));
 });
 
+test("the snapshot carries a blocked task's reason, and nothing when the section is empty", () => {
+  const root = repo();
+  assert.equal(snapshot(config(root)).tasks[0].blocked, '');
+  const withReason =
+    spec + '\n## Blocked\n<!-- note -->\nNeeds the key rotated.\nThen send back.\n';
+  writeTask(root, '024-smm.md', withReason);
+  assert.equal(snapshot(config(root)).tasks[0].blocked, 'Needs the key rotated.\nThen send back.');
+  writeTask(root, '024-smm.md', spec + '\n## Blocked\n<!-- note only -->\n');
+  assert.equal(snapshot(config(root)).tasks[0].blocked, '');
+});
+
 test('the file viewer reads lines and the browser lists folders first', () => {
   const root = repo();
   assert.deepEqual(readSource(root, 'src/notify.py').lines.slice(0, 3), ['a', 'b', 'c']);

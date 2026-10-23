@@ -111,6 +111,7 @@ export const taskView = (root, task) => {
     outOfScope: items(part['Out of scope']),
     done: items(part['Definition of done']),
     scoutRequests: items(part['Scout requests']),
+    blocked: part.Blocked ?? '',
     reviewRounds: part['Review rounds'] ?? '',
     mentions: mentions(root, task.text).filter((m) => !declared.has(m.path) || m.line),
   };

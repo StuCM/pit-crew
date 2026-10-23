@@ -71,7 +71,7 @@ End with exactly one of:
 - **CHANGES** — a numbered list, most serious first. Each finding: the file
   and line, one sentence on the defect, and the concrete failure it causes.
 - **BLOCKED** — the spec cannot be judged (it contradicts itself, or the
-  definition of done is untestable). Say which part.
+  definition of done is untestable). Say which part; the worker copies it under `## Blocked`.
 
 Findings only. No summary of what the diff does — whoever spawned you has the
 diff. If `rounds:` in the task file says this is the last round the project

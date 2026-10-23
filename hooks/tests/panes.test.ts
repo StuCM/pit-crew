@@ -59,6 +59,7 @@ const BOARD = {
     done: { terminal: true },
   },
   tasksDir: '/repo/.claude/tasks',
+  works: { wall: 'The pit wall' } as Record<string, string>,
   tasks: [
     {
       id: '001',
@@ -76,6 +77,7 @@ const BOARD = {
       file: '.claude/tasks/002-second.md',
       title: 'Second thing',
       status: 'building',
+      work: 'wall',
       model: 'sonnet',
       files: [],
     },
@@ -89,24 +91,8 @@ const BOARD = {
     })),
   ],
 };
-
-const planView = (layer: string) => ({
-  layer,
-  part: {
-    id: 'p-x',
-    label: 'Wall mod',
-    status: 'extend',
-    surface: [{ name: 'diagramItems', use: 'modify', verified: true }],
-  },
-  edges: [
-    { from: 'p-in', to: 'p-x', label: 'board json' },
-    { from: 'p-x', to: 'p-out', label: 'svg' },
-  ],
-  neighbours: [
-    { id: 'p-in', label: 'Board command', status: 'exists' },
-    { id: 'p-out', label: 'Desktop pane', status: 'new' },
-  ],
-});
+Object.assign(BOARD.tasks[2], { work: 'wall' });
+Object.assign(BOARD.tasks[4], { blocked: 'Needs the API key.\nThen send back.' });
 
 const USAGE = {
   input_tokens: 1,
@@ -125,10 +111,12 @@ const stubs = (
     refuse,
     complete,
     status,
+    blocked,
     panes = ['crew-wall'],
   }: {
     panes?: string[];
     status?: string;
+    blocked?: string;
     boardRun?: any;
     refuse?: string;
     complete?: (e: any) => any;
@@ -136,6 +124,7 @@ const stubs = (
 ) => {
   const board = structuredClone(BOARD);
   if (status) board.tasks[0].status = status;
+  if (blocked) (board.tasks[0] as any).blocked = blocked;
   // The mod reads the time to know how old its board is; a test moves this clock itself.
   const clock = mock.clock(on);
   const seen = {
@@ -166,15 +155,6 @@ const stubs = (
     if (args[0] === 'board') {
       seen.boardRuns++;
       return { value: boardRun ?? { exitCode: 0, stdout: JSON.stringify(board), stderr: '' } };
-    }
-    if (args[0] === 'plan') {
-      return {
-        value: {
-          exitCode: 0,
-          stdout: JSON.stringify([planView('architecture'), planView('feature')]),
-          stderr: '',
-        },
-      };
     }
     seen.calls.push({ args, stdin: e.init?.stdin && JSON.parse(e.init.stdin) });
     if (refuse) return { value: { exitCode: 1, stdout: '', stderr: refuse + '\nmore' } };
@@ -236,11 +216,11 @@ test('tabs: spec first, context and build record on their own tabs', async ($, o
     expect(
       await ui.find({ type: 'Markdown', text: /First step in `src\/a.ts`\n {3}continues here/ }),
     ).toBeDefined();
-    expect(await ui.find({ key: 'edit-btn-2-0' })).toBeDefined();
+    expect(await ui.find({ key: 'block-2-0' })).toBeDefined();
     expect(await ui.find({ type: 'Markdown', text: /Asked for on the canvas/ })).toBeUndefined();
     await ui.press({ key: 'tab-context' });
     expect(await ui.find({ type: 'Markdown', text: /Asked for on the canvas/ })).toBeDefined();
-    expect(await ui.find({ key: 'edit-btn-2-0' })).toBeUndefined();
+    expect(await ui.find({ key: 'block-2-0' })).toBeUndefined();
     await ui.press({ key: 'tab-record' });
     expect(await ui.find({ type: 'Markdown', text: /Round 1 passed/ })).toBeDefined();
     await ui.press({ key: 'tab-agreement' });
@@ -248,7 +228,7 @@ test('tabs: spec first, context and build record on their own tabs', async ($, o
   }
 });
 
-test('the spec pane has its header, the controls and four tabs, and no chat or ? controls', async ($, on) => {
+test('the spec pane has its header, the controls and three tabs, and no chat or ? controls', async ($, on) => {
   stubs(on);
   const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
   expect(await ui.find({ type: 'Markdown', text: '## Holding OK opens a menu' })).toBeDefined();
@@ -257,22 +237,12 @@ test('the spec pane has its header, the controls and four tabs, and no chat or ?
   expect(
     await ui.find({ type: 'Text', text: '#031 · laptop · 2 files · crew/031-x' }),
   ).toBeDefined();
-  for (const key of [
-    'column',
-    'model',
-    'approve',
-    'tab-agreement',
-    'tab-context',
-    'tab-record',
-    'tab-diagram',
-  ])
+  for (const key of ['column', 'model', 'approve', 'tab-agreement', 'tab-context', 'tab-record'])
     expect(await ui.find({ key })).toBeDefined();
-  for (const key of ['composer', 'ask-0-0', 'ask-diagram'])
+  for (const key of ['composer', 'ask-0-0', 'tab-diagram'])
     expect(await ui.find({ key })).toBeUndefined();
   await ui.press({ key: 'tab-context' });
   expect(await ui.find({ key: 'ask-2-0' })).toBeUndefined();
-  await ui.press({ key: 'tab-diagram' });
-  expect(await ui.find({ key: 'ask-diagram' })).toBeUndefined();
   await ui.unmount();
 });
 
@@ -294,25 +264,15 @@ test('the spec is the selected task file, read from the board root', async ($, o
   await ui.unmount();
 });
 
-test('edit, remove, add and remove-section write the task file through crew task edit', async ($, on) => {
+test('spec bullets and headers have no tick, edit, remove or add controls', async ($, on) => {
   const seen = stubs(on);
   const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
-  const edit = ['task', '001', 'edit'];
-  await ui.press({ key: 'edit-btn-2-1' });
-  await ui.input({ key: 'edit-2-1', text: 'Second step, reworded' });
-  await ui.press({ key: 'rm-2-0' });
-  await ui.press({ key: 'add-3' });
-  await ui.input({ key: 'new-3', text: 'Scheduled exports' });
-  await ui.press({ key: 'rm-section-3' });
-  expect(seen.calls).toEqual([
-    { args: edit, stdin: { old: '2. Second step', new: '2. Second step, reworded' } },
-    { args: edit, stdin: { old: '1. First step in `src/a.ts`\n   continues here.', new: '' } },
-    { args: edit, stdin: { section: 'Out of scope', append: 'Scheduled exports' } },
-    { args: edit, stdin: { old: '- The rail', new: '' } },
-  ]);
-  expect(await ui.find({ key: 'restore-2-0' })).toBeUndefined();
-  await ui.press({ key: 'ok-0-0' });
-  expect(seen.calls.length).toBe(4);
+  expect(await ui.find({ type: 'Markdown', text: '2. Second step' })).toBeDefined();
+  const keys = (await ui.findAll({ type: 'Button' })).map((el: any) => String(el.key));
+  expect(keys.length).toBeGreaterThan(0);
+  expect(keys.filter((k: string) => /^(ok|edit-btn|rm|add|rm-section)-/.test(k))).toEqual([]);
+  expect(await ui.find({ type: 'Input' })).toBeUndefined();
+  expect(seen.calls).toEqual([]);
   await ui.unmount();
 });
 
@@ -348,10 +308,10 @@ test('approve writes approval and asks the session to run it, with a manual star
 });
 
 test('a refused write toasts the reason and leaves the spec as the file has it', async ($, on) => {
-  const seen = stubs(on, { refuse: 'task: that text is no longer in the spec' });
+  const seen = stubs(on, { refuse: 'task: not allowed\nmore' });
   const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
-  await ui.press({ key: 'rm-2-1' });
-  expect(seen.toasts).toEqual(['task: that text is no longer in the spec']);
+  await ui.select({ key: 'model', value: 'haiku' });
+  expect(seen.toasts).toEqual(['task: not allowed']);
   expect(await ui.find({ type: 'Markdown', text: '2. Second step' })).toBeDefined();
   await ui.press({ key: 'approve' });
   expect(seen.submitted).toEqual([]);
@@ -380,10 +340,27 @@ test('the board lists tasks under Scout, Worker, Reviewer and Done, flagging tho
       '006  pending-desktop task',
       '007  done task',
     ]);
-    expect(await ui.find({ type: 'Text', text: '⚑ review rounds disagreed' })).toBeDefined();
+    expect(await ui.find({ type: 'Text', text: 'Needs the API key.' })).toBeDefined();
+    expect(await ui.find({ type: 'Text', text: '⚑ review rounds disagreed' })).toBeUndefined();
     expect(await ui.find({ type: 'Text', text: '⚑ only desktop can prove it' })).toBeDefined();
     await ui.unmount();
   }
+});
+
+test('tasks sharing a work sit under one header with its title, and loose tasks have none', async ($, on) => {
+  stubs(on);
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  expect(await ui.findAll({ type: 'Text', text: 'The pit wall' })).toHaveLength(1);
+  await ui.unmount();
+});
+
+test('a work with no title in the board shows its slug', async ($, on) => {
+  const slugOnly = structuredClone(BOARD);
+  slugOnly.works = {};
+  stubs(on, { boardRun: { exitCode: 0, stdout: JSON.stringify(slugOnly), stderr: '' } });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  expect(await ui.findAll({ type: 'Text', text: 'wall' })).toHaveLength(1);
+  await ui.unmount();
 });
 
 test('an empty section is left out, and Done keeps the five newest finished tasks', async ($, on) => {
@@ -424,20 +401,14 @@ test('clicking a row opens that task in the crew-spec pane', async ($, on) => {
 });
 
 test('no view draws an Svg or a Client, on either surface', async ($, on) => {
-  stubs(on, {
-    complete: () => answer('{"nodes":[{"id":"a","label":"OK","kind":"start"}],"edges":[]}'),
-  });
+  stubs(on);
   for (const surface of ['terminal', 'desktop'] as const) {
     const wall = await $.ui.mount({ ...pane('crew-wall'), surface });
     expect(await wall.findAll({ type: 'Svg' })).toEqual([]);
     expect(await wall.findAll({ type: 'Client' })).toEqual([]);
     await wall.unmount();
     const spec = await $.ui.mount({ ...pane('crew-spec'), surface });
-    for (const key of ['tab-agreement', 'tab-context', 'tab-record', 'tab-diagram']) {
-      await spec.press({ key });
-      expect(await spec.findAll({ type: 'Svg' })).toEqual([]);
-    }
-    for (const key of ['diagram-change', 'diagram-flow']) {
+    for (const key of ['tab-agreement', 'tab-context', 'tab-record']) {
       await spec.press({ key });
       expect(await spec.findAll({ type: 'Svg' })).toEqual([]);
     }
@@ -455,55 +426,6 @@ test('a failing crew call draws one error line instead of an empty board', async
   await ui.unmount();
 });
 
-test('diagrams: the change map lists steps against files, and the flow comes from the model', async ($, on) => {
-  stubs(on, {
-    complete: () =>
-      answer(
-        'Here: {"nodes":[{"id":"a","label":"OK pressed","kind":"start"},{"id":"b","label":"Held 500ms?","kind":"decision"},{"id":"c","label":"Open menu","kind":"end"}],"edges":[{"from":"a","to":"b"},{"from":"b","to":"c","label":"yes"}]}',
-      ),
-  });
-  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
-  await ui.press({ key: 'tab-diagram' });
-  const view = async () =>
-    ((await ui.find({ key: 'diagram-view' }))?.children?.[0] as any)?.props.text as string;
-  expect(await view()).toContain('**1. First step in src/a.ts** → `src/a.ts`');
-  expect(await view()).toContain('**2. Second step** → no file named');
-  expect(await ui.find({ type: 'Text', text: /No step names src\/new.ts/ })).toBeDefined();
-  await ui.press({ key: 'diagram-flow' });
-  await ui.press({ key: 'generate-flow' });
-  expect(await view()).toContain('- OK pressed → Held 500ms?');
-  expect(await view()).toContain('- Held 500ms? → Open menu (yes)');
-  await ui.unmount();
-});
-
-test('diagrams: a task with a part gets Architecture and Feature views, one without gets the pointer', async ($, on) => {
-  stubs(on);
-  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
-  await ui.press({ key: 'tab-diagram' });
-  expect(await ui.find({ key: 'diagram-architecture' })).toBeUndefined();
-  expect(await ui.find({ type: 'Text', text: /feature-map/ })).toBeDefined();
-  await ui.unmount();
-});
-
-test('diagrams: a task with a part gets Architecture and Feature views of it and its neighbours', async ($, on) => {
-  const withPart = structuredClone(BOARD);
-  (withPart.tasks[0] as any).part = 'p-x';
-  stubs(on, { boardRun: { exitCode: 0, stdout: JSON.stringify(withPart), stderr: '' } });
-  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
-  await ui.press({ key: 'tab-diagram' });
-  const view = async () =>
-    ((await ui.find({ key: 'diagram-view' }))?.children?.[0] as any)?.props.text as string;
-  await ui.press({ key: 'diagram-architecture' });
-  expect(await view()).toContain('**Wall mod**');
-  expect(await view()).toContain('- ← Board command · board json');
-  expect(await view()).toContain('- → Desktop pane · svg');
-  await ui.press({ key: 'diagram-feature' });
-  expect(await view()).toContain('**Wall mod** _(extend)_');
-  expect(await view()).toContain('- ✔ `diagramItems` · modify');
-  expect(await view()).toContain('- → Desktop pane _(new)_ · svg');
-  await ui.unmount();
-});
-
 test('sign off appears for a pending task, records it and asks the session to close it', async ($, on) => {
   const seen = stubs(on, { status: 'pending-desktop' });
   const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
@@ -513,6 +435,17 @@ test('sign off appears for a pending task, records it and asks the session to cl
   await ui.press({ key: 'signoff' });
   expect(seen.calls.map((c) => c.args)).toEqual([['task', '001', 'signoff']]);
   expect(seen.submitted).toEqual(['Close task 001 with /crew:crew-close']);
+  await ui.unmount();
+});
+
+test('a blocked task shows its stored reason, or the generic one when none is stored', async ($, on) => {
+  stubs(on, { status: 'blocked', blocked: 'Needs the API key.\nThen send back.' });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
+  expect(
+    await ui.find({ type: 'Text', text: 'Needs the API key.\nThen send back.' }),
+  ).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: 'review rounds disagreed' })).toBeUndefined();
+  expect(await ui.findAll({ type: 'Text', text: /Needs the API key/ })).toHaveLength(1);
   await ui.unmount();
 });
 

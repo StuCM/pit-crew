@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { render, run } from '../src/commands/board.js';
 import { statuses } from '../src/lib/config.js';
@@ -131,7 +131,7 @@ const liveRepo = (branchStatus) => {
   return { root, file };
 };
 
-const boardStatus = (root) => {
+const boardJson = (root) => {
   const lines = [];
   const log = console.log;
   console.log = (line) => lines.push(line);
@@ -140,8 +140,10 @@ const boardStatus = (root) => {
   } finally {
     console.log = log;
   }
-  return JSON.parse(lines.join('\n')).tasks[0].status;
+  return JSON.parse(lines.join('\n'));
 };
+
+const boardStatus = (root) => boardJson(root).tasks[0].status;
 
 test('an unmerged branch commit is what the board shows, in BOARD.md too', () => {
   const { root } = liveRepo('done');
@@ -151,6 +153,14 @@ test('an unmerged branch commit is what the board shows, in BOARD.md too', () =>
     readFileSync(join(root, '.claude', 'tasks', 'BOARD.md'), 'utf8'),
     /\| 007 \| A thing \| `done`/,
   );
+});
+
+test('--json emits the work titles by slug', () => {
+  const root = sandbox();
+  writeTask(root, '007-thing.md', taskFile({ extra: 'work: wall\n' }));
+  mkdirSync(join(root, '.claude', 'crew', 'work'), { recursive: true });
+  writeFileSync(join(root, '.claude', 'crew', 'work', 'wall.json'), '{"title":"The pit wall"}');
+  assert.deepEqual(boardJson(root).works, { wall: 'The pit wall' });
 });
 
 test('a merged branch shows the main checkout copy', () => {

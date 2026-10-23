@@ -72,6 +72,10 @@ The reviewer executes this literally. Nothing here may be a matter of taste.
 - [ ] no file outside `files:` is touched
 - [ ] commits follow the convention (the hook enforces it)
 
+## Blocked
+<!-- Whoever sets `status: blocked` writes here, in a few lines: what stopped it,
+     and what is needed to unblock. The pit wall shows this text. -->
+
 ## Scout requests
 <!-- The worker appends one line per `crew-scout` question, at most two:
      the question, the answer in a line, and whether it changed the build. -->

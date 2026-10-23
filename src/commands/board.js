@@ -75,13 +75,14 @@ export const render = (tasks, known, live, cfg) => {
 
 export const run = (cfg, args = []) => {
   if (args.includes('--json')) {
-    const { tasks } = snapshot(cfg);
+    const { tasks, works } = snapshot(cfg);
     console.log(
       JSON.stringify({
         project: cfg.project,
         root: cfg.root,
         tasksDir: join(cfg.root, cfg.tasksDir),
         statuses: statuses(cfg),
+        works: Object.fromEntries(works.map((work) => [work.slug, work.title])),
         tasks,
       }),
     );

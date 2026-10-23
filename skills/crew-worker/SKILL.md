@@ -37,11 +37,11 @@ the dumps stay out of your context.
   is how the orchestrator learns what its specs keep missing.
 - **An answer can inform the work, not widen it.** If it shows a file that
   should be in `files:`, or a decision the spec did not make, set
-  `status: blocked`, name the file or the decision, and stop. The scope hook
+  `status: blocked`, name the file or the decision under `## Blocked`, and stop. The scope hook
   refuses the write anyway.
 
 If the spec is wrong, ambiguous, or missing a decision you would have to
-invent — **set `status: blocked`, write why, and stop.** Do not guess and do
+invent — **set `status: blocked`, write why under `## Blocked`, and stop.** Do not guess and do
 not improve the plan. A spec bug costs one message; a wrong implementation
 costs a whole round.
 
@@ -72,7 +72,7 @@ Two rules:
   disagree, the code wins and the spec is wrong — say so in the task file.
   Do not edit the map; you are not its writer.
 - **An open question printed on your part means stop.** Set `status: blocked`
-  and name the question. It reached you because the gate was bypassed or the
+  and name the question under `## Blocked`. It reached you because the gate was bypassed or the
   map moved on, and answering it silently in code is exactly the failure the
   whole planning layer exists to prevent.
 
@@ -156,7 +156,7 @@ you. Never hand back with a round open. It judges; it never edits.
 - **PASS** → go to *Finishing*.
 - **CHANGES** → fix them, re-run the gate, `crew review` again.
 - **BLOCKED**, or a round the counter refuses → set `status: blocked`, write
-  the disagreement in a few lines, and stop. A further round is two agents
+  the disagreement in a few lines under `## Blocked`, and stop. A further round is two agents
   disagreeing, which is a decision, not an iteration.
 
 Append every round to **Review rounds** in the task file.

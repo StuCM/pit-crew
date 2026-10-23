@@ -75,7 +75,7 @@ export const run = (cfg, _args, payload = readStdin()) => {
   return deny(
     `${rel} is not in the files: list of ${task.file}.\n\n` +
       `Declared: ${declared.join(', ')}\n\n` +
-      'If the spec is wrong, say so in the task file and set status: blocked. ' +
+      'If the spec is wrong, say so in the task file and set status: blocked, with the reason under ## Blocked. ' +
       'Do not widen the scope on your own — that is the one decision the spec gate exists to hold.',
   );
 };

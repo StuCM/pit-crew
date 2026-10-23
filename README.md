@@ -512,11 +512,11 @@ sections by who has it.
 | Done | `done` (the five newest), `pending-<env>` |
 
 Each row is its mark (● running, ✔ done, ○ waiting), a button with the id and
-title, its status, and a ⚑ with what it needs from you. Click a row to open
-its spec in its own pane: the title and status, then the Spec, Context,
-Build record and Diagrams tabs, with editing, approve and sign-off. The
-diagrams are Markdown: steps against the files they touch, the behaviour
-flow, and the task's part from the plan. Nothing is drawn as SVG.
+title on the first line, its status and a ⚑ with what it needs from you on the second. Click a row to open
+its spec in its own pane: the title and status, then the Spec, Context
+and Build record tabs, with approve and sign-off. Tasks are grouped under
+their work's title. A blocked task shows the reason from the
+`## Blocked` section of its file, the text of whoever set `status: blocked`.
 
 **What it costs while it sits there.** Every 15 seconds, and only while one
 of its panes is open, it lists the tasks folder and compares file times.
@@ -526,8 +526,7 @@ only when the board differs, and re-reads the open spec only when its file
 changed. With the pane closed it does nothing.
 
 It reads the task files and `.claude/crew/work/<slug>.json`, which
-`/crew:crew-spec` writes after the scout runs, and writes through the `crew` CLI (`crew task`). There is no task chat; the
-behaviour-flow diagram is the one thing that asks the session's own model.
+`/crew:crew-spec` writes after the scout runs, and writes through the `crew` CLI (`crew task`). There is no task chat.
 
 It needs Claude Code 2.1.287 or later in the terminal and 2.1.286 or later in
 the Desktop Code tab. Desktop bundles its own copy of Claude Code; an older

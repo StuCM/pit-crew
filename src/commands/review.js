@@ -23,7 +23,9 @@ export const run = (cfg, [taskArg]) => {
     console.error(
       `review: ${task.file} has had ${rounds} round(s), the limit is ${cfg.reviewRounds}.`,
     );
-    console.error('        Set status: blocked, write the disagreement in a few lines, and stop.');
+    console.error(
+      '        Set status: blocked, write the disagreement in a few lines under ## Blocked, and stop.',
+    );
     setField(path, 'status', 'blocked');
     return 1;
   }
