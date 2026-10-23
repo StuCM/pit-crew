@@ -52,7 +52,7 @@ is logged. If that section looks empty or wrong, say so in the task file.
 ## The diagram, if the task names one
 
 ```sh
-npx crew plan <task-file>
+crew plan <task-file>
 ```
 
 If the task has a `part:`, this prints the part you are building: its purpose,
@@ -81,7 +81,7 @@ Two rules:
 - Touch only the paths in `files:`. If the scope hook is installed it will
   refuse the write; if it is not, the gate will fail. Either way the answer is
   the same: a path the spec did not authorise is a spec bug, not an obstacle.
-- Never push, never merge, never deploy. `npx crew preflight <env>` says what
+- Never push, never merge, never deploy. `crew preflight <env>` says what
   this machine can prove. If a deploy command fails, that is the bench, not a
   bug — do not try to fix it.
 - Never edit the spec's Goal, Approach, Out of scope or Definition of done.
@@ -125,7 +125,7 @@ what you think.
 ## The gate — run this before you ask for review
 
 ```sh
-npx crew gate <task-file>
+crew gate <task-file>
 ```
 
 It runs the project's prepare commands, the scope check and `verify`, then
@@ -143,7 +143,7 @@ Do not ask for review on work that does not build.
 ## Review
 
 ```sh
-npx crew review <task-file>
+crew review <task-file>
 ```
 
 This opens a round — it refuses to open one past the configured limit, and
@@ -188,9 +188,9 @@ Set `status:` with the command, not by hand. `crew review` left it at
 `review`, and a report that says `done` over a file that says `review` is
 the most common way a finished task gets lost:
 
-- `npx crew task <id> set status done` if this environment can prove it
-- `npx crew task <id> set status pending-<env>` if only an environment no
-  agent can reach can prove it — `npx crew doctor` lists the statuses this
+- `crew task <id> set status done` if this environment can prove it
+- `crew task <id> set status pending-<env>` if only an environment no
+  agent can reach can prove it — `crew doctor` lists the statuses this
   project has
 
 Append to the task file, under the headings it already has. Never add a
@@ -208,4 +208,4 @@ git refuses a branch that another worktree holds:
 git switch --detach
 ```
 
-Then run `npx crew board` and stop. Do not start anything else.
+Then run `crew board` and stop. Do not start anything else.

@@ -206,6 +206,7 @@ const FIXER_TOOLS = [
   'Bash(git add:*)',
   'Bash(git commit:*)',
   'Bash(git rebase:*)',
+  'Bash(crew gate:*)',
   'Bash(npx crew gate:*)',
 ];
 

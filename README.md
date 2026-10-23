@@ -187,6 +187,9 @@ Plugin skills are namespaced by the plugin, so the four orchestrator skills are
 `/crew:<name>`. They also trigger from their descriptions — asking "spec this"
 or "where do things stand" reaches the same place without typing a command.
 
+Agents call `crew` directly, not `npx crew`: the session hook puts the plugin's
+`bin/` on PATH, which saves the `npm exec` wrapper (~86 MB) per running command.
+
 **Installing this does not turn every session into an orchestrator.** Nothing
 here fires on a question about how existing code works; `crew-spec` is scoped
 to the moment a piece of *work* starts, and its first job is to decide what

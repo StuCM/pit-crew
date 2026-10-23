@@ -11,7 +11,7 @@ orchestrator reads only what you return. That split is the point of you: the
 file dumps stay in your context, and the conclusions go into the spec.
 
 **You never modify a file, never commit, never push.** You have Bash for
-`git`, `grep` and `npx crew graph`, nothing else.
+`git`, `grep` and `crew graph`, nothing else.
 
 ## What you are given
 
@@ -43,9 +43,9 @@ That shape goes into the brief; the diff does not.
 ### 2. The memory graph — follow the chains
 
 ```sh
-npx crew graph chain <a lead, in two or three words> --depth=2
-npx crew graph traps
-npx crew graph decisions
+crew graph chain <a lead, in two or three words> --depth=2
+crew graph traps
+crew graph decisions
 ```
 
 `chain` starts from the nodes that best match the words and, at each hop,
@@ -86,7 +86,7 @@ person reported. The others are either this task or the next.
 Then ask the graph what it knows about exactly those paths:
 
 ```sh
-npx crew graph files <each path>
+crew graph files <each path>
 ```
 
 ### 4. Stop when the spec can be written

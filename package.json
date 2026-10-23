@@ -30,6 +30,7 @@
     "./schema": "./schema/crew.config.schema.json"
   },
   "files": [
+    "bin",
     "src",
     "schema",
     "planning/scripts",

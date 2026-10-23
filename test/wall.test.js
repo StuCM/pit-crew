@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   agentArgs,
+  fixerArgs,
   items,
   listDir,
   mentions,
@@ -123,4 +124,11 @@ test('a path-scoped Edit entry keeps Edit allowed; no Edit entry disallows it', 
     'Write',
     'NotebookEdit',
   ]);
+});
+
+test('the fixer may run crew gate directly, and still through npx for older specs', () => {
+  const agent = new URL('../agents/crew-fixer.md', import.meta.url).pathname;
+  const args = fixerArgs(agent);
+  assert.ok(args.includes('Bash(crew gate:*)'));
+  assert.ok(args.includes('Bash(npx crew gate:*)'));
 });

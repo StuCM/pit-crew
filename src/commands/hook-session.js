@@ -10,6 +10,8 @@
 // A worker session is on a task branch and must implement, so it hears
 // nothing from this.
 
+import { appendFileSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { git } from '../lib/git.js';
 import { readClaim } from './orchestrator.js';
 
@@ -37,7 +39,22 @@ const roleText = (cfg, id) => {
   return `${claim.title} is the orchestrator (claimed ${claim.claimed}). You are a side chat. Answer questions and make small inline edits (say you are doing so). Do not number tasks, write to ${cfg.tasksDir}, or run crew-run/crew-close. For anything bigger, send the orchestrator a proposal (what, why, the files you think it touches) with the session tools, tell the person it was sent, and carry on. If that chat is gone, the person can make this one the orchestrator.`;
 };
 
+// Puts the plugin's bin/ first on PATH for every later Bash command, so agents run `crew` as one process, not under npx.
+const exportPath = () => {
+  const file = process.env.CLAUDE_ENV_FILE;
+  if (!file) return;
+  const line = `export PATH="${fileURLToPath(new URL('../../bin', import.meta.url))}:$PATH"\n`;
+  try {
+    let have = '';
+    try {
+      have = readFileSync(file, 'utf8');
+    } catch {}
+    if (!have.includes(line)) appendFileSync(file, line);
+  } catch {}
+};
+
 export const run = (cfg, _args, id = null) => {
+  exportPath();
   // symbolic-ref, not rev-parse: it names the branch even before its first commit.
   const branch = git(['symbolic-ref', '--short', 'HEAD'], cfg.root)?.trim() ?? '';
   if (branch.startsWith(cfg.branchPrefix)) return 0;

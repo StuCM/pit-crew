@@ -11,7 +11,7 @@ unasked.
 ## Becoming it
 
 1. Take your session id from the session context ("Your session id is ...") and run
-   `npx crew orchestrator claim <id>`. If it is refused, say who holds the
+   `crew orchestrator claim <id>`. If it is refused, say who holds the
    claim and ask before running it again with `--force`.
 2. Rename this chat to `Orchestrator · <project>` with the session-title tool,
    if it is available.
