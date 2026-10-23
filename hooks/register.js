@@ -17,9 +17,6 @@ const C = {
   blue: '#3E6FA8',
   green: '#47795A',
   gray: '#8F8B83',
-  ambBg: '#FAEEDA',
-  clayBg: '#FBE9E2',
-  vioBg: '#EEEDFE',
 };
 
 // 8-point scale in cells: Desktop draws a cell at roughly 8px, so sm is the 16px step.
@@ -31,52 +28,97 @@ const MODELS = [
   { value: 'haiku', label: 'Haiku 4.5' },
 ];
 
+// The pit wall checks the task folder this often while one of its panes is open, and not at all otherwise.
+const CHECK_MS = 15000;
+// Past this, it reloads the board even if no task file moved: a file's existence can change what a task shows.
+const STALE_MS = 120000;
+
 let board = null; // the last `crew board --json`, for each task's file and status
+let boardText = ''; // the same, as received, so an unchanged board is not parsed or redrawn
 let boardError = '';
 let isLoaded = false;
+let loadedAt = 0;
+let taskTimes = {}; // task file name → mtime and size at the last load
+let selected = '';
+let log = '';
 
+// The plugin's own copy of crew, run with node: no npx resolution on every call, and always the version this mod was written for.
+const crewArgv = ($, args) => ['node', $.plugin.root + '/src/cli.js', ...args];
+
+// True when the board differs from the one drawn, so a caller knows whether to redraw.
 const loadBoard = async ($) => {
+  loadedAt = await $.clock.now();
+  isLoaded = true;
   try {
-    const run = await $.process.run(['npx', '--no-install', 'crew', 'board', '--json']);
+    const run = await $.process.run(crewArgv($, ['board', '--json']));
     if (run.exitCode !== 0) {
       const why = run.stderr.trim().split('\n')[0] || 'exit ' + run.exitCode;
       throw new Error(why);
     }
+    if (run.stdout === boardText && !boardError) return false;
+    boardText = run.stdout;
     board = JSON.parse(run.stdout);
     boardError = '';
     if (!selectedTask()) selected = board.tasks[0]?.id ?? selected;
+    return true;
   } catch (err) {
-    boardError = 'Could not read the board: ' + err.message;
+    const message = 'Could not read the board: ' + err.message;
+    const changed = message !== boardError;
+    boardError = message;
+    return changed;
   }
-  isLoaded = true;
 };
 
 const refreshBoard = async ($) => {
-  await loadBoard($);
-  doc = null;
-  $.ui.invalidate('ui.render');
+  const changed = await loadBoard($);
+  if (changed || !doc) $.ui.invalidate('ui.render');
+};
+
+// Each task file's mtime and size, from one directory listing: far cheaper than running crew to find nothing changed.
+const readTaskTimes = async ($) => {
+  if (!board?.tasksDir) return null;
+  try {
+    const entries = await $.fs.list(board.tasksDir);
+    return Object.fromEntries(
+      entries
+        .filter((entry) => entry.name.endsWith('.md'))
+        .map((entry) => [entry.name, entry.mtimeMs + ':' + entry.size]),
+    );
+  } catch {
+    return null;
+  }
+};
+
+// The timer's work: nothing while no pit wall pane is open, a listing while nothing moved, the board only when something did.
+export const check = async ($) => {
+  const panes = await $.ui.panes();
+  if (!panes.some((pane) => pane.id === PANE || pane.id === SPEC_PANE)) return;
+  const times = await readTaskTimes($);
+  const isStale = (await $.clock.now()) - loadedAt > STALE_MS;
+  if (times && JSON.stringify(times) === JSON.stringify(taskTimes) && !isStale) return;
+  const open = selectedTask()?.file.split('/').pop();
+  if (!times || (open && times[open] !== taskTimes[open])) doc = null;
+  taskTimes = times ?? {};
+  await refreshBoard($);
 };
 
 const selectedTask = () => board?.tasks.find((t) => t.id === selected);
 
 // Every write goes through the crew CLI, which owns the task files; a refusal is toasted and the view reloaded.
 const crew = async ($, args, stdin) => {
-  const run = await $.process.run(
-    ['npx', '--no-install', 'crew', ...args],
-    stdin === undefined ? undefined : { stdin },
-  );
+  const run = await $.process.run(crewArgv($, args), stdin === undefined ? undefined : { stdin });
   if (run.exitCode !== 0)
     $.ui.toast(run.stderr.trim().split('\n')[0] || 'crew exited ' + run.exitCode);
-  await refreshBoard($);
+  doc = null;
+  await loadBoard($);
+  $.ui.invalidate('ui.render');
   return run.exitCode === 0;
 };
 
 const editSpec = ($, change) => crew($, ['task', selected, 'edit'], JSON.stringify(change));
 
-let selected = '';
 // Desktop draws a plain Button's hover itself with no padding prop, so spaces in the label widen it.
 const pad = (label) => ' ' + label + ' ';
-let log = '';
 
 const select = async ($, id) => {
   selected = id;
@@ -89,12 +131,12 @@ const select = async ($, id) => {
   $.ui.invalidate('ui.render');
 };
 
-// ---- The crew list. Drawing adapted from savvy-progress's agents panel (MIT, © 2026 johnnyvizz).
+// ---- The crew list: tasks by the role working on them, drawn as plain rows.
 const SECTIONS = [
-  { name: 'Scout', costume: 'astronaut' },
-  { name: 'Worker', costume: 'engineer' },
-  { name: 'Reviewer', costume: 'detective' },
-  { name: 'Done', costume: 'racer' },
+  { name: 'Scout', color: C.vio },
+  { name: 'Worker', color: C.amb },
+  { name: 'Reviewer', color: C.clay },
+  { name: 'Done', color: C.green },
 ];
 const SECTION_OF = {
   draft: 'Scout',
@@ -103,313 +145,62 @@ const SECTION_OF = {
   review: 'Reviewer',
   blocked: 'Reviewer',
 };
+const sectionOf = (status) => SECTIONS.find((s) => s.name === (SECTION_OF[status] ?? 'Done'));
 
 // Tasks by crew role, empty sections dropped; Done keeps every task still waiting on the person and the 5 newest finished.
 export const buildSections = ({ statuses, tasks }) => {
   const isFinished = (t) => statuses[t.status]?.terminal;
-  return SECTIONS.map(({ name, costume }) => {
+  return SECTIONS.map(({ name, color }) => {
     const mine = tasks.filter((t) => (SECTION_OF[t.status] ?? 'Done') === name);
     const finished = mine.filter(isFinished).sort((x, y) => y.id.localeCompare(x.id));
     const shown =
       name === 'Done' ? [...mine.filter((t) => !isFinished(t)), ...finished.slice(0, 5)] : mine;
-    return { name, costume, tasks: shown };
+    return { name, color, tasks: shown };
   }).filter((section) => section.tasks.length);
 };
 
-const FONT = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',sans-serif";
-const ROW_H = 52;
-const SECTION_H = 30;
-const SPEC_HEAD_H = 64;
+// What a row's mark says at a glance: running, finished, or waiting.
+const markOf = (meta) =>
+  meta.inFlight ? ['●', C.blue] : meta.terminal ? ['✔', C.green] : ['○', C.faint];
 
-// Rough advance of system UI text, in em; good enough to size a slot.
-const charEm = (ch) => (/[\s.,:;'|!il1()[\]]/.test(ch) ? 0.3 : /[A-Z@%mw]/.test(ch) ? 0.72 : 0.56);
-const textWidth = (s, size) => [...s].reduce((w, ch) => w + charEm(ch) * size, 0);
-
-const fitText = (s, size, maxW) => {
-  if (textWidth(s, size) <= maxW) return s;
-  let out = '';
-  for (const ch of s) {
-    if (textWidth(out + ch + '…', size) > maxW) break;
-    out += ch;
-  }
-  return out + '…';
-};
-
-const PANE_CSS = `<style>
-.t{fill:#1f1f1f}.s{fill:#6b6b68}.m{fill:#9a9a96}.ln{stroke:#e4e4e1}.mk{stroke:#9a9a96}
-.pb{fill:#FAEEDA}.pt{fill:#9A6224}.lv{fill:#378ADD}.ok{stroke:#3B9C5F}
-@media (prefers-color-scheme: dark){.t{fill:#ececec}.s{fill:#a8a8a4}.m{fill:#7d7d79}.ln{stroke:#333331}.mk{stroke:#7d7d79}
-.pb{fill:#3D2E18}.pt{fill:#E8B26A}.lv{fill:#6AA8EE}.ok{stroke:#5CC283}}
-.live{animation:p 1.6s ease-in-out infinite}@keyframes p{50%{opacity:.3}}
-@media (prefers-reduced-motion: reduce){.live{animation:none}}
-</style>`;
-
-// Only an in-flight row runs: every crab walks, the engineer's wrench turns, the detective's magnifier sweeps.
-const CRAB_CSS = `<style>
-.run .la{animation:st .5s steps(1) infinite}.run .lb{animation:st .5s steps(1) infinite -.25s}
-.run .bd{animation:bob .5s steps(1) infinite -.125s}
-.run g{transform-box:fill-box}
-@keyframes st{50%{transform:translateY(-1px)}}@keyframes bob{50%{transform:translateY(1px)}}
-@keyframes blink{50%{opacity:.15}}
-.c-detective.run .it{animation:scan 1s steps(1) infinite}
-.c-detective.run .gl{animation:blink 1s steps(1) infinite -.5s}
-@keyframes scan{25%{transform:translate(-1px,1px)}50%{transform:translate(-2px,2px)}75%{transform:translate(-1px,1px)}}
-.c-engineer.run .it{transform-origin:100% 100%;animation:twist .5s ease-in-out infinite}
-@keyframes twist{50%{transform:rotate(-35deg)}}
-@media (prefers-reduced-motion: reduce){.run,.run g{animation:none!important}}
-</style>`;
-
-// The crab is pixel art in mid tones, drawn the same in both themes, so its fills stay literal.
-const CLAY = '#D97757';
-const INK = '#1F1E1D';
-const COSTUME_COLOR = {
-  astronaut: '#7F77DD',
-  engineer: '#BA7517',
-  detective: '#D85A30',
-  racer: '#1D9E75',
-};
-
-// `cls` puts a pixel in a group: `bd` (the default) is the body, `la`/`lb` the leg pairs, anything else a prop.
-const stamp = (f, x, y, rows, map, cls) =>
-  rows.forEach((row, dy) =>
-    [...row].forEach((ch, dx) => {
-      if (map[ch]) f(x + dx, y + dy, 1, 1, map[ch], cls);
-    }),
-  );
-
-const crabBody = (f, armFront = 0, armCls) => {
-  f(7, 10, 16, 12, CLAY);
-  f(3, 14, 4, 4, CLAY);
-  f(23, 14 + armFront, 4, 4, CLAY, armCls);
-  f(9, 12, 2, 2, INK);
-  f(19, 12, 2, 2, INK);
-  f(7, 22, 2, 4, CLAY, 'la');
-  f(17, 22, 2, 4, CLAY, 'la');
-  f(11, 22, 2, 4, CLAY, 'lb');
-  f(21, 22, 2, 4, CLAY, 'lb');
-};
-
-const COSTUMES = {
-  astronaut: (f, t) => {
-    crabBody(f);
-    f(6, 7, 18, 1, '#E6E8EE');
-    f(5, 8, 1, 14, '#E6E8EE');
-    f(24, 8, 1, 14, '#E6E8EE');
-    f(6, 22, 18, 1, '#C9CCD2');
-    f(6, 8, 18, 14, 'rgba(169,214,245,.32)');
-    f(8, 9, 2, 1, '#fff');
-    f(8, 10, 1, 2, '#fff');
-    f(14, 4, 2, 3, '#C9CCD2');
-    f(14, 2, 2, 2, t);
-    f(13, 18, 4, 2, t);
-    f(27, 3, 1, 3, '#F5C542');
-    f(26, 4, 3, 1, '#F5C542');
-  },
-  detective: (f, t) => {
-    crabBody(f, -4, 'it');
-    stamp(
-      f,
-      6,
-      3,
-      [
-        '......bbbbbb......',
-        '....bbcbbcbbbb....',
-        '...bbbbbbbbbbbb...',
-        '..bcbbcbbcbbcbbb..',
-        '.bbbbbbbbbbbbbbbb.',
-        'dddddddddddddddddd',
-      ],
-      { b: '#7A4A26', c: '#A0703F', d: '#5A3519' },
-    );
-    f(6, 9, 18, 1, t);
-    stamp(f, 23, 1, ['.kkk.', 'k...k', 'k...k', 'k...k', '.kkk.'], { k: '#3A3A3C' }, 'it');
-    f(24, 2, 3, 3, 'rgba(169,214,245,.7)', 'it');
-    f(25, 6, 1, 4, '#7A4A26', 'it');
-    f(24, 2, 1, 1, '#fff', 'gl');
-  },
-  engineer: (f, t) => {
-    crabBody(f);
-    stamp(
-      f,
-      6,
-      4,
-      [
-        '.....yyyyyyyy.....',
-        '...yyyyyhhyyyyy...',
-        '..yyyyyyhhyyyyyy..',
-        '..yyyyyyhhyyyyyy..',
-        '.yyyyyyyhhyyyyyyy.',
-        'dddddddddddddddddd',
-      ],
-      { y: '#F5C542', h: '#FBE08A', d: '#C99A1E' },
-    );
-    f(13, 5, 4, 2, t);
-    stamp(f, 0, 10, ['.s.s', 'sss.', '.s..', '.s..'], { s: '#8E929A' }, 'it');
-  },
-  racer: (f, t) => {
-    crabBody(f, -4);
-    stamp(
-      f,
-      6,
-      5,
-      [
-        '....rrrrrrrrrr....',
-        '..rrrrrrwwrrrrrr..',
-        '.rrrrrrrwwrrrrrrr.',
-        '.rrrrrrrwwrrrrrrr.',
-        '.rrrrrrrwwrrrrrrr.',
-        '.kkkkkkkkkkkkkkkkr',
-      ],
-      { r: t, w: '#F8F6F1', k: INK },
-    );
-    f(25, 1, 1, 9, '#8E929A');
-    stamp(f, 26, 1, ['wkwk', 'kwkw', 'wkwk'], { w: '#F8F6F1', k: INK });
-  },
-};
-
-// Props nest inside `bd` so they ride its bob; the legs stay outside it and step on their own.
-const crab = (x, y, costume, isLive) => {
-  const groups = new Map([['bd', []]]);
-  const f = (cx, cy, w, h, c, cls = 'bd') => {
-    if (!groups.has(cls)) groups.set(cls, []);
-    groups.get(cls).push(`<rect x="${cx}" y="${cy}" width="${w}" height="${h}" fill="${c}"/>`);
-  };
-  COSTUMES[costume](f, COSTUME_COLOR[costume]);
-  const group = (cls) => `<g class="${cls}">${(groups.get(cls) ?? []).join('')}</g>`;
-  const props = [...groups.keys()].filter((k) => k !== 'bd' && k !== 'la' && k !== 'lb');
-  const body = `<g class="bd">${groups.get('bd').join('')}${props.map(group).join('')}</g>`;
-  return `<g transform="translate(${x},${y}) scale(1.1)" shape-rendering="crispEdges"><g class="c-${costume}${isLive ? ' run' : ''}">${body}${group('la')}${group('lb')}</g></g>`;
-};
-
-const statusMark = (x, y, meta) => {
-  if (meta.inFlight) return `<circle class="live lv" cx="${x}" cy="${y}" r="3.5"/>`;
-  if (meta.terminal)
-    return `<path class="ok" d="M${x - 5} ${y}l3.5 3.5 6.5-7" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
-  return `<circle class="mk" cx="${x}" cy="${y}" r="5" fill="none" stroke-width="1.4"/><path class="mk" d="M${x} ${y - 2.5}v2.8l1.8 1.2" fill="none" stroke-width="1.4" stroke-linecap="round"/>`;
-};
-
-const svg = (W, H, body) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${PANE_CSS}${CRAB_CSS}${body}</svg>`;
-
-const rowSvg = (task, meta, W, costume) => {
-  const textW = W - 42 - 24;
-  const id = task.id + '  ';
-  const title = fitText(task.title, 13, textW - textWidth(id, 13));
-  const pillX = 42 + textWidth(task.status, 11) + 10;
-  const waiting = meta.waitsOnUser
-    ? fitText('⚑ ' + meta.waitsOnUser, 11, Math.max(W - pillX - 40, 20))
-    : '';
-  const pill = waiting
-    ? `<rect class="pb" x="${pillX}" y="27" width="${textWidth(waiting, 11) + 16}" height="16" rx="8"/>
-<text class="pt" x="${pillX + 8}" y="39" font-family="${FONT}" font-size="11" font-weight="600">${esc(waiting)}</text>`
-    : '';
-  return svg(
-    W,
-    ROW_H,
-    `${crab(0, 10, costume, meta.inFlight)}
-<text x="42" y="20" font-family="${FONT}" font-size="13" font-weight="600"><tspan class="m">${esc(id)}</tspan><tspan class="t">${esc(title)}</tspan></text>
-<text class="s" x="42" y="39" font-family="${FONT}" font-size="11">${esc(task.status)}</text>
-${pill}${statusMark(W - 8, 16, meta)}
-<line class="ln" x1="0" y1="${ROW_H - 0.5}" x2="${W}" y2="${ROW_H - 0.5}"/>`,
-  );
-};
-
-// The spec pane's header in the list's style: costume crab, title, meta line, and the status and waiting pills in the section's colour.
-const specHeaderSvg = (task, doc, meta, metaLine, W) => {
-  const costume = SECTIONS.find((x) => x.name === (SECTION_OF[task.status] ?? 'Done')).costume;
-  const color = COSTUME_COLOR[costume];
-  const textW = W - 42 - 8;
-  const pill = (text, x, fill, cls) => {
-    const w = textWidth(text, 11) + 16;
-    return {
-      w,
-      svg: `<rect ${cls ? 'class="pb"' : `fill="${fill}" fill-opacity=".18"`} x="${x}" y="38" width="${w}" height="16" rx="8"/>
-<text ${cls ? 'class="pt"' : `fill="${fill}"`} x="${x + 8}" y="50" font-family="${FONT}" font-size="11" font-weight="600">${esc(text)}</text>`,
-    };
-  };
-  const status = pill(task.status, 42, color);
-  const waiting = meta.waitsOnUser
-    ? pill(
-        fitText('⚑ ' + meta.waitsOnUser, 11, Math.max(textW - status.w - 8, 20)),
-        42 + status.w + 8,
-        '',
-        true,
-      )
-    : null;
-  const metaX = 42 + status.w + (waiting ? waiting.w + 8 : 0) + 10;
-  return svg(
-    W,
-    SPEC_HEAD_H,
-    `${crab(0, 12, costume, meta.inFlight)}
-<text class="t" x="42" y="26" font-family="${FONT}" font-size="18" font-weight="600">${esc(fitText(doc.title, 18, textW))}</text>
-${status.svg}${waiting?.svg ?? ''}
-<text class="s" x="${metaX}" y="50" font-family="${FONT}" font-size="11">${esc(fitText(metaLine, 11, Math.max(W - metaX - 8, 20)))}</text>
-<line class="ln" x1="0" y1="${SPEC_HEAD_H - 0.5}" x2="${W}" y2="${SPEC_HEAD_H - 0.5}"/>`,
-  );
-};
-
-const sectionSvg = (title, count, W) =>
-  svg(
-    W,
-    SECTION_H,
-    `<text x="0" y="20" font-family="${FONT}" font-size="12" font-weight="600"><tspan class="t">${esc(title)}</tspan><tspan class="m"> · ${count}</tspan></text>`,
-  );
-
-// Each row is a keyed Box holding the drawing, with card.js laid over it to take the click an Svg cannot.
-const boardList = ({ Box, Text, Svg, Client }, width, surface) => {
-  const isDrawn = surface === 'desktop' && Svg;
-  const W = Math.max(240, Math.min(900, width * 8 - 8));
-  const row = (task, costume) => {
+// One row per task: its mark, a button with its id and title that opens it, its status and what it waits on.
+const boardList = ($, { Box, Text, Button }) => {
+  const row = (task, color) => {
     const meta = board.statuses[task.status] ?? {};
-    const waiting = meta.waitsOnUser ? ' · ⚑ ' + meta.waitsOnUser : '';
+    const [mark, markColor] = markOf(meta);
     return Box({
       key: 'row-' + task.id,
-      position: 'relative',
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      columnGap: S.sm,
+      alignItems: 'center',
       flexShrink: 0,
       children: [
-        isDrawn
-          ? Svg({
-              source: rowSvg(task, meta, W, costume),
-              alt: `${task.id} ${task.title}: ${task.status}${waiting}`,
-              width: W,
-              height: ROW_H,
-            })
-          : Text({ children: [`${task.id}  ${task.title}${waiting}`] }),
-        Box({
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          children: [
-            Client({
-              key: 'card-' + task.id,
-              module: './card.js',
-              width: '100%',
-              height: '100%',
-              props: { id: task.id },
-            }),
-          ],
+        Text({ color: markColor, children: [mark] }),
+        Button({
+          key: 'open-' + task.id,
+          label: pad(`${task.id}  ${task.title}`),
+          plain: true,
+          onPress: () => select($, task.id),
         }),
+        Text({ color, children: [task.status] }),
+        ...(meta.waitsOnUser ? [Text({ color: C.amb, children: ['⚑ ' + meta.waitsOnUser] })] : []),
       ],
     });
   };
   const children = [];
   for (const section of buildSections(board)) {
-    const count = section.tasks.length;
     children.push(
-      isDrawn
-        ? Svg({
-            source: sectionSvg(section.name, count, W),
-            alt: `${section.name}, ${count}`,
-            width: W,
-            height: SECTION_H,
-          })
-        : Text({ bold: true, children: [`${section.name} · ${count}`] }),
+      Text({
+        key: 'section-' + section.name,
+        bold: true,
+        color: C.ink,
+        children: [`${section.name} · ${section.tasks.length}`],
+      }),
     );
-    for (const task of section.tasks) children.push(row(task, section.costume));
+    for (const task of section.tasks) children.push(row(task, section.color));
   }
-  return Box({ flexDirection: 'column', children });
+  return Box({ flexDirection: 'column', rowGap: S.xs, children });
 };
 
 // Agreement is what approval signs; context informs it; the build record is appended by the worker later.
@@ -462,7 +253,7 @@ const marks = {}; // block text → 'ok': view-only, never written, so kept acro
 const loadPlan = async ($, task) => {
   if (!task.part || plans[task.id]) return;
   plans[task.id] = [];
-  const run = await $.process.run(['npx', '--no-install', 'crew', 'plan', task.part, '--json']);
+  const run = await $.process.run(crewArgv($, ['plan', task.part, '--json']));
   try {
     if (run.exitCode === 0) plans[task.id] = JSON.parse(run.stdout);
   } catch {}
@@ -509,9 +300,7 @@ const sendBack = async ($) => {
   if (await crew($, ['task', selected, 'sendback'])) log = 'sent back';
 };
 
-// ---- Diagrams: data comes from the spec or a model as nodes and edges; the mod does the drawing, so layout and colours stay its own.
-const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const clip = (t, n) => (t.length > n ? t.slice(0, n - 1) + '…' : t);
+// ---- Diagrams: the spec's shape as text. Steps against files, a model-drawn flow, and the task's part from the plan.
 
 // Approach steps against the files they name: a step "touches" a file whose path or file name it mentions.
 export const changeMap = (spec) => {
@@ -535,168 +324,47 @@ export const changeMap = (spec) => {
   return { steps, files, edges };
 };
 
-const changeMapSvg = ({ steps, files, edges }, isNew) => {
-  const ROW = 44;
-  const W = 960;
-  const boxW = 400;
-  const height = Math.max(steps.length, files.length, 1) * ROW + 40;
-  const y = (i) => 30 + i * ROW;
-  const stepY = Object.fromEntries(steps.map((s, i) => [s.id, y(i)]));
-  const fileY = Object.fromEntries(files.map((f, i) => [f.id, y(i)]));
-  const box = (x, yy, label, fill, stroke, ink) =>
-    `<rect x="${x}" y="${yy}" width="${boxW}" height="32" rx="8" fill="${fill}" stroke="${stroke}"/>` +
-    `<text x="${x + 12}" y="${yy + 21}" font-family="-apple-system, sans-serif" font-size="13" fill="${ink}">${esc(clip(label, 56))}</text>`;
-  const lines = edges
-    .map((e) => {
-      const y1 = stepY[e.from] + 16;
-      const y2 = fileY[e.to] + 16;
-      return `<path d="M ${boxW + 20} ${y1} C ${W / 2} ${y1}, ${W / 2} ${y2}, ${W - boxW - 20} ${y2}" fill="none" stroke="${C.border}" stroke-width="1.5"/>`;
+// Each step with the files it touches; a file the repository does not have yet is marked new.
+const changeMapText = ({ steps, edges }, isNew) =>
+  steps
+    .map((s) => {
+      const files = edges
+        .filter((e) => e.from === s.id)
+        .map((e) => '`' + e.to + '`' + (isNew(e.to) ? ' (new)' : ''));
+      return `- **${s.label}** → ${files.join(', ') || 'no file named'}`;
     })
-    .join('');
-  const stepBoxes = steps
-    .map(
-      (s) =>
-        `<g><title>${esc(s.text)}</title>${box(20, stepY[s.id], s.label, C.card, C.cardBorder, C.ink)}</g>`,
-    )
-    .join('');
-  const fileBoxes = files
-    .map((f) =>
-      box(
-        W - boxW - 20,
-        fileY[f.id],
-        (isNew(f.id) ? '+ ' : '') + f.label,
-        isNew(f.id) ? C.ambBg : C.well,
-        isNew(f.id) ? C.amb : C.cardBorder,
-        C.ink,
-      ),
-    )
-    .join('');
-  const heads =
-    `<text x="20" y="18" font-family="-apple-system, sans-serif" font-size="12" fill="${C.faint}">Approach steps</text>` +
-    `<text x="${W - boxW - 20}" y="18" font-family="-apple-system, sans-serif" font-size="12" fill="${C.faint}">Files · + is new</text>`;
-  return {
-    source: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${height}" viewBox="0 0 ${W} ${height}">${heads}${lines}${stepBoxes}${fileBoxes}</svg>`,
-    width: W,
-    height,
-  };
+    .join('\n');
+
+// The flow's edges in order from the start, with decision labels; a flow with no edges lists its nodes.
+const flowText = ({ nodes, edges }) => {
+  const label = (id) => nodes.find((n) => n.id === id)?.label ?? id;
+  if (!edges.length) return nodes.map((n) => `- ${n.label}`).join('\n');
+  return edges
+    .map((e) => `- ${label(e.from)} → ${label(e.to)}${e.label ? ' (' + e.label + ')' : ''}`)
+    .join('\n');
 };
 
-// A flowchart laid out in layers by distance from the start node; decisions are diamonds.
-const flowSvg = ({ nodes, edges }) => {
-  const depth = {};
-  const start = nodes.find((n) => n.kind === 'start') ?? nodes[0];
-  if (!start) return null;
-  const queue = [start.id];
-  depth[start.id] = 0;
-  while (queue.length) {
-    const id = queue.shift();
-    for (const e of edges)
-      if (e.from === id && depth[e.to] === undefined) {
-        depth[e.to] = depth[id] + 1;
-        queue.push(e.to);
-      }
-  }
-  for (const n of nodes)
-    if (depth[n.id] === undefined) depth[n.id] = Math.max(0, ...Object.values(depth)) + 1;
-  const layers = [];
-  for (const n of nodes) (layers[depth[n.id]] ??= []).push(n);
-  const W = 960;
-  const ROW = 96;
-  const pos = {};
-  layers.forEach((layer, d) =>
-    layer.forEach((n, i) => {
-      pos[n.id] = { x: ((i + 1) * W) / (layer.length + 1), y: 40 + d * ROW };
-    }),
-  );
-  const height = layers.length * ROW + 40;
-  const shape = (n) => {
-    const { x, y } = pos[n.id];
-    const label = `<text x="${x}" y="${y + 5}" text-anchor="middle" font-family="-apple-system, sans-serif" font-size="13" fill="${C.ink}">${esc(clip(n.label, 34))}</text>`;
-    if (n.kind === 'decision')
-      return `<g><title>${esc(n.label)}</title><polygon points="${x},${y - 26} ${x + 130},${y} ${x},${y + 26} ${x - 130},${y}" fill="${C.vioBg}" stroke="${C.vio}"/>${label}</g>`;
-    const ends = n.kind === 'start' || n.kind === 'end';
-    return `<g><title>${esc(n.label)}</title><rect x="${x - 130}" y="${y - 20}" width="260" height="40" rx="${ends ? 20 : 8}" fill="${ends ? C.well : C.card}" stroke="${ends ? C.border : C.cardBorder}"/>${label}</g>`;
+// The part with what feeds it and what it feeds; the feature layer adds statuses and the part's symbols.
+const partText = ({ part, edges, neighbours }, layer) => {
+  const isFeature = layer === 'feature';
+  const name = (id) => {
+    const n = neighbours.find((x) => x.id === id);
+    return (n?.label ?? id) + (isFeature && n?.status ? ` _(${n.status})_` : '');
   };
-  const arrow = (e) => {
-    const a = pos[e.from];
-    const b = pos[e.to];
-    if (!a || !b) return '';
-    const up = b.y <= a.y;
-    const path = up
-      ? `M ${a.x + 130} ${a.y} C ${a.x + 220} ${a.y}, ${b.x + 220} ${b.y}, ${b.x + 130} ${b.y}`
-      : `M ${a.x} ${a.y + 26} L ${b.x} ${b.y - 26}`;
-    const mid = up
-      ? { x: Math.max(a.x, b.x) + 190, y: (a.y + b.y) / 2 }
-      : { x: (a.x + b.x) / 2 + 8, y: (a.y + b.y) / 2 };
-    const label = e.label
-      ? `<text x="${mid.x}" y="${mid.y}" font-family="-apple-system, sans-serif" font-size="11" fill="${C.mut}">${esc(clip(e.label, 24))}</text>`
-      : '';
-    return `<path d="${path}" fill="none" stroke="${C.gray}" stroke-width="1.5" marker-end="url(#arrow)"/>${label}`;
-  };
-  const defs = `<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="${C.gray}"/></marker></defs>`;
-  return {
-    source: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${height}" viewBox="0 0 ${W} ${height}">${defs}${edges.map(arrow).join('')}${nodes.map(shape).join('')}</svg>`,
-    width: W,
-    height,
-  };
-};
-
-// The task's part in the middle, parts that feed it on the left and parts it feeds on the right; the feature layer colours by status and lists the part's symbols.
-const STATUS_FILL = {
-  exists: [C.well, C.gray],
-  extend: [C.ambBg, C.amb],
-  new: [C.clayBg, C.clay],
-};
-
-const partSvg = ({ part, edges, neighbours }, layer) => {
-  const ROW = 56;
-  const W = 960;
-  const boxW = 280;
-  const label = (id) => neighbours.find((n) => n.id === id);
-  const sideOf = (isIn) => [
-    ...new Set(edges.filter((e) => (e.to === part.id) === isIn).map((e) => (isIn ? e.from : e.to))),
+  const lines = [
+    `**${part.label}**` + (isFeature && part.status ? ` _(${part.status})_` : ''),
+    ...edges.map((e) =>
+      e.to === part.id
+        ? `- ← ${name(e.from)}${e.label ? ' · ' + e.label : ''}`
+        : `- → ${name(e.to)}${e.label ? ' · ' + e.label : ''}`,
+    ),
   ];
-  const left = sideOf(true);
-  const right = sideOf(false);
-  const surface = layer === 'feature' ? (part.surface ?? []) : [];
-  const height = Math.max(left.length, right.length, 1) * ROW + 60 + surface.length * 18;
-  const mid = (Math.max(left.length, right.length, 1) * ROW) / 2 + 30;
-  const font = 'font-family="-apple-system, sans-serif"';
-  const box = (x, cy, text, [fill, stroke], title) =>
-    `<g><title>${esc(title ?? text)}</title><rect x="${x}" y="${cy - 20}" width="${boxW}" height="40" rx="8" fill="${fill}" stroke="${stroke}"/>` +
-    `<text x="${x + 12}" y="${cy + 5}" ${font} font-size="13" fill="${C.ink}">${esc(clip(text, 38))}</text></g>`;
-  const fillOf = (n) => (layer === 'feature' && STATUS_FILL[n?.status]) || [C.card, C.cardBorder];
-  const place = (ids, x) => ids.map((id, i) => ({ id, x, y: 30 + ROW / 2 + i * ROW }));
-  const spots = [...place(left, 20), ...place(right, W - boxW - 20)];
-  const partX = (W - boxW) / 2;
-  const lines = edges
-    .map((e) => {
-      const isIn = e.to === part.id;
-      const spot = spots.find((p) => p.id === (isIn ? e.from : e.to) && p.x < partX === isIn);
-      const x1 = isIn ? spot.x + boxW : partX + boxW;
-      const x2 = isIn ? partX : spot.x;
-      const y1 = isIn ? spot.y : mid;
-      const y2 = isIn ? mid : spot.y;
-      const text = e.label
-        ? `<text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 4}" text-anchor="middle" ${font} font-size="11" fill="${C.mut}">${esc(clip(e.label, 24))}</text>`
-        : '';
-      return `<path d="M ${x1} ${y1} L ${x2} ${y2}" fill="none" stroke="${C.gray}" stroke-width="1.5"/>${text}`;
-    })
-    .join('');
-  const sides = spots
-    .map((p) => box(p.x, p.y, label(p.id)?.label ?? p.id, fillOf(label(p.id))))
-    .join('');
-  const symbols = surface
-    .map(
-      (sym, i) =>
-        `<text x="${partX + 8}" y="${mid + 40 + i * 18}" ${font} font-size="12" fill="${C.mut}">${sym.verified ? '✔' : '·'} ${esc(clip(sym.name + (sym.use ? ' · ' + sym.use : ''), 40))}</text>`,
-    )
-    .join('');
-  return {
-    source: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${height}" viewBox="0 0 ${W} ${height}">${lines}${sides}${box(partX, mid, part.label, layer === 'feature' ? fillOf(part) : [C.card, C.clay], part.purpose)}${symbols}</svg>`,
-    width: W,
-    height,
-  };
+  if (isFeature && part.surface?.length) {
+    lines.push('', 'Symbols:');
+    for (const sym of part.surface)
+      lines.push(`- ${sym.verified ? '✔' : '·'} \`${sym.name}\`${sym.use ? ' · ' + sym.use : ''}`);
+  }
+  return lines.join('\n');
 };
 
 const FLOW_SYSTEM =
@@ -744,11 +412,11 @@ let tab = 'agreement';
 
 const ICON = { ok: '✔', edit: '✏', remove: '✖', add: '＋' };
 
-// The Diagrams tab: a picker, then the chosen diagram as an Svg on Desktop, or a text outline where Svg does not draw.
 const PLAN_POINTER =
   'No plan covers this task. Map it with /pit-crew-planning:feature-map, then give the task a `part:`.';
 
-const diagramItems = ($, { Box, Text, Button, Markdown, Svg }, act) => {
+// The Diagrams tab: a picker, then the chosen diagram as Markdown.
+const diagramItems = ($, { Box, Text, Button, Markdown }, act) => {
   const task = selectedTask();
   const planned = Boolean(task?.part);
   if (!planned && (diagram === 'architecture' || diagram === 'feature')) diagram = 'change';
@@ -785,73 +453,21 @@ const diagramItems = ($, { Box, Text, Button, Markdown, Svg }, act) => {
         : []),
     ],
   });
+  const view = (text) => ({
+    el: Box({ key: 'diagram-view', children: [Markdown({ text })] }),
+  });
   const out = [{ el: picker }];
   if (!planned) out.push({ el: Text({ color: C.faint, children: [PLAN_POINTER] }) });
   if (diagram === 'architecture' || diagram === 'feature') {
-    const view = (plans[task.id] ?? []).find((v) => v.layer === diagram);
-    const drawn = view && partSvg(view, diagram);
-    if (!view) out.push({ el: Text({ color: C.faint, children: [PLAN_POINTER] }) });
-    else if (Svg)
-      out.push({
-        el: Box({
-          key: 'diagram-view',
-          children: [
-            Svg({
-              source: drawn.source,
-              alt: `${view.part.label} and its neighbours in the ${diagram} map`,
-              width: drawn.width,
-              height: drawn.height,
-              isInteractive: true,
-            }),
-          ],
-        }),
-      });
-    else {
-      const names = (ids) => ids.map((id) => view.neighbours.find((n) => n.id === id)?.label ?? id);
-      out.push({
-        el: Markdown({
-          text: [
-            `**${view.part.label}**`,
-            ...view.edges.map((e) =>
-              e.to === view.part.id
-                ? `- ← ${names([e.from])} ${e.label ?? ''}`
-                : `- → ${names([e.to])} ${e.label ?? ''}`,
-            ),
-          ].join('\n'),
-        }),
-      });
-    }
+    const found = (plans[task.id] ?? []).find((v) => v.layer === diagram);
+    out.push(
+      found
+        ? view(partText(found, diagram))
+        : { el: Text({ color: C.faint, children: [PLAN_POINTER] }) },
+    );
   } else if (diagram === 'change') {
     const map = changeMap(doc);
-    const drawn = changeMapSvg(map, (path) => newFiles.has(path));
-    out.push({
-      el: Svg
-        ? Box({
-            key: 'diagram-view',
-            children: [
-              Svg({
-                source: drawn.source,
-                alt: 'Change map: approach steps and the files each touches',
-                width: drawn.width,
-                height: drawn.height,
-                isInteractive: true,
-              }),
-            ],
-          })
-        : Markdown({
-            text: map.steps
-              .map(
-                (s) =>
-                  `- **${s.label}** → ${
-                    map.edges
-                      .filter((e) => e.from === s.id)
-                      .map((e) => '`' + e.to + '`')
-                      .join(', ') || 'no file named'
-                  }`,
-              )
-              .join('\n'),
-          }),
-    });
+    out.push(view(changeMapText(map, (path) => newFiles.has(path))));
     const untouched = map.files.filter((f) => !map.edges.some((e) => e.to === f.id));
     if (untouched.length)
       out.push({
@@ -879,36 +495,12 @@ const diagramItems = ($, { Box, Text, Button, Markdown, Svg }, act) => {
       }),
     });
   } else {
-    const drawn = flowSvg(flow);
-    out.push({
-      el:
-        Svg && drawn
-          ? Box({
-              key: 'diagram-view',
-              children: [
-                Svg({
-                  source: drawn.source,
-                  alt: 'Behaviour flow of the change',
-                  width: drawn.width,
-                  height: drawn.height,
-                  isInteractive: true,
-                }),
-              ],
-            })
-          : Markdown({
-              text: flow.edges
-                .map(
-                  (e) =>
-                    `- ${flow.nodes.find((n) => n.id === e.from)?.label} → ${flow.nodes.find((n) => n.id === e.to)?.label}${e.label ? ' (' + e.label + ')' : ''}`,
-                )
-                .join('\n'),
-            }),
-    });
+    out.push(view(flowText(flow)));
   }
   return out;
 };
 
-const specBody = ($, { Box, Text, Button, Input, Markdown, Svg }) => {
+const specBody = ($, { Box, Text, Button, Input, Markdown }) => {
   const redraw = () => $.ui.invalidate('ui.render');
   const act = (fn) => () => {
     fn();
@@ -1030,7 +622,7 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Svg }) => {
       });
     }
   });
-  if (tab === 'diagram') items.push(...diagramItems($, { Box, Text, Button, Markdown, Svg }, act));
+  if (tab === 'diagram') items.push(...diagramItems($, { Box, Text, Button, Markdown }, act));
   if (!items.length) items.push({ el: Text({ color: C.faint, children: ['Nothing here yet.'] }) });
 
   const count = (tier) =>
@@ -1073,16 +665,21 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Svg }) => {
   });
 };
 
+const openWall = ($, focus) =>
+  $.ui.open({ id: PANE, title: 'Pit wall', columns: 72, ...(focus ? { focus: true } : {}) });
+
 export function register(on) {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'pitwall', description: 'Open the pit wall board' });
-    refreshBoard($);
-    $.clock.every(10000, () => refreshBoard($));
+    await loadBoard($);
+    // In a crew repository the wall opens with the session and stays; elsewhere the board fails to load and nothing opens.
+    if (!boardError) await openWall($, false);
+    $.clock.every(CHECK_MS, () => check($));
     return next(e);
   });
 
   on('command.run', { command: 'pitwall' }, async ($) => {
-    await $.ui.open({ id: PANE, title: 'Pit wall', focus: true, columns: 120 });
+    await openWall($, true);
     return {};
   });
 
@@ -1095,7 +692,7 @@ export function register(on) {
         Button({
           key: 'open-pitwall',
           label: 'Pit wall',
-          onPress: () => $.ui.open({ id: PANE, title: 'Pit wall', focus: true, columns: 120 }),
+          onPress: () => openWall($, true),
         }),
       ],
     });
@@ -1163,17 +760,16 @@ export function register(on) {
       );
       return frame([
         header,
-        boardError
-          ? Text({ color: C.amb, children: [boardError] })
-          : boardList(ui, width - S.sm * 2, e.surface),
+        boardError ? Text({ color: C.amb, children: [boardError] }) : boardList($, ui),
       ]);
     }
 
     if (!doc) await loadDoc($);
     const task = selectedTask();
     const status = task?.status;
-    const waiting = board?.statuses?.[status]?.waitsOnUser;
-    const pendingEnv = board?.statuses?.[status]?.pendingEnv;
+    const statusMeta = board?.statuses?.[status] ?? {};
+    const waiting = statusMeta.waitsOnUser;
+    const pendingEnv = statusMeta.pendingEnv;
     const runControls = pendingEnv
       ? [
           Button({
@@ -1246,45 +842,38 @@ export function register(on) {
         : []),
       ...runControls,
     ];
-    const headW = Math.max(240, Math.min(900, inner * 8 - 8));
-    const isDrawn = e.surface === 'desktop' && ui.Svg && task;
-    const specHeader = isDrawn
-      ? Box({
+    const specHeader = row(
+      [
+        Box({
           flexDirection: 'column',
           rowGap: S.xs,
           children: [
-            ui.Svg({
-              key: 'spec-head',
-              source: specHeaderSvg(task, doc, board.statuses[task.status] ?? {}, meta, headW),
-              alt: `${doc.title}: ${task.status}`,
-              width: headW,
-              height: SPEC_HEAD_H,
-            }),
-            row([], controls),
-          ],
-        })
-      : row(
-          [
+            ui.Markdown({ text: '## ' + doc.title }),
             Box({
-              flexDirection: 'column',
-              rowGap: S.sm,
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              columnGap: S.sm,
               children: [
-                ui.Markdown({ text: '## ' + doc.title }),
+                ...(task
+                  ? [
+                      Text({
+                        key: 'spec-status',
+                        bold: true,
+                        color: sectionOf(status).color,
+                        children: [status],
+                      }),
+                    ]
+                  : []),
+                ...(waiting ? [Text({ color: C.amb, children: ['⚑ ' + waiting] })] : []),
                 Text({ color: C.mut, children: [meta] }),
               ],
             }),
           ],
-          controls,
-        );
+        }),
+      ],
+      controls,
+    );
 
     return frame(window('spec-window', specHeader, specBody($, ui)));
-  });
-
-  on('ui.message', async ($, e, next) => {
-    if (e.element.startsWith('card-') && typeof e.data?.select === 'string') {
-      await select($, e.data.select);
-      return {};
-    }
-    return next(e);
   });
 }
