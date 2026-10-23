@@ -44,8 +44,6 @@ jobs:
             const needed = [
               "src/cli.js",
               "hooks/register.js",
-              "hooks/card.js",
-              "hooks/composer.js",
               "agents/crew-scout.md",
               "agents/crew-fixer.md",
               "agents/crew-reviewer.md",

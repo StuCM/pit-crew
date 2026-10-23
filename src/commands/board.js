@@ -77,7 +77,13 @@ export const run = (cfg, args = []) => {
   if (args.includes('--json')) {
     const { tasks } = snapshot(cfg);
     console.log(
-      JSON.stringify({ project: cfg.project, root: cfg.root, statuses: statuses(cfg), tasks }),
+      JSON.stringify({
+        project: cfg.project,
+        root: cfg.root,
+        tasksDir: join(cfg.root, cfg.tasksDir),
+        statuses: statuses(cfg),
+        tasks,
+      }),
     );
     return 0;
   }
