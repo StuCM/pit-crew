@@ -31,13 +31,17 @@ const MODELS = [
   { value: 'haiku', label: 'Haiku 4.5' },
 ];
 
+const CREW = ['node', decodeURIComponent(new URL('../src/cli.js', import.meta.url).pathname)];
+const POLL_MS = 10000;
+const STALE_MS = 30000;
+
 let board = null; // the last `crew board --json`, for each task's file and status
 let boardError = '';
 let isLoaded = false;
 
 const loadBoard = async ($) => {
   try {
-    const run = await $.process.run(['npx', '--no-install', 'crew', 'board', '--json']);
+    const run = await $.process.run([...CREW, 'board', '--json']);
     if (run.exitCode !== 0) {
       const why = run.stderr.trim().split('\n')[0] || 'exit ' + run.exitCode;
       throw new Error(why);
@@ -57,14 +61,28 @@ const refreshBoard = async ($) => {
   $.ui.invalidate('ui.render');
 };
 
+let poll = null;
+let lastRender = 0;
+
+// Polls only while the pane keeps rendering; the engine reports no close, so a stale render stops it.
+const startPolling = async ($) => {
+  lastRender = Date.now();
+  if (poll) return;
+  poll = await $.clock.every(POLL_MS, () => {
+    if (Date.now() - lastRender > STALE_MS) {
+      poll.cancel();
+      poll = null;
+      return;
+    }
+    refreshBoard($);
+  });
+};
+
 const selectedTask = () => board?.tasks.find((t) => t.id === selected);
 
 // Every write goes through the crew CLI, which owns the task files; a refusal is toasted and the view reloaded.
 const crew = async ($, args, stdin) => {
-  const run = await $.process.run(
-    ['npx', '--no-install', 'crew', ...args],
-    stdin === undefined ? undefined : { stdin },
-  );
+  const run = await $.process.run([...CREW, ...args], stdin === undefined ? undefined : { stdin });
   if (run.exitCode !== 0)
     $.ui.toast(run.stderr.trim().split('\n')[0] || 'crew exited ' + run.exitCode);
   await refreshBoard($);
@@ -471,7 +489,7 @@ const marks = {}; // block text → 'ok': view-only, never written, so kept acro
 const loadPlan = async ($, task) => {
   if (!task.part || plans[task.id]) return;
   plans[task.id] = [];
-  const run = await $.process.run(['npx', '--no-install', 'crew', 'plan', task.part, '--json']);
+  const run = await $.process.run([...CREW, 'plan', task.part, '--json']);
   try {
     if (run.exitCode === 0) plans[task.id] = JSON.parse(run.stdout);
   } catch {}
@@ -1085,8 +1103,6 @@ const specBody = ($, { Box, Text, Button, Input, Markdown, Svg }) => {
 export function register(on) {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'pitwall', description: 'Open the pit wall board' });
-    refreshBoard($);
-    $.clock.every(10000, () => refreshBoard($));
     return next(e);
   });
 
@@ -1112,6 +1128,7 @@ export function register(on) {
 
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
     if (e.requestId !== PANE && e.requestId !== SPEC_PANE) return next(e);
+    startPolling($);
     if (!isLoaded) await loadBoard($);
     const width = e.props.bodyColumns ?? 80;
     const ui = $.ui.resolve(e);
