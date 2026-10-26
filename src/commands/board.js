@@ -10,6 +10,7 @@ import { branches } from '../lib/git.js';
 import { readLiveTasks } from '../lib/worktrees.js';
 import { statuses } from '../lib/config.js';
 import { snapshot } from '../lib/wall.js';
+import { groupView } from './work.js';
 
 // Waiting on a person first — it is the only category they can act on now.
 const rank = (status, known) => {
@@ -81,7 +82,7 @@ export const render = (tasks, known, live, cfg) => {
 
 export const run = (cfg, args = []) => {
   if (args.includes('--json')) {
-    const { tasks } = snapshot(cfg);
+    const { tasks, works } = snapshot(cfg);
     console.log(
       JSON.stringify({
         project: cfg.project,
@@ -89,6 +90,7 @@ export const run = (cfg, args = []) => {
         tasksDir: join(cfg.root, cfg.tasksDir),
         statuses: statuses(cfg),
         tasks,
+        works: works.map(groupView),
       }),
     );
     return 0;

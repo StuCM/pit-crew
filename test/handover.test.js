@@ -186,3 +186,28 @@ test('a reviewer question raised in a worktree reaches the main work file and ho
   assert.equal(dispatch(cfg, findTask(cfg, '8')).ok, true);
   assert.equal(crew(first.worktree, 'task', '007', 'sendback').status, 0);
 });
+
+test('a pilot holds the rest of its group until it is done', () => {
+  const { root, cfg } = fixture();
+  writeFileSync(
+    join(root, '.claude', 'tasks', '007-thing.md'),
+    withWork(task({ status: 'building' })),
+  );
+  writeTask(
+    root,
+    '008-other.md',
+    withWork(task({ status: 'approved', files: ['src/b.ts'] }))
+      .replace('id: 007', 'id: 008')
+      .replace('crew/007-thing', 'crew/008-other'),
+  );
+  mkdirSync(join(root, '.claude', 'crew', 'work'));
+  const workFile = join(root, '.claude', 'crew', 'work', 'smm.json');
+  writeFileSync(workFile, JSON.stringify({ title: 'SMM', pilot: '007' }));
+
+  const held = dispatch(cfg, findTask(cfg, '8'));
+  assert.equal(held.ok, false);
+  assert.match(held.reason, /007 pilots smm and is building/);
+
+  writeFileSync(join(root, '.claude', 'tasks', '007-thing.md'), withWork(task({ status: 'done' })));
+  assert.equal(dispatch(cfg, findTask(cfg, '8')).ok, true);
+});

@@ -126,8 +126,10 @@ const stubs = (
     complete,
     status,
     taskFields,
+    patch,
     panes = ['crew-wall'],
   }: {
+    patch?: (board: any) => void;
     panes?: string[];
     status?: string;
     taskFields?: Record<string, unknown>;
@@ -139,6 +141,7 @@ const stubs = (
   const board = structuredClone(BOARD);
   if (status) board.tasks[0].status = status;
   Object.assign(board.tasks[0], taskFields);
+  patch?.(board);
   // The mod reads the time to know how old its board is; a test moves this clock itself.
   const clock = mock.clock(on);
   const seen = {
@@ -181,6 +184,7 @@ const stubs = (
     }
     seen.calls.push({ args, stdin: e.init?.stdin && JSON.parse(e.init.stdin) });
     if (refuse) return { value: { exitCode: 1, stdout: '', stderr: refuse + '\nmore' } };
+    if (args[0] === 'work') return { value: { exitCode: 0, stdout: '', stderr: '' } };
     const task = board.tasks.find((t) => t.id === args[1])!;
     if (args[2] === 'approve') task.status = 'approved';
     if (args[2] === 'signoff') task.status = 'done';
@@ -607,4 +611,86 @@ test('a quiet folder is still reloaded once the board is two minutes old', async
   expect(seen.boardRuns).toBe(runs);
   await clock.advance(15_000); // the next check finds it older, and reloads
   expect(seen.boardRuns).toBe(runs + 1);
+});
+
+// Three tasks in one piece of work, 003 piloting it, and one task outside any group.
+const grouped =
+  (work: Record<string, unknown> = {}) =>
+  (board: any) => {
+    for (const t of board.tasks) if (['001', '003', '004'].includes(t.id)) t.work = 'smm';
+    board.works = [
+      {
+        slug: 'smm',
+        title: 'SMM labels',
+        shape: 'replace',
+        approved: '2026-10-20',
+        problems: [],
+        order: ['003', '001', '004'],
+        pilot: '003',
+        raised: [
+          {
+            ref: 'r1',
+            task: '004',
+            from: 'reviewer',
+            q: 'Replace post_save?',
+            affects: ['001'],
+            answer: null,
+          },
+        ],
+        ...work,
+      },
+    ];
+  };
+
+test('the wall opens on groups: each in build order, with its pilot, its questions and what waits', async ($, on) => {
+  stubs(on, { patch: grouped() });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  expect(await ui.find({ key: 'group-smm' })).toBeDefined();
+  expect(
+    await ui.find({ type: 'Text', text: /replace · 0\/3 done · 1 running · ⚑ 1 · \? 1/ }),
+  ).toBeDefined();
+  expect(
+    await ui.find({ type: 'Text', text: '? r1 reviewer on 004: Replace post_save? · holds 001' }),
+  ).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: '★ pilot' })).toBeDefined();
+  expect(await ui.find({ key: 'group-none' })).toBeDefined();
+  expect(await ui.find({ key: 'up-003' })).toBeUndefined();
+  expect(await ui.find({ key: 'down-003' })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: /^Scout · / })).toBeUndefined();
+  await ui.unmount();
+});
+
+test('arrows reorder a group, pilot moves the pilot, and a header folds its group', async ($, on) => {
+  const seen = stubs(on, { patch: grouped() });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  await ui.press({ key: 'down-003' });
+  await ui.press({ key: 'pilot-001' });
+  expect(seen.calls.map((c) => c.args)).toEqual([
+    ['work', 'smm', 'order', '001,003,004'],
+    ['work', 'smm', 'pilot', '001'],
+  ]);
+  await ui.press({ key: 'group-smm' });
+  expect(await ui.find({ key: 'open-003' })).toBeUndefined();
+  await ui.press({ key: 'view-crew' });
+  expect(await ui.find({ type: 'Text', text: /^Scout · / })).toBeDefined();
+  await ui.unmount();
+});
+
+test('an unapproved group offers Approve group when ready, and says why when not', async ($, on) => {
+  const seen = stubs(on, { patch: grouped({ approved: null }) });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  await ui.press({ key: 'approve-smm' });
+  expect(seen.calls.map((c) => c.args)).toEqual([['work', 'smm', 'approve']]);
+  expect(seen.submitted).toEqual(['Run the smm group with /crew:crew-run']);
+  await ui.unmount();
+});
+
+test('a group that is not ready to approve names what is missing', async ($, on) => {
+  stubs(on, { patch: grouped({ approved: null, problems: ['brief.direction is empty'] }) });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  expect(await ui.find({ key: 'approve-smm' })).toBeUndefined();
+  expect(
+    await ui.find({ type: 'Text', text: 'Not ready: brief.direction is empty' }),
+  ).toBeDefined();
+  await ui.unmount();
 });

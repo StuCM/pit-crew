@@ -1,6 +1,6 @@
 ---
 name: crew-run
-description: Hand an approved task to its own session in an isolated worktree. Use when the user says "run task N", "start building it", or approves a spec.
+description: Hand an approved task, or an approved group of them, to its own session in an isolated worktree. Use when the user says "run task N", "run the <slug> group", "start building it", or approves a spec.
 ---
 
 # Handing a task to a session
@@ -11,6 +11,22 @@ Refuse to start unless `status:` is `approved`. A `draft` goes back to
 Each task gets **its own session and its own worktree**. The orchestrator does
 not implement, does not review, and does not watch. It hands over, then reads
 the board.
+
+## A group
+
+"Run the `<slug>` group" means every approved task with `work: <slug>`, in
+the card's order (`npx crew work <slug>` lists them).
+
+- **With a pilot** (`★ pilot` on the card): dispatch the pilot alone. When
+  it reaches `done`, or `pending-<env>`, stop and ask the person to look at it
+  before the rest go: the pilot exists so a wrong approach costs one task.
+  Dispatch refuses the others until the pilot is done. Do not pass `--force`
+  to get round it unless the person says so.
+- **Without one**: dispatch them in order, each through the steps below,
+  holding back any that collides with one already in flight.
+
+A task dispatch refuses as held by an open question waits for the person's
+answer. Say which question, and carry on with the rest.
 
 ## 1. Check it can run alongside what is already in flight
 

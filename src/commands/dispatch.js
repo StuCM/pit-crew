@@ -11,7 +11,7 @@ import { setField } from '../lib/task.js';
 import { run as board } from './board.js';
 import { run as log } from './log.js';
 import { findCollisions } from './preflight.js';
-import { heldBy, workPath } from './work.js';
+import { heldBy, pilotHolds, workPath } from './work.js';
 import { readWorks } from '../lib/wall.js';
 
 // board and log report on stdout, which --json keeps for the result alone.
@@ -42,6 +42,14 @@ export const dispatch = (cfg, task, { force = false } = {}) => {
     return {
       ok: false,
       reason: `held by an open question from task ${held.task}: ${held.q} — answer it with crew work ${work.slug} answer`,
+    };
+  }
+
+  const pilot = work && pilotHolds(cfg, work, task);
+  if (!force && pilot) {
+    return {
+      ok: false,
+      reason: `${pilot.id} pilots ${work.slug} and is ${pilot.meta.status}: the rest wait until it is done`,
     };
   }
 

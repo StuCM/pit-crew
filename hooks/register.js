@@ -211,6 +211,198 @@ const boardList = ($, { Box, Text, Button }) => {
   return Box({ flexDirection: 'column', rowGap: S.xs, children });
 };
 
+// ---- The group view: each piece of work with its tasks in build order, its pilot, and what holds it.
+let wallView = 'groups'; // or 'crew', the list by role
+const expanded = {}; // work slug → true or false once the person has toggled it
+
+// Groups in build order with their tasks, finished groups last; tasks with no work under Ungrouped.
+export const buildGroups = ({ statuses, tasks, works = [] }) => {
+  const known = new Set(works.map((w) => w.slug));
+  const groups = works.map((work) => {
+    const mine = tasks.filter((t) => t.work === work.slug);
+    const at = (t) => (work.order.includes(t.id) ? work.order.indexOf(t.id) : work.order.length);
+    mine.sort((a, b) => at(a) - at(b) || a.id.localeCompare(b.id));
+    return { ...work, tasks: mine };
+  });
+  const loose = tasks.filter((t) => !t.work || !known.has(t.work));
+  if (loose.length)
+    groups.push({
+      slug: '',
+      title: 'Ungrouped',
+      order: [],
+      raised: [],
+      problems: [],
+      tasks: loose,
+    });
+  const isDone = (g) => g.tasks.every((t) => statuses[t.status]?.terminal);
+  return groups.filter((g) => g.tasks.length).sort((a, b) => Number(isDone(a)) - Number(isDone(b)));
+};
+
+// The counts a collapsed group shows: finished, running, and waiting on the person.
+export const groupCounts = ({ statuses }, group) => {
+  const count = (test) => group.tasks.filter((t) => test(statuses[t.status] ?? {})).length;
+  return {
+    done: count((m) => m.terminal),
+    running: count((m) => m.inFlight),
+    waiting: count((m) => m.waitsOnUser),
+    questions: (group.raised ?? []).filter((r) => !r.answer).length,
+  };
+};
+
+const isExpanded = (group, counts) =>
+  expanded[group.slug] ?? (counts.waiting > 0 || counts.questions > 0 || !group.approved);
+
+// Move a not-yet-started task one place in its group's build order.
+const move = ($, group, id, by) => {
+  const ids = group.tasks.map((t) => t.id);
+  const from = ids.indexOf(id);
+  const to = from + by;
+  if (to < 0 || to >= ids.length) return;
+  [ids[from], ids[to]] = [ids[to], ids[from]];
+  return crew($, ['work', group.slug, 'order', ids.join(',')]);
+};
+
+const approveGroup = async ($, group) => {
+  if (!(await crew($, ['work', group.slug, 'approve']))) return;
+  log = group.slug + ' approved · starting';
+  void $.prompt.submit({
+    text: `Run the ${group.slug} group with /crew:crew-run`,
+    asUser: true,
+  });
+  $.ui.invalidate('ui.render');
+};
+
+const groupList = ($, { Box, Text, Button }) => {
+  const children = [];
+  for (const group of buildGroups(board)) {
+    const counts = groupCounts(board, group);
+    const isOpen = isExpanded(group, counts);
+    const summary = [
+      group.shape,
+      `${counts.done}/${group.tasks.length} done`,
+      counts.running ? `${counts.running} running` : '',
+      counts.waiting ? `⚑ ${counts.waiting}` : '',
+      counts.questions ? `? ${counts.questions}` : '',
+    ].filter(Boolean);
+    children.push(
+      Box({
+        key: 'grouprow-' + (group.slug || 'none'),
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        columnGap: S.sm,
+        alignItems: 'center',
+        flexShrink: 0,
+        children: [
+          Button({
+            key: 'group-' + (group.slug || 'none'),
+            label: pad(`${isOpen ? '▾' : '▸'} ${group.title}`),
+            plain: true,
+            onPress: () => {
+              expanded[group.slug] = !isOpen;
+              $.ui.invalidate('ui.render');
+            },
+          }),
+          Text({
+            color: counts.waiting || counts.questions ? C.amb : C.mut,
+            children: [summary.join(' · ')],
+          }),
+        ],
+      }),
+    );
+    if (!isOpen) continue;
+
+    const body = [];
+    if (group.slug && !group.approved) {
+      body.push(
+        group.problems.length
+          ? Text({ color: C.mut, children: ['Not ready: ' + group.problems.join('; ')] })
+          : Button({
+              key: 'approve-' + group.slug,
+              label: 'Approve group',
+              variant: 'primary',
+              onPress: () => approveGroup($, group),
+            }),
+      );
+    }
+    for (const r of group.raised ?? []) {
+      if (r.answer) continue;
+      const holds = r.affects?.length ? ` · holds ${r.affects.join(', ')}` : '';
+      body.push(
+        Text({
+          key: `raised-${group.slug}-${r.ref}`,
+          color: C.amb,
+          children: [`? ${r.ref} ${r.from ?? 'reviewer'} on ${r.task}: ${r.q}${holds}`],
+        }),
+      );
+    }
+    group.tasks.forEach((task, i) => {
+      const meta = board.statuses[task.status] ?? {};
+      const [mark, markColor] = markOf(meta);
+      const isPilot = group.pilot === task.id;
+      const canMove = group.slug && (task.status === 'draft' || task.status === 'approved');
+      body.push(
+        Box({
+          key: 'row-' + task.id,
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          columnGap: S.sm,
+          alignItems: 'center',
+          flexShrink: 0,
+          children: [
+            Text({ color: markColor, children: [mark] }),
+            Button({
+              key: 'open-' + task.id,
+              label: pad(`${task.id}  ${task.title}`),
+              plain: true,
+              onPress: () => select($, task.id),
+            }),
+            Text({ color: sectionOf(task.status).color, children: [task.status] }),
+            ...(isPilot ? [Text({ color: C.clay, children: ['★ pilot'] })] : []),
+            ...(meta.waitsOnUser
+              ? [Text({ color: C.amb, children: ['⚑ ' + waitText(task, meta)] })]
+              : []),
+            ...(canMove
+              ? [
+                  ...(i > 0
+                    ? [
+                        Button({
+                          key: 'up-' + task.id,
+                          label: '↑',
+                          plain: true,
+                          onPress: () => move($, group, task.id, -1),
+                        }),
+                      ]
+                    : []),
+                  ...(i < group.tasks.length - 1
+                    ? [
+                        Button({
+                          key: 'down-' + task.id,
+                          label: '↓',
+                          plain: true,
+                          onPress: () => move($, group, task.id, 1),
+                        }),
+                      ]
+                    : []),
+                  Button({
+                    key: 'pilot-' + task.id,
+                    label: isPilot ? 'unpilot' : 'pilot',
+                    plain: true,
+                    onPress: () =>
+                      crew($, ['work', group.slug, 'pilot', isPilot ? 'none' : task.id]),
+                  }),
+                ]
+              : []),
+          ],
+        }),
+      );
+    });
+    children.push(
+      Box({ flexDirection: 'column', rowGap: S.xs, paddingLeft: S.md, children: body }),
+    );
+  }
+  return Box({ flexDirection: 'column', rowGap: S.xs, children });
+};
+
 // Agreement is what approval signs; context informs it; the build record is appended by the worker later.
 const AGREEMENT = new Set(['Goal', 'Assumed', 'Approach', 'Out of scope', 'Definition of done']);
 const CONTEXT = new Set([
@@ -764,11 +956,35 @@ export function register(on) {
             ],
           }),
         ],
-        [],
+        [
+          Button({
+            key: 'view-groups',
+            label: pad('Groups'),
+            ...(wallView === 'groups' ? {} : { plain: true }),
+            onPress: () => {
+              wallView = 'groups';
+              redraw();
+            },
+          }),
+          Button({
+            key: 'view-crew',
+            label: pad('Crew'),
+            ...(wallView === 'crew' ? {} : { plain: true }),
+            onPress: () => {
+              wallView = 'crew';
+              redraw();
+            },
+          }),
+        ],
       );
+      const byGroup = wallView === 'groups' && board?.works?.length;
       return frame([
         header,
-        boardError ? Text({ color: C.amb, children: [boardError] }) : boardList($, ui),
+        boardError
+          ? Text({ color: C.amb, children: [boardError] })
+          : byGroup
+            ? groupList($, ui)
+            : boardList($, ui),
       ]);
     }
 

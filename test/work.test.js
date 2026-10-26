@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { problems, run } from '../src/commands/work.js';
+import { groupView, problems, run } from '../src/commands/work.js';
 import { frontmatter } from '../src/lib/task.js';
 import { WORK_DIR } from '../src/lib/wall.js';
 import { config, sandbox, writeTask } from './helpers.js';
@@ -128,4 +128,39 @@ test('a question raised during the build shows on the card with what it holds, u
   const stored = JSON.parse(readFileSync(join(root, WORK_DIR, 'smm.json'), 'utf8'));
   assert.equal(stored.raised[0].answer, 'yes, replace it');
   assert.equal(call(cfg, ['smm', 'answer', 'r2', 'x']).code, 1);
+});
+
+test('order puts the named tasks first and keeps the rest after them', () => {
+  const { cfg, root } = setup({ brief: BRIEF });
+  assert.equal(call(cfg, ['smm', 'order', '026,025']).code, 0);
+  const stored = JSON.parse(readFileSync(join(root, WORK_DIR, 'smm.json'), 'utf8'));
+  assert.deepEqual(stored.order, ['026', '025', '024']);
+  assert.equal(call(cfg, ['smm', 'order', '099']).code, 1);
+});
+
+test('a pilot must be one of the group and not finished, and none clears it', () => {
+  const { cfg, root } = setup({ brief: BRIEF });
+  const read = () => JSON.parse(readFileSync(join(root, WORK_DIR, 'smm.json'), 'utf8'));
+  assert.equal(call(cfg, ['smm', 'pilot', '025']).code, 0);
+  assert.equal(read().pilot, '025');
+  assert.match(call(cfg, ['smm']).out.join('\n'), /025 {2}draft .* ★ pilot/);
+  assert.equal(call(cfg, ['smm', 'pilot', '099']).code, 1);
+  assert.equal(call(cfg, ['smm', 'pilot', 'none']).code, 0);
+  assert.equal(read().pilot, undefined);
+});
+
+test('the group view carries what the pit wall needs, and why it cannot be approved yet', () => {
+  const view = groupView({
+    slug: 'smm',
+    title: 'SMM',
+    brief: { ...BRIEF },
+    pilot: 24,
+    raised: [{ task: '024', q: 'Replace?', answer: null }],
+  });
+  assert.equal(view.shape, 'replace');
+  assert.equal(view.pilot, '24');
+  assert.equal(view.raised[0].ref, 'r1');
+  assert.deepEqual(view.problems, [
+    'no challenge: run crew-challenger, or record {"skipped": "<why>"}',
+  ]);
 });

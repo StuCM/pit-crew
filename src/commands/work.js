@@ -20,7 +20,9 @@ export const SHAPES = ['replace', 'extend', 'wrap', 'reuse', 'new'];
 const USAGE = `usage: crew work                  every piece of work, with its tasks
        crew work <slug>           its decision card and tasks
        crew work <slug> approve   approve the card and every draft task in it
-       crew work <slug> answer <c1|r1> <answer…>   the person's answer to a challenge point or a raised question`;
+       crew work <slug> answer <c1|r1> <answer…>   the person's answer to a challenge point or a raised question
+       crew work <slug> order <id,id,…>   the order to build in
+       crew work <slug> pilot <id|none>   build this one first; the rest wait until it is done`;
 
 /**
  * The checkout that holds the real work files. A worker runs in a worktree
@@ -40,6 +42,32 @@ export const saveWork = (root, work) => {
 
 /** Questions raised during the build that the person has not answered, holding these task ids. */
 export const openRaised = (work) => list(work?.raised).filter((r) => !r.answer);
+
+/**
+ * The pilot holding back a task, if any: one task built and checked first,
+ * so a wrong approach costs one task rather than the group.
+ */
+export const pilotHolds = (cfg, work, task) => {
+  const pilot = work?.pilot && String(work.pilot);
+  if (!pilot || pilot === task.id) return null;
+  const it = tasksOf(cfg, work).find((t) => t.id === pilot);
+  if (!it || statuses(cfg)[it.meta.status]?.terminal) return null;
+  return it;
+};
+
+/** One work as the pit wall's group view draws it. */
+export const groupView = (work) => ({
+  slug: work.slug,
+  title: work.title ?? work.slug,
+  stage: work.stage ?? null,
+  shape: work.brief?.shape ?? null,
+  direction: work.brief?.direction ?? null,
+  approved: work.brief?.approved ?? null,
+  problems: work.brief?.approved ? [] : problems(work),
+  order: list(work.order).map(String),
+  pilot: work.pilot ? String(work.pilot) : null,
+  raised: list(work.raised).map((r, i) => Object.assign({ ref: `r${i + 1}` }, r)),
+});
 
 /** The open raised question holding back a task, if any: it asked, or it is named as affected. */
 export const heldBy = (work, id) =>
@@ -129,7 +157,8 @@ export const card = (cfg, work, tasks) => {
     const status = t.meta.status ?? '?';
     const why =
       known[status]?.waitsOnUser && status !== 'draft' ? ` — ${waitReason(t, known)}` : '';
-    out.push(`  ${t.id}  ${status.padEnd(9)} ${t.title}${why}`);
+    const pilot = String(work.pilot ?? '') === t.id ? '  ★ pilot' : '';
+    out.push(`  ${t.id}  ${status.padEnd(9)} ${t.title}${pilot}${why}`);
   }
   return out;
 };
@@ -187,6 +216,39 @@ export const run = (cfg, [slug, verb, ...rest] = []) => {
   }
 
   if (verb === 'answer') return answer(cfg, work, rest);
+  if (verb === 'order') {
+    const ids = rest.join(',').split(',').filter(Boolean);
+    const known = tasks.map((t) => t.id);
+    const unknown = ids.filter((id) => !known.includes(id));
+    if (!ids.length || unknown.length) {
+      console.error(unknown.length ? `work: not in ${slug}: ${unknown.join(', ')}` : USAGE);
+      return unknown.length ? 1 : 2;
+    }
+    // Anything left out keeps its place after the ones named.
+    work.order = [...new Set([...ids, ...known])];
+    saveWork(cfg.root, work);
+    console.log(`work: ${slug} builds in order ${work.order.join(', ')}`);
+    return 0;
+  }
+  if (verb === 'pilot') {
+    const [id] = rest;
+    if (id === 'none') delete work.pilot;
+    else {
+      const it = tasks.find((t) => t.id === id);
+      if (!it) {
+        console.error(id ? `work: ${id} is not in ${slug}` : USAGE);
+        return id ? 1 : 2;
+      }
+      if (statuses(cfg)[it.meta.status]?.terminal) {
+        console.error(`work: ${id} is already ${it.meta.status}`);
+        return 1;
+      }
+      work.pilot = id;
+    }
+    saveWork(cfg.root, work);
+    console.log(id === 'none' ? `work: ${slug} has no pilot` : `work: ${id} pilots ${slug}`);
+    return 0;
+  }
   if (verb !== 'approve') {
     console.error(USAGE);
     return 2;

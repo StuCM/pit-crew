@@ -238,6 +238,7 @@ into tasks". See [Planning](#planning).
 | `crew task <id> block <who> <reason>` | stop a task, saying who stopped it and why; the board and pit wall show that line |
 | `crew task <id> question [--affects ids] <q>` | a reviewer's doubt about the group's approach: blocks the task, puts the question on the work's card, and holds the tasks it names from dispatch until answered |
 | `crew work <slug> answer <c1\|r1> <answer>` | record the person's answer to a challenge point or a raised question |
+| `crew work <slug> order <id,…>` / `pilot <id\|none>` | the group's build order, and the one task built first while the rest wait |
 | `crew fix <id>` | apply a task's open suggestions to its branch with the fixer |
 | `crew log <task> <event>` | append one line to the cost log |
 | `crew commit-msg <file>` | the commit convention (git hook) |
@@ -507,8 +508,16 @@ panel beside the conversation. Close it and it stays closed for that
 session; the **Pit wall** button or `/pitwall` brings it back. Where the
 pane sits is the app's choice: a mod can open a pane but not pick its slot.
 
-Its board is the crew list: every task as a plain row in one of four
-sections by who has it.
+It opens on **Groups**: each piece of work as a header that folds, with its
+shape, how many tasks are done or running, ⚑ for each waiting on you and ?
+for each open reviewer question. Unfolded, it shows Approve group (or what
+is missing before it can be approved), the open questions with the tasks
+they hold, and the tasks in build order. A task not started yet has ↑ ↓ to
+reorder it and pilot to build it first. Tasks with no group sit under
+Ungrouped.
+
+**Crew** switches to the list by role: every task as a plain row in one of
+four sections by who has it.
 
 | Section | Statuses |
 | --- | --- |
