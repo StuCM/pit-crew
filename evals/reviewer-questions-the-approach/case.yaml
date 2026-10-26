@@ -7,4 +7,5 @@ context:
 execution:
   max_turns: 15
   timeout_seconds: 420
-  allowed_tools: [Read, Glob, Grep, Skill, Agent, 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git diff:*)']
+  allowed_tools:
+    [Read, Glob, Grep, Skill, Agent, 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git diff:*)']
