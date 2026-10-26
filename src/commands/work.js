@@ -8,6 +8,7 @@
 
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { worktrees } from '../lib/changes.js';
 import { statuses } from '../lib/config.js';
 import { readTasks, setField } from '../lib/task.js';
 import { readWorks, WORK_DIR } from '../lib/wall.js';
@@ -18,7 +19,31 @@ export const SHAPES = ['replace', 'extend', 'wrap', 'reuse', 'new'];
 
 const USAGE = `usage: crew work                  every piece of work, with its tasks
        crew work <slug>           its decision card and tasks
-       crew work <slug> approve   approve the card and every draft task in it`;
+       crew work <slug> approve   approve the card and every draft task in it
+       crew work <slug> answer <c1|r1> <answer…>   the person's answer to a challenge point or a raised question`;
+
+/**
+ * The checkout that holds the real work files. A worker runs in a worktree
+ * whose .claude/ is a copy, and a question it raises must reach the person.
+ */
+export const mainRoot = (cfg) => worktrees(cfg.root)[0]?.path ?? cfg.root;
+
+export const workPath = (root, slug) => join(root, WORK_DIR, `${slug}.json`);
+
+/** Write a work file back, without what readWorks adds from its name and time. */
+export const saveWork = (root, work) => {
+  const stored = { ...work };
+  delete stored.slug;
+  delete stored.updated;
+  writeFileSync(workPath(root, work.slug), `${JSON.stringify(stored, null, 2)}\n`);
+};
+
+/** Questions raised during the build that the person has not answered, holding these task ids. */
+export const openRaised = (work) => list(work?.raised).filter((r) => !r.answer);
+
+/** The open raised question holding back a task, if any: it asked, or it is named as affected. */
+export const heldBy = (work, id) =>
+  openRaised(work).find((r) => r.task === id || list(r.affects).map(String).includes(id)) ?? null;
 
 const list = (value) => (Array.isArray(value) ? value : value ? [value] : []);
 
@@ -90,6 +115,14 @@ export const card = (cfg, work, tasks) => {
   } else row('challenge', 'not run');
   if (brief.approved) row('approved', brief.approved);
 
+  // Raised after approval, by a reviewer who found the approach itself in doubt.
+  list(work.raised).forEach((r, i) => {
+    row(i ? '' : 'raised', `r${i + 1}. ${r.q}   (${r.from ?? 'reviewer'} on ${r.task})`);
+    if (r.evidence) out.push(`             ${r.evidence}`);
+    if (list(r.affects).length) out.push(`             holds ${list(r.affects).join(', ')}`);
+    out.push(`             → ${r.answer ?? 'unanswered'}`);
+  });
+
   out.push('');
   if (!tasks.length) out.push('  no tasks carry this work: yet');
   for (const t of tasks) {
@@ -101,7 +134,30 @@ export const card = (cfg, work, tasks) => {
   return out;
 };
 
-export const run = (cfg, [slug, verb] = []) => {
+const answer = (cfg, work, [ref, ...words]) => {
+  const text = words.join(' ').trim();
+  const at = /^([cr])(\d+)$/.exec(ref ?? '');
+  if (!at || !text) {
+    console.error(USAGE);
+    return 2;
+  }
+  const items = at[1] === 'c' ? list(work.challenge?.points) : list(work.raised);
+  const item = items[Number(at[2]) - 1];
+  if (!item) {
+    console.error(`work: ${work.slug} has no ${ref}`);
+    return 1;
+  }
+  item.answer = text;
+  saveWork(cfg.root, work);
+  console.log(`work: ${ref} answered`);
+  if (at[1] === 'r') {
+    console.log(`  if the approach still holds: npx crew task ${item.task} sendback`);
+    console.log('  if it changed: update the brief and the affected tasks first');
+  }
+  return 0;
+};
+
+export const run = (cfg, [slug, verb, ...rest] = []) => {
   const works = readWorks(cfg.root);
   if (!slug) {
     if (!works.length) console.log('work: none recorded in ' + WORK_DIR);
@@ -130,6 +186,7 @@ export const run = (cfg, [slug, verb] = []) => {
     return 0;
   }
 
+  if (verb === 'answer') return answer(cfg, work, rest);
   if (verb !== 'approve') {
     console.error(USAGE);
     return 2;
@@ -145,13 +202,9 @@ export const run = (cfg, [slug, verb] = []) => {
     setField(t.path, 'status', 'approved');
     logEvent(cfg, [t.path, 'spec']);
   }
-  // slug and updated are read from the file's name and time, not stored in it.
-  const stored = { ...work };
-  delete stored.slug;
-  delete stored.updated;
-  stored.brief = { ...stored.brief, approved: new Date().toISOString().slice(0, 10) };
-  stored.stage = 'build';
-  writeFileSync(join(cfg.root, WORK_DIR, `${slug}.json`), `${JSON.stringify(stored, null, 2)}\n`);
+  work.brief = { ...work.brief, approved: new Date().toISOString().slice(0, 10) };
+  work.stage = 'build';
+  saveWork(cfg.root, work);
   renderBoard(cfg);
   console.log(`work: ${slug} approved, ${drafts.length} task(s) with it`);
   return 0;

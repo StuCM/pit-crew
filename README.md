@@ -236,6 +236,8 @@ into tasks". See [Planning](#planning).
 | `crew work [slug]` | a piece of work's decision card (shape, direction, the road not taken, the challenge) and its tasks in build order |
 | `crew work <slug> approve` | approve the card and every draft task in it; refuses while a challenge point is unanswered |
 | `crew task <id> block <who> <reason>` | stop a task, saying who stopped it and why; the board and pit wall show that line |
+| `crew task <id> question [--affects ids] <q>` | a reviewer's doubt about the group's approach: blocks the task, puts the question on the work's card, and holds the tasks it names from dispatch until answered |
+| `crew work <slug> answer <c1\|r1> <answer>` | record the person's answer to a challenge point or a raised question |
 | `crew fix <id>` | apply a task's open suggestions to its branch with the fixer |
 | `crew log <task> <event>` | append one line to the cost log |
 | `crew commit-msg <file>` | the commit convention (git hook) |

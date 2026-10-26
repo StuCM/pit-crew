@@ -33,6 +33,8 @@ const fixture = ({ status = 'approved' } = {}) => {
   return { root, cfg, file: join(root, '.claude', 'tasks', '007-thing.md') };
 };
 
+const withWork = (text) => text.replace('files:', 'work: smm\nfiles:');
+
 const crew = (cwd, ...args) => spawnSync('node', [CLI, ...args], { cwd, encoding: 'utf8' });
 
 test('a task is found by its id, padded or not, and by its path', () => {
@@ -114,4 +116,73 @@ test('an unmerged branch touching the same files refuses, unless forced', () => 
   );
   assert.equal(existsSync(join(root, 'p-007')), false);
   assert.equal(dispatch(cfg, findTask(cfg, '7'), { force: true }).ok, true);
+});
+
+test('a reviewer question raised in a worktree reaches the main work file and holds the tasks it names', () => {
+  const { root, cfg } = fixture();
+  writeFileSync(
+    join(root, '.claude', 'tasks', '007-thing.md'),
+    withWork(task({ status: 'approved' })),
+  );
+  writeTask(
+    root,
+    '008-other.md',
+    withWork(task({ status: 'approved', files: ['src/b.ts'] }))
+      .replace('id: 007', 'id: 008')
+      .replace('crew/007-thing', 'crew/008-other'),
+  );
+  mkdirSync(join(root, '.claude', 'crew', 'work'));
+  const workFile = join(root, '.claude', 'crew', 'work', 'smm.json');
+  writeFileSync(workFile, JSON.stringify({ title: 'SMM', brief: { shape: 'wrap' } }));
+
+  sh(root, 'commit', '-qam', 'chore: 007 joins the smm work');
+
+  const first = dispatch(cfg, findTask(cfg, '7'));
+  assert.equal(first.ok, true, first.reason);
+  assert.ok(first.copied.includes('.claude/crew/work/smm.json'), 'the reviewer reads the brief');
+
+  const asked = crew(
+    first.worktree,
+    'task',
+    '007',
+    'question',
+    '--affects',
+    '008',
+    '--evidence',
+    'notify_planning.py:5',
+    'Should',
+    'post_save',
+    'be',
+    'replaced',
+    'rather',
+    'than',
+    'wrapped?',
+  );
+  assert.equal(asked.status, 0, asked.stderr);
+  assert.equal(statusOf(join(first.worktree, '.claude', 'tasks', '007-thing.md')), 'blocked');
+  const raised = JSON.parse(readFileSync(workFile, 'utf8')).raised;
+  assert.deepEqual(raised, [
+    {
+      task: '007',
+      from: 'reviewer',
+      q: 'Should post_save be replaced rather than wrapped?',
+      evidence: 'notify_planning.py:5',
+      affects: ['008'],
+      answer: null,
+    },
+  ]);
+
+  const held = dispatch(cfg, findTask(cfg, '8'));
+  assert.equal(held.ok, false);
+  assert.match(held.reason, /held by an open question from task 007/);
+
+  const early = crew(first.worktree, 'task', '007', 'sendback');
+  assert.equal(early.status, 1);
+  assert.match(early.stderr, /question is unanswered: crew work smm answer r1/);
+
+  const answered = crew(root, 'work', 'smm', 'answer', 'r1', 'replace', 'it');
+  assert.equal(answered.status, 0, answered.stderr);
+  assert.match(answered.stdout, /crew task 007 sendback/);
+  assert.equal(dispatch(cfg, findTask(cfg, '8')).ok, true);
+  assert.equal(crew(first.worktree, 'task', '007', 'sendback').status, 0);
 });

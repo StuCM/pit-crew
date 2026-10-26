@@ -106,5 +106,13 @@ The task file's `status:` tells you what happened:
 - `blocked` → its `blocked-by:` says who stopped it and `blocked:` says why,
   in one line. Lead with that line, then the detail from **Review rounds**,
   and let the user settle it. Do not spawn another round to break the tie.
+- `blocked` with `blocked: question: …` → the reviewer doubts the group's
+  approach. Show `npx crew work <slug>`, which lists the question, its
+  evidence and the tasks it holds. Ask it as it stands, without arguing for
+  the current plan: agreeing too quickly is the failure this exists to
+  catch. Record the answer with `npx crew work <slug> answer r<n> "<answer>"`.
+  If the approach holds, `npx crew task <id> sendback`. If it changed,
+  update the brief and the affected tasks first, then send back. Dispatch
+  refuses the held tasks until the question has an answer.
 
 Re-render the board after any status change.

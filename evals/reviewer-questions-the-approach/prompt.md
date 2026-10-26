@@ -1,0 +1,1 @@
+Task 031 (.claude/tasks/031-smm-uses-compat.md) is in review. Get its diff with `git diff main...crew/031-smm-uses-compat`, spawn the crew reviewer with the task file path and that diff, as the worker would, and tell me its verdict. Do not change anything yourself.

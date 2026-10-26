@@ -165,6 +165,12 @@ you. Never hand back with a round open. It judges; it never edits.
 - **CHANGES** → fix them, re-run the gate, `crew review` again.
 - **BLOCKED** → `npx crew task <id> block reviewer "<the reviewer's reason>"`,
   and stop.
+- **QUESTION** → the reviewer doubts the approach the whole group was
+  approved on, not your diff. Do not change the approach yourself, even if
+  you agree. Record it, and stop:
+  `npx crew task <id> question --affects <ids> --evidence "<evidence>" "<question>"`.
+  It reaches the person on the work's card, and holds the tasks it names
+  until they answer.
 - **A round the counter refuses** → it has already blocked the task. Replace
   its placeholder with the disagreement:
   `npx crew task <id> block rounds "<you think X, the reviewer thinks Y>"`.

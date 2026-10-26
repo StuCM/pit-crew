@@ -9,6 +9,8 @@ import { clearField, readTask, readTasks, setField } from '../lib/task.js';
 import { taskView } from '../lib/wall.js';
 import { run as logEvent } from './log.js';
 import { run as renderBoard } from './board.js';
+import { mainRoot, openRaised, saveWork } from './work.js';
+import { readWorks } from '../lib/wall.js';
 
 // Who can stop a task. The pit wall and the board show this beside the
 // reason, so "blocked" on its own never reaches the person again.
@@ -19,9 +21,24 @@ const USAGE = `usage: crew task <id> set <status|model|env> <value>
        crew task <id> signoff    (from a pending-<env> status)
        crew task <id> sendback   (from blocked)
        crew task <id> block <who> <reason…>   (who: ${BLOCKERS.join('|')})
+       crew task <id> question [--affects 025,026] [--evidence <text>] <question…>
+                            (a reviewer's doubt about the group's approach)
        crew task <id> edit    (JSON on stdin: {"old","new"} or {"section","append"})`;
 const FENCE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
 const MODEL_ID = /^(opus|sonnet|haiku|claude-[a-z0-9.-]+)$/;
+
+// `--affects a,b --evidence text words…`: the flags, then the question.
+const questionArgs = (rest) => {
+  const out = { affects: [], evidence: null, words: [] };
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === '--affects') out.affects = (rest[++i] ?? '').split(',').filter(Boolean);
+    else if (rest[i] === '--evidence') out.evidence = rest[++i] ?? null;
+    else out.words.push(rest[i]);
+  }
+  return out;
+};
+
+const oneLine = (words) => words.join(' ').replace(/\s+/g, ' ').trim();
 
 const refuse = (reason) => {
   console.error(`task: ${reason}`);
@@ -98,6 +115,12 @@ export const run = (cfg, [id, verb, ...rest] = [], input) => {
     logEvent(cfg, [task.path, `signoff ${env}`]);
   } else if (verb === 'sendback') {
     if (task.meta.status !== 'blocked') return refuse(`task is ${task.meta.status}, not blocked`);
+    const work = task.meta.work && readWorks(mainRoot(cfg)).find((w) => w.slug === task.meta.work);
+    const open = work ? openRaised(work).find((r) => r.task === task.id) : null;
+    if (open) {
+      const n = work.raised.indexOf(open) + 1;
+      return refuse(`its question is unanswered: crew work ${work.slug} answer r${n} "<answer>"`);
+    }
     setField(task.path, 'status', 'approved');
     clearField(task.path, 'blocked');
     clearField(task.path, 'blocked-by');
@@ -106,7 +129,7 @@ export const run = (cfg, [id, verb, ...rest] = [], input) => {
     const [who, ...words] = rest;
     if (!BLOCKERS.includes(who)) return refuse(`who stopped it? one of ${BLOCKERS.join(', ')}`);
     // One line in the frontmatter: the detail belongs in the body, under Review rounds.
-    const reason = words.join(' ').replace(/\s+/g, ' ').trim().slice(0, 240);
+    const reason = oneLine(words).slice(0, 240);
     if (!reason)
       return refuse('say why, in one line — "blocked" on its own tells the person nothing');
     if (statuses(cfg)[task.meta.status]?.terminal) return refuse(`task is ${task.meta.status}`);
@@ -114,6 +137,28 @@ export const run = (cfg, [id, verb, ...rest] = [], input) => {
     setField(task.path, 'blocked', reason);
     setField(task.path, 'blocked-by', who);
     logEvent(cfg, [task.path, 'block']);
+  } else if (verb === 'question') {
+    // The reviewer doubts the approach, not this diff: the person answers it
+    // once for the whole group, and the tasks it names wait for that answer.
+    const { affects, evidence, words } = questionArgs(rest);
+    const q = oneLine(words);
+    if (!q) return refuse('ask the question, in one line');
+    if (statuses(cfg)[task.meta.status]?.terminal) return refuse(`task is ${task.meta.status}`);
+    const slug = task.meta.work;
+    const root = mainRoot(cfg);
+    const work = slug && readWorks(root).find((w) => w.slug === slug);
+    if (work) {
+      const raised = [...(work.raised ?? [])];
+      raised.push({ task: task.id, from: 'reviewer', q, evidence, affects, answer: null });
+      saveWork(root, { ...work, raised });
+      console.log(
+        `question: r${raised.length} on ${slug}, holding ${[task.id, ...affects].join(', ')}`,
+      );
+    }
+    setField(task.path, 'status', 'blocked');
+    setField(task.path, 'blocked', `question: ${q}`.slice(0, 240));
+    setField(task.path, 'blocked-by', 'reviewer');
+    logEvent(cfg, [task.path, 'question']);
   } else if (verb === 'edit') {
     let change;
     try {

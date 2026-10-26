@@ -106,3 +106,26 @@ test('approval covers every draft task in the group, and leaves the rest alone',
   const log = readFileSync(join(root, cfg.log), 'utf8');
   assert.equal(log.match(/"event":"spec"/g).length, 2);
 });
+
+test('a question raised during the build shows on the card with what it holds, until answered', () => {
+  const raised = [
+    {
+      task: '024',
+      from: 'reviewer',
+      q: 'Replace post_save?',
+      evidence: 'notify_planning.py:5',
+      affects: ['025'],
+      answer: null,
+    },
+  ];
+  const { cfg, root } = setup({ brief: BRIEF, raised });
+  const text = call(cfg, ['smm']).out.join('\n');
+  assert.match(text, /raised {5}r1\. Replace post_save\? {3}\(reviewer on 024\)/);
+  assert.match(text, /holds 025/);
+  assert.match(text, /→ unanswered/);
+
+  assert.equal(call(cfg, ['smm', 'answer', 'r1', 'yes,', 'replace', 'it']).code, 0);
+  const stored = JSON.parse(readFileSync(join(root, WORK_DIR, 'smm.json'), 'utf8'));
+  assert.equal(stored.raised[0].answer, 'yes, replace it');
+  assert.equal(call(cfg, ['smm', 'answer', 'r2', 'x']).code, 1);
+});
