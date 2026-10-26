@@ -23,8 +23,12 @@ export const run = (cfg, [taskArg]) => {
     console.error(
       `review: ${task.file} has had ${rounds} round(s), the limit is ${cfg.reviewRounds}.`,
     );
-    console.error('        Set status: blocked, write the disagreement in a few lines, and stop.');
+    console.error('        Say what the reviewer and you disagree about, in one line, and stop:');
+    console.error(`        npx crew task ${task.id} block rounds "<the disagreement>"`);
     setField(path, 'status', 'blocked');
+    setField(path, 'blocked-by', 'rounds');
+    if (!task.meta.blocked)
+      setField(path, 'blocked', `${rounds} review rounds and still CHANGES — see Review rounds`);
     return 1;
   }
 

@@ -21,6 +21,12 @@ const rank = (status, known) => {
   return 2;
 };
 
+// A blocked task says who stopped it and why; anything else, what its status waits on.
+export const waitReason = (task, known) =>
+  task.meta.status === 'blocked' && task.meta.blocked
+    ? `${task.meta['blocked-by'] ?? 'stopped'}: ${task.meta.blocked}`
+    : known[task.meta.status].waitsOnUser;
+
 export const render = (tasks, known, live, cfg) => {
   const ordered = [...tasks].sort((a, b) => {
     const byRank = rank(a.meta.status, known) - rank(b.meta.status, known);
@@ -49,7 +55,7 @@ export const render = (tasks, known, live, cfg) => {
   out.push('', '## Waiting on you', '');
   if (waiting.length) {
     for (const task of waiting) {
-      out.push(`- **${task.id} ${task.title}** — ${known[task.meta.status].waitsOnUser}`);
+      out.push(`- **${task.id} ${task.title}** — ${waitReason(task, known)}`);
     }
   } else {
     out.push('Nothing.');

@@ -136,6 +136,38 @@ test('sendback returns a blocked task to approved and logs it', () => {
   assert.match(readFileSync(join(root, cfg.log), 'utf8'), /"event":"sendback"/);
 });
 
+test('block records who stopped it and why, and sendback clears both', () => {
+  const { cfg, path, root } = setup('building');
+  const { code, out } = call(cfg, [
+    '007',
+    'block',
+    'reviewer',
+    'wraps',
+    'post_save\ninstead of   replacing it',
+  ]);
+  assert.equal(code, 0);
+  const meta = frontmatter(readFileSync(path, 'utf8'));
+  assert.equal(meta.status, 'blocked');
+  assert.equal(meta.blocked, 'wraps post_save instead of replacing it');
+  assert.equal(meta['blocked-by'], 'reviewer');
+  assert.equal(JSON.parse(out.at(-1)).blockedBy, 'reviewer');
+  assert.match(readFileSync(join(root, cfg.log), 'utf8'), /"event":"block"/);
+
+  assert.equal(call(cfg, ['007', 'sendback']).code, 0);
+  const after = frontmatter(readFileSync(path, 'utf8'));
+  assert.equal(after.status, 'approved');
+  assert.equal(after.blocked, undefined);
+  assert.equal(after['blocked-by'], undefined);
+  assert.deepEqual(after.files, ['src/a.ts']);
+});
+
+test('block refuses without a reason or a known blocker', () => {
+  const { cfg, path } = setup('building');
+  assert.match(call(cfg, ['007', 'block', 'reviewer']).err[0], /say why/);
+  assert.match(call(cfg, ['007', 'block', 'someone', 'why']).err[0], /who stopped it/);
+  assert.equal(statusOf(path), 'building');
+});
+
 test('sendback refuses a task that is not blocked', () => {
   const { cfg, path } = setup('pending-desktop');
   const { code, err } = call({ ...cfg, ...DESKTOP }, ['007', 'sendback']);

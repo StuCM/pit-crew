@@ -47,6 +47,7 @@ jobs:
               "agents/crew-scout.md",
               "agents/crew-fixer.md",
               "agents/crew-reviewer.md",
+              "agents/crew-challenger.md",
               "skills/crew-spec/SKILL.md",
               "templates/task.md",
               "githooks/pre-commit",

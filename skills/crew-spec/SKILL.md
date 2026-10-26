@@ -181,6 +181,13 @@ Then **play back what you heard in two or three lines** before moving on.
 Checking it back like this is cheap, and it is where "references, not concepts"
 gets corrected before it reaches a spec.
 
+In the playback, keep **what they stated** apart from **what they floated**.
+"Concepts became references" is a fact you build on. "Maybe the lookup should
+move into a helper?" is them thinking aloud, and treating it as a decision is
+the commonest way a plan goes wrong while looking agreed. Say which is which:
+"you're sure of X; Y you were wondering about — I'll leave it open." These two
+lists become the brief's `decided` and `exploring`.
+
 Everything answered here goes into the spec's **Background** section, in the
 person's words where they were precise. It is the only place a worker learns
 it.
@@ -314,11 +321,77 @@ Keep **Constraints that bite here** to the rules that actually touch these
 files. The worker already reads `.claude/crew/project.md`; repeating it here
 costs tokens in every downstream agent and says nothing new.
 
-## 5. Get approval — this is a hard gate
+## 5. Brief the work, and have it challenged
+
+Before anyone approves, write the decision the whole piece of work rests on
+into the work file's `brief`. This is what the person actually checks: one
+card instead of every spec.
+
+```json
+"brief": {
+  "shape": "replace",
+  "target": [{ "path": "coral/functions/notify_smm.py", "line": 45, "name": "post_save" }],
+  "direction": "Rewrite post_save to read references; no converter.",
+  "rejected": [{ "option": "Wrap post_save with a concept→reference converter",
+                 "why": "keeps the old shape alive for every other caller" }],
+  "decided": ["concepts became references in the v8 upgrade"],
+  "exploring": ["whether the label lookup belongs in a helper"]
+},
+"order": ["024", "026", "025"]
+```
+
+- **shape** is one of `replace`, `extend`, `wrap`, `reuse`, `new`. Choose it
+  honestly. A plan that adds a helper beside a broken function is `wrap`, even
+  if every step looks like a fix. `wrap` and `extend` are where a person who
+  built the code most often says "no, just replace it", so name the target
+  precisely.
+- **rejected** always has an entry. If no other road was considered, write
+  `"none considered"`. That itself tells the person something.
+- **decided** and **exploring** come from step 1's playback, in their words.
+- **order** is the order to build in, by task id.
+
+Then spawn `crew-challenger` (`crew:crew-challenger` where namespaced) in the
+foreground, with the work file's path, the draft task files, and the person's
+words you relied on, quoted. It returns at most four points and a verdict.
+Record it in the work file:
+
+```json
+"challenge": { "verdict": "QUESTION",
+  "points": [{ "q": "…", "evidence": "…", "if": "…", "answer": null }] }
+```
+
+Do not argue with a point and do not answer it yourself: each one goes to the
+person. If it changes the plan, change the brief and the tasks, not just the
+answer. Skip the challenger only for a single task the person scoped
+themselves, and record that: `"challenge": { "skipped": "<why>" }`.
+
+## 6. Get approval — this is a hard gate
 
 Approval happens in the conversation, or in the pit wall mod. A task the
 mod approved already says `status: approved` and has its `spec` log line; do
 not ask again.
+
+**A piece of work with a brief is approved as a group.** Show the card:
+
+```sh
+npx crew work <slug>
+```
+
+It prints the shape, direction, the rejected road, what came from them and
+what was only explored, the challenge points, and every task with its state.
+Put the open challenge points to them as numbered questions, and write each
+answer into its `answer`. Then say the tasks are there to skim or reorder, and
+ask for a yes to the card. On yes:
+
+```sh
+npx crew work <slug> approve
+```
+
+It refuses while a challenge point has no answer, or the brief lacks a shape,
+target, direction or rejected road. It approves every draft task in the group
+and logs each one. Tell them `/crew:crew-run` is next, in the card's order.
+
+**A lone task without a work file** is approved as before:
 
 Do not open with the whole spec and a yes/no question. That asks the person
 to find the gaps themselves, and they will skim it. Lead with what they can
@@ -337,8 +410,8 @@ there for anyone who wants it.
 reason: a wrong spec is the most expensive thing in the system, and it is
 cheapest to fix right now.
 
-On approval set `status: approved`, run `npx crew log <task> spec`, and tell
-them `/crew:crew-run <id>` is next.
+On approval run `npx crew task <id> approve`, and tell them
+`/crew:crew-run <id>` is next.
 
 ## When the conversation moves
 

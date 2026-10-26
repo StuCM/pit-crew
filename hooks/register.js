@@ -131,6 +131,12 @@ const select = async ($, id) => {
   $.ui.invalidate('ui.render');
 };
 
+// A blocked task says who stopped it and why; any other waiting status, what it waits on.
+export const waitText = (task, meta) =>
+  task?.status === 'blocked' && task.blocked
+    ? `${task.blockedBy ?? 'stopped'}: ${task.blocked}`
+    : meta.waitsOnUser;
+
 // ---- The crew list: tasks by the role working on them, drawn as plain rows.
 const SECTIONS = [
   { name: 'Scout', color: C.vio },
@@ -184,7 +190,9 @@ const boardList = ($, { Box, Text, Button }) => {
           onPress: () => select($, task.id),
         }),
         Text({ color, children: [task.status] }),
-        ...(meta.waitsOnUser ? [Text({ color: C.amb, children: ['⚑ ' + meta.waitsOnUser] })] : []),
+        ...(meta.waitsOnUser
+          ? [Text({ color: C.amb, children: ['⚑ ' + waitText(task, meta)] })]
+          : []),
       ],
     });
   };
@@ -768,7 +776,7 @@ export function register(on) {
     const task = selectedTask();
     const status = task?.status;
     const statusMeta = board?.statuses?.[status] ?? {};
-    const waiting = statusMeta.waitsOnUser;
+    const waiting = statusMeta.waitsOnUser && waitText(task, statusMeta);
     const pendingEnv = statusMeta.pendingEnv;
     const runControls = pendingEnv
       ? [

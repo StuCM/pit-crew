@@ -125,10 +125,12 @@ const stubs = (
     refuse,
     complete,
     status,
+    taskFields,
     panes = ['crew-wall'],
   }: {
     panes?: string[];
     status?: string;
+    taskFields?: Record<string, unknown>;
     boardRun?: any;
     refuse?: string;
     complete?: (e: any) => any;
@@ -136,6 +138,7 @@ const stubs = (
 ) => {
   const board = structuredClone(BOARD);
   if (status) board.tasks[0].status = status;
+  Object.assign(board.tasks[0], taskFields);
   // The mod reads the time to know how old its board is; a test moves this clock itself.
   const clock = mock.clock(on);
   const seen = {
@@ -524,6 +527,20 @@ test('a blocked task shows its reason and Send back', async ($, on) => {
   await ui.press({ key: 'sendback' });
   expect(seen.calls.map((c) => c.args)).toEqual([['task', '001', 'sendback']]);
   expect(seen.submitted).toEqual([]);
+  await ui.unmount();
+});
+
+test('a blocked task with a reason says who stopped it and why, on its row and its page', async ($, on) => {
+  stubs(on, {
+    status: 'blocked',
+    taskFields: { blocked: 'wraps post_save instead of replacing it', blockedBy: 'reviewer' },
+  });
+  const line = '⚑ reviewer: wraps post_save instead of replacing it';
+  const wall = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  expect(await wall.find({ type: 'Text', text: line })).toBeDefined();
+  await wall.unmount();
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
+  expect(await ui.find({ type: 'Text', text: line })).toBeDefined();
   await ui.unmount();
 });
 

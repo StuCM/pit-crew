@@ -203,6 +203,7 @@ offered a plan.
 | `/crew:crew-close` | orchestrator | verify the gate stamp, **stop for your approval**, merge, write the graph, deploy or queue |
 | `crew-worker` | the task session | not for you to invoke — it is the brief `/crew:crew-run` hands over |
 | `crew-scout` | the orchestrator | a read-only agent that finds prior fixes, helpers, call sites and graph chains before a spec is written |
+| `crew-challenger` | the orchestrator | a read-only agent that questions a piece of work's approach before you approve it: building around code that should be replaced, the wrong shape, or something you only floated taken as decided |
 | `crew-reviewer` | the task session | a read-only agent, spawned by the worker after the gate passes |
 
 The two skills you never call yourself are the point of the design: the worker
@@ -232,6 +233,9 @@ into tasks". See [Planning](#planning).
 | `crew scope <task> [base]` | changed files against the spec's `files:` |
 | `crew review <task>` | open a round, refusing one past the limit |
 | `crew board` | render `BOARD.md` from the task files |
+| `crew work [slug]` | a piece of work's decision card (shape, direction, the road not taken, the challenge) and its tasks in build order |
+| `crew work <slug> approve` | approve the card and every draft task in it; refuses while a challenge point is unanswered |
+| `crew task <id> block <who> <reason>` | stop a task, saying who stopped it and why; the board and pit wall show that line |
 | `crew fix <id>` | apply a task's open suggestions to its branch with the fixer |
 | `crew log <task> <event>` | append one line to the cost log |
 | `crew commit-msg <file>` | the commit convention (git hook) |
@@ -512,7 +516,8 @@ sections by who has it.
 | Done | `done` (the five newest), `pending-<env>` |
 
 Each row is its mark (● running, ✔ done, ○ waiting), a button with the id and
-title, its status, and a ⚑ with what it needs from you. Click a row to open
+title, its status, and a ⚑ with what it needs from you. A blocked task says
+who stopped it and why: `⚑ reviewer: wraps post_save instead of replacing it`. Click a row to open
 its spec in its own pane: the title and status, then the Spec, Context,
 Build record and Diagrams tabs, with editing, approve and sign-off. The
 diagrams are Markdown: steps against the files they touch, the behaviour

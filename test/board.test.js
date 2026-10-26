@@ -43,6 +43,10 @@ test('the waiting section names the reason, per status', () => {
       task('002', 'pending-tv'),
       task('003', 'blocked'),
       task('004', 'review'),
+      task('005', 'blocked', {
+        blocked: 'adds a wrapper instead of replacing post_save',
+        'blocked-by': 'reviewer',
+      }),
     ],
     known,
     [],
@@ -50,10 +54,14 @@ test('the waiting section names the reason, per status', () => {
   );
   const section = text.split('## Waiting on you')[1].split('## In flight')[0];
 
-  assert.equal(waiting.length, 3);
+  assert.equal(waiting.length, 4);
   assert.match(section, /\*\*001 task 001\*\* — spec needs your approval/);
   assert.match(section, /\*\*002 task 002\*\* — the panel decides/);
-  assert.match(section, /\*\*003 task 003\*\* — 2 review rounds disagreed/);
+  assert.match(section, /\*\*003 task 003\*\* — stopped — needs your call/);
+  assert.match(
+    section,
+    /\*\*005 task 005\*\* — reviewer: adds a wrapper instead of replacing post_save/,
+  );
   assert.ok(!section.includes('**004'), 'a task in review is not waiting on a person');
   assert.match(text.split('## In flight')[1], /\*\*004 task 004\*\*/);
 });

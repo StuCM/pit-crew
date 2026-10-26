@@ -5,15 +5,20 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { statuses } from '../lib/config.js';
-import { readTask, readTasks, setField } from '../lib/task.js';
+import { clearField, readTask, readTasks, setField } from '../lib/task.js';
 import { taskView } from '../lib/wall.js';
 import { run as logEvent } from './log.js';
 import { run as renderBoard } from './board.js';
+
+// Who can stop a task. The pit wall and the board show this beside the
+// reason, so "blocked" on its own never reaches the person again.
+export const BLOCKERS = ['worker', 'reviewer', 'rounds', 'scope', 'challenger', 'person'];
 
 const USAGE = `usage: crew task <id> set <status|model|env> <value>
        crew task <id> approve
        crew task <id> signoff    (from a pending-<env> status)
        crew task <id> sendback   (from blocked)
+       crew task <id> block <who> <reason…>   (who: ${BLOCKERS.join('|')})
        crew task <id> edit    (JSON on stdin: {"old","new"} or {"section","append"})`;
 const FENCE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
 const MODEL_ID = /^(opus|sonnet|haiku|claude-[a-z0-9.-]+)$/;
@@ -94,7 +99,21 @@ export const run = (cfg, [id, verb, ...rest] = [], input) => {
   } else if (verb === 'sendback') {
     if (task.meta.status !== 'blocked') return refuse(`task is ${task.meta.status}, not blocked`);
     setField(task.path, 'status', 'approved');
+    clearField(task.path, 'blocked');
+    clearField(task.path, 'blocked-by');
     logEvent(cfg, [task.path, 'sendback']);
+  } else if (verb === 'block') {
+    const [who, ...words] = rest;
+    if (!BLOCKERS.includes(who)) return refuse(`who stopped it? one of ${BLOCKERS.join(', ')}`);
+    // One line in the frontmatter: the detail belongs in the body, under Review rounds.
+    const reason = words.join(' ').replace(/\s+/g, ' ').trim().slice(0, 240);
+    if (!reason)
+      return refuse('say why, in one line — "blocked" on its own tells the person nothing');
+    if (statuses(cfg)[task.meta.status]?.terminal) return refuse(`task is ${task.meta.status}`);
+    setField(task.path, 'status', 'blocked');
+    setField(task.path, 'blocked', reason);
+    setField(task.path, 'blocked-by', who);
+    logEvent(cfg, [task.path, 'block']);
   } else if (verb === 'edit') {
     let change;
     try {

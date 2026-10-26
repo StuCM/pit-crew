@@ -103,8 +103,8 @@ The task file's `status:` tells you what happened:
 - `done` → the gate and review passed. Go to `/crew:crew-close`.
 - `pending-<env>` → code-complete, and only that environment can prove it. Tell
   the user what to check. The loop cannot clear this and must not pretend to.
-- `blocked` → the rounds disagreed, or the spec could not be judged. Put the
-  disagreement in front of the user in a few lines and let them settle it.
-  Do not spawn another round to break the tie.
+- `blocked` → its `blocked-by:` says who stopped it and `blocked:` says why,
+  in one line. Lead with that line, then the detail from **Review rounds**,
+  and let the user settle it. Do not spawn another round to break the tie.
 
 Re-render the board after any status change.

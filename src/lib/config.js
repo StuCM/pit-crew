@@ -66,7 +66,7 @@ export const statuses = (cfg) => {
     approved: {},
     building: { inFlight: true },
     review: { inFlight: true },
-    blocked: { waitsOnUser: `${cfg.reviewRounds} review rounds disagreed — needs your call` },
+    blocked: { waitsOnUser: 'stopped — needs your call' },
     done: { terminal: true },
   };
 

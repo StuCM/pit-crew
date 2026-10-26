@@ -73,6 +73,10 @@ End with exactly one of:
 - **BLOCKED** — the spec cannot be judged (it contradicts itself, or the
   definition of done is untestable). Say which part.
 
+After BLOCKED, put the reason in a single line the person can act on, on its
+own line starting `reason:`. The worker records it, and that line is all the
+board shows.
+
 Findings only. No summary of what the diff does — whoever spawned you has the
 diff. If `rounds:` in the task file says this is the last round the project
 allows and you would return CHANGES again, return **BLOCKED** instead and say
