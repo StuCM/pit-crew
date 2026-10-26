@@ -246,6 +246,16 @@ const stubs = (
       return { value: { exitCode: 0, stdout: JSON.stringify(out), stderr: '' } };
     }
     if (args[0] === 'suggest') return { value: { exitCode: 0, stdout: 'ok', stderr: '' } };
+    if (args[0] === 'preview') {
+      if (args[1] === 'keep') board.preview.edits = [];
+      return {
+        value: {
+          exitCode: 0,
+          stdout: `preview: showing ${args.slice(1).join(' ')}\n  ⚠ migrations changed — the preview shares its database`,
+          stderr: '',
+        },
+      };
+    }
     const task = board.tasks.find((t) => t.id === args[1])!;
     if (args[2] === 'approve') task.status = 'approved';
     if (args[2] === 'signoff') task.status = 'done';
@@ -824,4 +834,39 @@ test('a cut hunk is redrawn with a header that matches its lines', () => {
   const rows = diffRows([{ path: 'x.ts', hunks: [hunk(10, 3)] }]);
   const [part] = windowParts(rows, 2, 3);
   expect(part.source).toBe('@@ -11,2 +11,3 @@\n ctx 11\n ctx 12\n+added');
+});
+
+const previewing = (board: any) => {
+  reviewing(board);
+  board.preview = {
+    dir: '/p',
+    state: { label: '001 First thing' },
+    edits: [{ code: ' M', path: 'src/a.ts' }],
+  };
+};
+
+test('the wall says what the preview shows; Keep folds its edits in, and a task can be previewed from its page', async ($, on) => {
+  const seen = stubs(on, { patch: previewing });
+  const wall = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  expect(await wall.find({ type: 'Text', text: '001 First thing' })).toBeDefined();
+  expect(await wall.find({ type: 'Text', text: '✎ src/a.ts' })).toBeDefined();
+  await wall.press({ key: 'preview-keep' });
+  expect(seen.calls.map((c) => c.args).at(-1)).toEqual(['preview', 'keep']);
+  expect(await wall.find({ key: 'preview-keep' })).toBeUndefined();
+  await wall.unmount();
+  const spec = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
+  await spec.press({ key: 'preview-task' });
+  expect(seen.calls.map((c) => c.args).at(-1)).toEqual(['preview', '001']);
+  expect(seen.toasts.some((t) => t.startsWith('⚠ migrations changed'))).toBe(true);
+  await spec.unmount();
+});
+
+test('with no preview set up there is no preview line and no Preview button', async ($, on) => {
+  stubs(on, { patch: reviewing });
+  const wall = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  expect(await wall.find({ key: 'preview-main' })).toBeUndefined();
+  await wall.unmount();
+  const spec = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
+  expect(await spec.find({ key: 'preview-task' })).toBeUndefined();
+  await spec.unmount();
 });

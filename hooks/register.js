@@ -322,6 +322,15 @@ const groupList = ($, { Box, Text, Button }) => {
           onPress: () => openReview($, group.slug, group.title),
         }),
       );
+      if (board.preview)
+        body.push(
+          Button({
+            key: 'preview-' + group.slug,
+            label: pad('Preview the group'),
+            plain: true,
+            onPress: () => preview($, ['group', group.slug]),
+          }),
+        );
     }
     if (group.slug && !group.approved) {
       body.push(
@@ -412,6 +421,62 @@ const groupList = ($, { Box, Text, Button }) => {
     );
   }
   return Box({ flexDirection: 'column', rowGap: S.xs, children });
+};
+
+// ---- The preview: one running copy of the app, pointed at a task, a group or the base.
+// crew prints what it did and any ⚠ about migrations or dependencies; the warnings are toasted.
+const preview = async ($, args) => {
+  const run = await $.process.run(crewArgv($, ['preview', ...args]));
+  const lines = (run.exitCode === 0 ? run.stdout : run.stderr).trim().split('\n');
+  log = lines[0] ?? '';
+  if (run.exitCode !== 0) $.ui.toast(lines[0] || 'crew preview exited ' + run.exitCode);
+  for (const line of lines.filter((l) => l.includes('⚠'))) $.ui.toast(line.trim());
+  await loadBoard($);
+  $.ui.invalidate('ui.render');
+  return run.exitCode === 0;
+};
+
+// The wall's preview line: what it shows, and the edits made there with Keep and Drop.
+const previewLine = ($, { Box, Text, Button }) => {
+  const pv = board?.preview;
+  if (!pv || pv.error) return null;
+  const edits = pv.edits ?? [];
+  return Box({
+    key: 'preview-line',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: S.sm,
+    alignItems: 'center',
+    flexShrink: 0,
+    children: [
+      Text({ color: C.mut, children: ['Preview'] }),
+      Text({ color: C.ink, wrap: 'truncate', children: [pv.state?.label ?? 'unknown'] }),
+      ...(edits.length
+        ? [
+            Text({ color: C.amb, children: [`✎ ${edits.map((e) => e.path).join(', ')}`] }),
+            Button({
+              key: 'preview-keep',
+              label: 'Keep',
+              variant: 'primary',
+              onPress: () => preview($, ['keep']),
+            }),
+            Button({
+              key: 'preview-drop',
+              label: pad('Drop'),
+              plain: true,
+              onPress: () => preview($, ['drop']),
+            }),
+          ]
+        : [
+            Button({
+              key: 'preview-main',
+              label: pad('show main'),
+              plain: true,
+              onPress: () => preview($, ['main']),
+            }),
+          ]),
+    ],
+  });
 };
 
 // ---- The review pane: what a task or group changed, read from git, without opening its worktree.
@@ -1398,8 +1463,10 @@ export function register(on) {
         ],
       );
       const byGroup = wallView === 'groups' && board?.works?.length;
+      const pvLine = boardError ? null : previewLine($, ui);
       return frame([
         header,
+        ...(pvLine ? [pvLine] : []),
         boardError
           ? Text({ color: C.amb, children: [boardError] })
           : byGroup
@@ -1485,6 +1552,16 @@ export function register(on) {
           ]
         : []),
       ...runControls,
+      ...(task?.branch && board?.preview && !['draft', 'approved'].includes(status)
+        ? [
+            Button({
+              key: 'preview-task',
+              label: pad('Preview'),
+              plain: true,
+              onPress: () => preview($, [task.id]),
+            }),
+          ]
+        : []),
       ...(task?.branch && !['draft', 'approved'].includes(status)
         ? [
             Button({

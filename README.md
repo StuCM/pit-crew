@@ -242,6 +242,9 @@ into tasks". See [Planning](#planning).
 | `crew changes <id\|slug>` | what a task or group changed, read from git: files, commits, `--commit <sha>`, `--file <path>`, `--grep <text>` |
 | `crew suggest <id> <path> <line\|-> <note>` | a change for the fixer, aimed at the commit that wrote that line |
 | `crew fix <id>` | apply a task's open suggestions to its branch with the fixer |
+| `crew preview init` | create the preview worktree, from `preview` in `.claude/crew.local.json` |
+| `crew preview <id>` / `group <slug>` / `main` | point the one running preview at a task, a group merged over the base, or the base |
+| `crew preview status` / `keep [--to <id>]` / `drop` | the edits made in the preview; fold them into the task's commits, or throw them away |
 | `crew log <task> <event>` | append one line to the cost log |
 | `crew commit-msg <file>` | the commit convention (git hook) |
 | `crew pre-commit` | staged-file format and lint (git hook) |
@@ -591,6 +594,54 @@ login `claude` has on your machine, so on a Pro or Max subscription its runs
 count against that plan's usage limits, not the API. The exception is
 `ANTHROPIC_API_KEY`: if it is set, it takes precedence and every run is
 billed to the API. Set `CREW_CLAUDE` if `claude` is not on your `PATH`.
+
+## The preview
+
+Trying a task usually means switching branches in the checkout you work in,
+or running another copy of the stack for each worktree. The preview is one
+copy of the app that you point at whatever you want to try: a task, a whole
+group merged over the base, or the base itself. It is a detached worktree of
+the repository, so your own checkout never moves and the stack you started
+there keeps running and reloading as the code under it changes.
+
+It is set up per machine, in `.claude/crew.local.json`, which is never
+committed and is read over `crew.config.json`:
+
+```json
+{
+  "preview": {
+    "dir": "../coral-arches-preview",
+    "start": "arches-toolkit dev",
+    "overlay": "../coral-preview-overlay"
+  }
+}
+```
+
+- **`overlay`** is a folder laid over every switch: its files are copied in
+  untracked (a `.env`, an `apps.yaml`), and a `patch.diff` in it is applied
+  to tracked files (an env-overrides block in `settings.py`). This is how a
+  project runs under a stack its committed code is not set up for, such as
+  coral under the new arches-toolkit, without committing that set-up.
+- **`afterSwitch`**, optional, runs a command after a switch that changed
+  files matching `when`, for what the stack does not reload by itself:
+  `[{ "when": "**/*.{js,vue}", "run": "make webpack" }]` on a stack with no
+  watcher. A stack with hot reload needs none.
+- A switch warns when migrations or dependencies changed: the preview has
+  one database, so a task's migrations stay applied when you move on.
+
+**A quick fix while trying something.** Edit in the preview folder; the
+stack reloads and you see it at once. Then `crew preview keep` (or **Keep**
+on the pit wall's preview line) puts the edit on the task's branch, as a
+fixup of the last commit that touched each file, folded in so the history
+reads as if it had been right first time. In a group preview each file goes
+to the task that changed it, and `--to <id>` settles a file no task or
+several tasks changed. It refuses while the task is still being built or
+reviewed, and it notes the edit under the task's **Review rounds**, since no
+reviewer saw it. `crew preview drop` throws the edits away. Nothing switches
+while the preview has edits of its own.
+
+`crew preview status` reads all this without writing a file, so the pit
+wall can show it without reloading the stack.
 
 ## The memory graph
 

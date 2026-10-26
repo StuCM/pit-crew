@@ -11,6 +11,8 @@ import { readLiveTasks } from '../lib/worktrees.js';
 import { statuses } from '../lib/config.js';
 import { snapshot } from '../lib/wall.js';
 import { groupView } from './work.js';
+import { previewConfig } from '../lib/preview.js';
+import { status as previewStatus } from './preview.js';
 
 // Waiting on a person first — it is the only category they can act on now.
 const rank = (status, known) => {
@@ -91,6 +93,7 @@ export const run = (cfg, args = []) => {
         statuses: statuses(cfg),
         tasks,
         works: works.map(groupView),
+        preview: previewConfig(cfg) ? previewStatus(cfg, previewConfig(cfg)) : null,
       }),
     );
     return 0;

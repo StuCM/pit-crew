@@ -37,6 +37,7 @@ const USAGE = `crew — a task loop for agents
   crew work <slug> approve  approve the card and every draft task in it
   crew changes <id|slug>    what a task or group changed, from git (--commit, --file, --grep)
   crew suggest <id> <path> <line|-> <note>   a change for crew fix to fold into its commit
+  crew preview <id|group <slug>|main>   the one running preview shows this (init, status, keep, drop)
   crew fix <id>             apply a task's open suggestions to its branch with the fixer
 
   crew commit-msg <file>    the commit convention (git hook)
@@ -65,6 +66,7 @@ const COMMANDS = {
   fix: () => import('./commands/fix.js'),
   work: () => import('./commands/work.js'),
   changes: () => import('./commands/changes.js'),
+  preview: () => import('./commands/preview.js'),
   suggest: () => import('./commands/changes.js').then((m) => ({ run: m.suggest })),
   orchestrator: () => import('./commands/orchestrator.js'),
   init: () => import('./commands/init.js'),
