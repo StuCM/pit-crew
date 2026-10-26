@@ -1,5 +1,6 @@
 const PANE = 'crew-wall';
 const SPEC_PANE = 'crew-spec';
+const REVIEW_PANE = 'crew-review';
 
 // Neutrals sampled from the Desktop app (pane border, chrome); accents kept only where they carry meaning.
 const C = {
@@ -312,6 +313,16 @@ const groupList = ($, { Box, Text, Button }) => {
     if (!isOpen) continue;
 
     const body = [];
+    if (group.slug && group.tasks.some((t) => !['draft', 'approved'].includes(t.status))) {
+      body.push(
+        Button({
+          key: 'review-' + group.slug,
+          label: pad('Review the group'),
+          plain: true,
+          onPress: () => openReview($, group.slug, group.title),
+        }),
+      );
+    }
     if (group.slug && !group.approved) {
       body.push(
         group.problems.length
@@ -401,6 +412,386 @@ const groupList = ($, { Box, Text, Button }) => {
     );
   }
   return Box({ flexDirection: 'column', rowGap: S.xs, children });
+};
+
+// ---- The review pane: what a task or group changed, read from git, without opening its worktree.
+let review = null; // { target, title, data, file, commit, commitData, mode, top, hits, lines, showAllFiles }
+let reviewHeader = 0; // rows drawn above the code window, so a wheel over them is not taken as scrolling the code
+let reviewCount = 8; // rows the code window shows, as last drawn
+
+// Where a scroll by `by` leaves the window's first row: never past the point where the window stays full.
+export const nextTop = (top, by, total, count) =>
+  Math.max(0, Math.min(top + by, Math.max(total - count, 0)));
+const MAX_FILES = 10;
+const MAX_COMMITS = 6;
+const MAX_HITS = 8;
+
+// A crew command whose stdout is one JSON value; a refusal is toasted and null returned.
+const crewJson = async ($, args) => {
+  const run = await $.process.run(crewArgv($, args));
+  try {
+    const value = JSON.parse(run.stdout);
+    if (value.error) $.ui.toast(value.error);
+    return value.error ? null : value;
+  } catch {
+    $.ui.toast(run.stderr.trim().split('\n')[0] || 'crew exited ' + run.exitCode);
+    return null;
+  }
+};
+
+// Every diff line of the files shown, with the line numbers a cut hunk needs to be redrawn from anywhere.
+export const diffRows = (files) => {
+  const rows = [];
+  for (const file of files) {
+    rows.push({ kind: 'file', path: file.path, file });
+    file.hunks.forEach((hunk, h) => {
+      const at = /^@@ -(\d+)(?:,\d+)? \+(\d+)/.exec(hunk.header);
+      let a = Number(at?.[1] ?? 1);
+      let b = Number(at?.[2] ?? 1);
+      for (const line of hunk.lines) {
+        rows.push({ kind: line.kind, text: line.text, a, b, hunk: file.path + '#' + h });
+        if (line.kind !== '+') a++;
+        if (line.kind !== '-') b++;
+      }
+    });
+  }
+  return rows;
+};
+
+// The rows a window shows, as file markers and hunks that parse: each run of lines gets its own @@ header.
+export const windowParts = (rows, top, count) => {
+  const parts = [];
+  let run = null;
+  for (const row of rows.slice(top, top + count)) {
+    if (row.kind === 'file') {
+      run = null;
+      parts.push({ kind: 'file', path: row.path, file: row.file });
+      continue;
+    }
+    if (!run || run.hunk !== row.hunk) {
+      run = {
+        kind: 'code',
+        hunk: row.hunk,
+        path: row.hunk.split('#')[0],
+        a: row.a,
+        b: row.b,
+        lines: [],
+      };
+      parts.push(run);
+    }
+    run.lines.push(row);
+  }
+  for (const part of parts) {
+    if (part.kind !== 'code') continue;
+    const old = part.lines.filter((l) => l.kind !== '+').length;
+    const now = part.lines.filter((l) => l.kind !== '-').length;
+    part.source = [
+      `@@ -${part.a},${old} +${part.b},${now} @@`,
+      ...part.lines.map((l) => l.kind + l.text),
+    ].join('\n');
+  }
+  return parts;
+};
+
+const loadReview = async ($) => {
+  const data = await crewJson($, ['changes', review.target]);
+  if (data) review.data = data;
+  if (review.commit)
+    review.commitData = await crewJson($, ['changes', review.target, '--commit', review.commit]);
+  if (review.mode === 'file' && review.file) await loadFile($);
+};
+
+const loadFile = async ($) => {
+  const got = await crewJson($, ['changes', review.target, '--file', review.file]);
+  review.lines = got?.lines ?? [];
+};
+
+const openReview = async ($, target, title) => {
+  review = {
+    target,
+    title,
+    data: null,
+    file: null,
+    commit: null,
+    mode: 'diff',
+    top: 0,
+    hits: null,
+    lines: [],
+  };
+  await loadReview($);
+  await $.ui.open({ id: REVIEW_PANE, title: 'Review · ' + title, focus: true });
+  $.ui.invalidate('ui.render');
+};
+
+const pickFile = async ($, path) => {
+  review.file = path;
+  review.top = 0;
+  if (review.mode === 'file') await loadFile($);
+  $.ui.invalidate('ui.render');
+};
+
+const pickCommit = async ($, sha) => {
+  review.commit = sha;
+  review.top = 0;
+  review.commitData = sha ? await crewJson($, ['changes', review.target, '--commit', sha]) : null;
+  $.ui.invalidate('ui.render');
+};
+
+const setMode = async ($, mode) => {
+  review.mode = mode;
+  review.top = 0;
+  if (mode === 'file') {
+    review.file ??= review.data?.files[0]?.path ?? null;
+    if (review.file) await loadFile($);
+  }
+  $.ui.invalidate('ui.render');
+};
+
+const searchCode = async ($, text) => {
+  review.hits = text.trim() ? await crewJson($, ['changes', review.target, '--grep', text]) : null;
+  $.ui.invalidate('ui.render');
+};
+
+const openHit = async ($, hit) => {
+  review.file = hit.path;
+  review.mode = 'file';
+  await loadFile($);
+  review.top = Math.max(hit.line - 4, 0);
+  $.ui.invalidate('ui.render');
+};
+
+// "42: use the helper" aims at line 42 of the file shown; without a number, at the file.
+const suggestChange = async ($, text) => {
+  const file = review.data?.files.find((f) => f.path === review.file);
+  if (!file) return $.ui.toast('Pick a file first: a suggestion is about one file');
+  const at = /^\s*(\d+)\s*[:.-]?\s*(.*)$/.exec(text);
+  const note = (at ? at[2] : text).trim();
+  if (!note) return;
+  if (await crew($, ['suggest', file.task, file.path, at ? at[1] : '-', note])) {
+    log = 'suggestion recorded';
+    await loadReview($);
+    $.ui.invalidate('ui.render');
+  }
+};
+
+const applyFixes = ($, ids) => {
+  for (const id of ids) {
+    void $.prompt.submit({
+      text: `Apply the open suggestions on task ${id} with \`npx crew fix ${id}\`, and tell me what the fixer did`,
+      asUser: true,
+    });
+  }
+};
+
+// What the code window scrolls over: the commit's diff, the whole diff, one file's, or the file itself.
+const reviewRows = () => {
+  if (review.mode === 'file')
+    return review.lines.map((text, i) => ({ kind: 'src', text, n: i + 1 }));
+  const files = (review.commit ? review.commitData?.files : review.data?.files) ?? [];
+  return diffRows(review.file ? files.filter((f) => f.path === review.file) : files);
+};
+
+const reviewBody = ($, { Box, Text, Button, Input, Code }, { bodyRows, inner }) => {
+  const data = review.data;
+  const head = [];
+  const line = (key, children) =>
+    head.push(
+      Box({
+        key,
+        flexDirection: 'row',
+        columnGap: S.sm,
+        alignItems: 'center',
+        flexShrink: 0,
+        children,
+      }),
+    );
+  const toggle = (key, label, isOn, onPress) =>
+    Button({ key, label: pad(label), ...(isOn ? {} : { plain: true }), onPress });
+
+  const files = data?.files ?? [];
+  const added = files.reduce((n, f) => n + f.added, 0);
+  const removed = files.reduce((n, f) => n + f.removed, 0);
+  line('review-title', [
+    Text({ bold: true, color: C.ink, wrap: 'truncate', children: [review.title] }),
+    Text({
+      color: C.mut,
+      children: [
+        `${files.length} files · +${added} −${removed} · ${data?.commits.length ?? 0} commits`,
+      ],
+    }),
+    toggle('mode-diff', 'Diff', review.mode === 'diff', () => setMode($, 'diff')),
+    toggle('mode-file', 'File', review.mode === 'file', () => setMode($, 'file')),
+    Button({
+      key: 'review-refresh',
+      label: pad('↻'),
+      plain: true,
+      onPress: async () => {
+        await loadReview($);
+        $.ui.invalidate('ui.render');
+      },
+    }),
+  ]);
+  for (const miss of data?.missing ?? [])
+    line('missing-' + miss.task, [
+      Text({ color: C.faint, wrap: 'truncate', children: [`${miss.task}: ${miss.reason}`] }),
+    ]);
+
+  if (review.mode === 'diff')
+    line('file-all', [toggle('file-all-btn', 'All files', !review.file, () => pickFile($, null))]);
+  const shownFiles = review.showAllFiles ? files : files.slice(0, MAX_FILES);
+  for (const f of shownFiles) {
+    const mark = { added: 'A', deleted: 'D', renamed: 'R' }[f.status] ?? 'M';
+    const warn = f.scope === 'outside' ? ' ⚠ outside files:' : '';
+    const who = data.kind === 'group' ? ` · ${f.task}` : '';
+    line('file-' + f.task + '-' + f.path, [
+      toggle('pick-' + f.task + '-' + f.path, `${mark} ${f.path}`, review.file === f.path, () =>
+        pickFile($, f.path),
+      ),
+      Text({
+        color: f.scope === 'outside' ? C.amb : C.mut,
+        wrap: 'truncate',
+        children: [
+          `+${f.added} −${f.removed}${f.uncommitted ? ' · uncommitted' : ''}${who}${warn}`,
+        ],
+      }),
+    ]);
+  }
+  if (files.length > MAX_FILES)
+    line('files-more', [
+      Button({
+        key: 'files-more-btn',
+        label: pad(review.showAllFiles ? 'fewer' : `${files.length - MAX_FILES} more`),
+        plain: true,
+        onPress: () => {
+          review.showAllFiles = !review.showAllFiles;
+          $.ui.invalidate('ui.render');
+        },
+      }),
+    ]);
+
+  if (review.mode === 'diff') {
+    const commits = data?.commits ?? [];
+    line('commits-all', [
+      toggle('commit-all', 'All changes', !review.commit, () => pickCommit($, null)),
+      Text({ color: C.mut, children: [commits.length > 1 ? 'or step through a commit:' : ''] }),
+    ]);
+    for (const c of commits.slice(0, MAX_COMMITS))
+      line('commit-' + c.short, [
+        toggle('commit-btn-' + c.short, `${c.short} ${c.subject}`, review.commit === c.sha, () =>
+          pickCommit($, c.sha),
+        ),
+        Text({
+          color: C.faint,
+          wrap: 'truncate',
+          children: [c.when + (data.kind === 'group' ? ' · ' + c.task : '')],
+        }),
+      ]);
+  }
+
+  line('search', [
+    Input({
+      key: 'review-search',
+      placeholder: 'Search the code on the branch',
+      submitLabel: 'Search',
+      onSubmit: (text) => searchCode($, text),
+    }),
+  ]);
+  if (review.hits) {
+    if (!review.hits.hits.length)
+      line('hits-none', [Text({ color: C.mut, children: ['No match on the branch'] })]);
+    review.hits.hits.slice(0, MAX_HITS).forEach((hit, i) =>
+      line('hit-' + i, [
+        Button({
+          key: 'hit-btn-' + i,
+          label: pad(`${hit.path}:${hit.line}`),
+          plain: true,
+          onPress: () => openHit($, hit),
+        }),
+        Text({ color: C.mut, wrap: 'truncate', children: [hit.text] }),
+      ]),
+    );
+  }
+
+  const open = data?.suggestions ?? [];
+  if (review.file)
+    line('suggest', [
+      Input({
+        key: 'review-suggest',
+        placeholder: `Suggest a change to ${review.file} — "42: use the helper"`,
+        submitLabel: 'Suggest',
+        onSubmit: (text) => suggestChange($, text),
+      }),
+    ]);
+  if (open.length) {
+    const ids = [...new Set(open.map((s) => s.task))];
+    line('suggestions', [
+      Text({
+        color: C.amb,
+        children: [`${open.length} suggestion${open.length > 1 ? 's' : ''} waiting for the fixer`],
+      }),
+      Button({
+        key: 'apply-fixes',
+        label: 'Apply',
+        variant: 'primary',
+        onPress: () => applyFixes($, ids),
+      }),
+    ]);
+  }
+  head.push(
+    Text({
+      key: 'review-rule',
+      color: C.border,
+      wrap: 'truncate',
+      children: ['─'.repeat(Math.max(inner, 1))],
+    }),
+  );
+
+  // The window: as many rows as the pane leaves under the header, scrolled by the ui.scroll hook.
+  reviewHeader = head.length + 1;
+  const count = Math.max(bodyRows - reviewHeader - 2, 8);
+  reviewCount = count;
+  const rows = reviewRows();
+  review.top = nextTop(review.top, 0, rows.length, count);
+  const body = [];
+  if (!rows.length)
+    body.push(Text({ color: C.mut, children: [data ? 'Nothing changed here yet' : 'Loading…'] }));
+  else if (review.mode === 'file') {
+    const slice = rows.slice(review.top, review.top + count);
+    body.push(
+      Code({
+        key: 'review-code',
+        source: slice.map((r) => r.text).join('\n'),
+        path: review.file,
+        startLine: review.top + 1,
+        wrap: 'truncate-end',
+      }),
+    );
+  } else {
+    windowParts(rows, review.top, count).forEach((part, i) =>
+      body.push(
+        part.kind === 'file'
+          ? Text({
+              key: 'part-' + i,
+              bold: true,
+              color: C.ink,
+              wrap: 'truncate',
+              children: [part.path],
+            })
+          : Code({
+              key: 'part-' + i,
+              source: part.source,
+              path: part.path,
+              format: 'diff',
+              wrap: 'truncate-end',
+            }),
+      ),
+    );
+  }
+  const shown = rows.length
+    ? `${review.top + 1}–${Math.min(review.top + count, rows.length)} of ${rows.length}`
+    : '';
+  body.push(Text({ key: 'review-pos', color: C.faint, children: [shown] }));
+  return [...head, ...body];
 };
 
 // Agreement is what approval signs; context informs it; the build record is appended by the worker later.
@@ -878,6 +1269,17 @@ export function register(on) {
     return next(e);
   });
 
+  // The review pane scrolls its code window itself, under a header that stays put.
+  on('ui.scroll', { component: 'Pane' }, async ($, e, next) => {
+    if (e.requestId !== REVIEW_PANE || !review) return next(e);
+    if (e.pointer && e.pointer.row < reviewHeader) return next(e);
+    const top = nextTop(review.top, e.by, reviewRows().length, reviewCount);
+    if (top === review.top) return next(e);
+    review.top = top;
+    $.ui.invalidate('ui.render');
+    return {};
+  });
+
   on('command.run', { command: 'pitwall' }, async ($) => {
     await openWall($, true);
     return {};
@@ -899,6 +1301,24 @@ export function register(on) {
   });
 
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
+    if (e.requestId === REVIEW_PANE) {
+      const ui = $.ui.resolve(e);
+      if (!review)
+        return ui.Text({
+          color: C.mut,
+          children: ['Open a review from a task or a group in the pit wall.'],
+        });
+      const width = e.props.bodyColumns ?? 80;
+      return ui.Box({
+        flexDirection: 'column',
+        padding: S.sm,
+        rowGap: 0,
+        children: reviewBody($, ui, {
+          bodyRows: e.props.scroll?.bodyRows ?? 40,
+          inner: width - S.sm * 2,
+        }),
+      });
+    }
     if (e.requestId !== PANE && e.requestId !== SPEC_PANE) return next(e);
     if (!isLoaded) await loadBoard($);
     const width = e.props.bodyColumns ?? 80;
@@ -1065,6 +1485,16 @@ export function register(on) {
           ]
         : []),
       ...runControls,
+      ...(task?.branch && !['draft', 'approved'].includes(status)
+        ? [
+            Button({
+              key: 'review-task',
+              label: pad('Review changes'),
+              plain: true,
+              onPress: () => openReview($, task.id, `${task.id} ${task.title}`),
+            }),
+          ]
+        : []),
     ];
     const specHeader = row(
       [

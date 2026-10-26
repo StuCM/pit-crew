@@ -239,6 +239,8 @@ into tasks". See [Planning](#planning).
 | `crew task <id> question [--affects ids] <q>` | a reviewer's doubt about the group's approach: blocks the task, puts the question on the work's card, and holds the tasks it names from dispatch until answered |
 | `crew work <slug> answer <c1\|r1> <answer>` | record the person's answer to a challenge point or a raised question |
 | `crew work <slug> order <id,…>` / `pilot <id\|none>` | the group's build order, and the one task built first while the rest wait |
+| `crew changes <id\|slug>` | what a task or group changed, read from git: files, commits, `--commit <sha>`, `--file <path>`, `--grep <text>` |
+| `crew suggest <id> <path> <line\|-> <note>` | a change for the fixer, aimed at the commit that wrote that line |
 | `crew fix <id>` | apply a task's open suggestions to its branch with the fixer |
 | `crew log <task> <event>` | append one line to the cost log |
 | `crew commit-msg <file>` | the commit convention (git hook) |
@@ -533,6 +535,24 @@ its spec in its own pane: the title and status, then the Spec, Context,
 Build record and Diagrams tabs, with editing, approve and sign-off. The
 diagrams are Markdown: steps against the files they touch, the behaviour
 flow, and the task's part from the plan. Nothing is drawn as SVG.
+
+**Reviewing what changed.** Review changes on a running or finished task,
+or Review the group on a piece of work, opens a third pane. It reads git
+only, so the worktree never needs opening:
+
+- the files changed, each with its counts, uncommitted work marked and a ⚠
+  on any outside `files:`. In a group, each file says which task changed it
+- the commits: All changes as one diff, or one commit at a time to step
+  through what the worker did
+- **Diff** or **File**: the diff, or the whole file as the branch has it,
+  numbered
+- a search of the code on the branch, each hit opening the file at its line
+- **Suggest**: `42: use the helper` records a change on that line of the
+  file shown, aimed at the commit that wrote it. **Apply** asks the session
+  to run `crew fix`, which folds it into that commit and keeps the history
+  clean.
+
+The header stays put and the code window under it scrolls on its own.
 
 **What it costs while it sits there.** Every 15 seconds, and only while one
 of its panes is open, it lists the tasks folder and compares file times.
