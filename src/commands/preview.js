@@ -14,6 +14,7 @@ import { readLiveTasks } from '../lib/worktrees.js';
 import {
   applyOverlay,
   editsIn,
+  newFiles,
   peekEdits,
   previewConfig,
   readPreview,
@@ -121,7 +122,7 @@ const init = (cfg, pv) => {
 /** What the preview shows and the edits made there, read without writing a file. */
 export const status = (cfg, pv) => {
   if (!existsSync(pv.dir)) return { error: 'no preview yet' };
-  return { dir: pv.dir, state: readPreview(pv), edits: peekEdits(pv) };
+  return { dir: pv.dir, state: readPreview(pv), edits: peekEdits(pv), newFiles: newFiles(pv) };
 };
 
 // Which task each edited file belongs to: in a group, the one whose branch changed it.
@@ -255,13 +256,11 @@ const keep = (cfg, pv, to) => {
       `${busy.join(', ')} ${busy.length > 1 ? 'are' : 'is'} still being built or reviewed — keep once it stops`,
     );
 
-  git(['add', '-A'], pv.dir);
   const results = ids.map((id) => {
     const files = paths.filter((p) => owner[p] === id);
-    const patch = git(['diff', '--cached', '--binary', '--', ...files], pv.dir) ?? '';
+    const patch = git(['diff', '--binary', 'HEAD', '--', ...files], pv.dir) ?? '';
     return foldInto(cfg, findTask(cfg, id), files, patch);
   });
-  git(['reset', '-q'], pv.dir);
 
   // What was kept leaves the preview; what failed stays for another try.
   for (const r of results.filter((x) => x.ok)) {
@@ -294,10 +293,7 @@ const drop = (pv) => {
   const off = removeOverlay(pv);
   if (off.error) return refuse(off.error);
   const edits = editsIn(pv);
-  for (const e of edits) {
-    if (e.code === '??') rmSync(join(pv.dir, e.path), { force: true });
-    else git(['checkout', '-q', 'HEAD', '--', e.path], pv.dir);
-  }
+  for (const e of edits) git(['checkout', '-q', 'HEAD', '--', e.path], pv.dir);
   applyOverlay(pv);
   say([
     edits.length
@@ -335,6 +331,8 @@ export const run = (cfg, args = []) => {
       s.edits?.length
         ? `  edited: ${s.edits.map((e) => e.path).join(', ')} — keep or drop`
         : '  no edits',
+      s.newFiles?.length &&
+        `  new files, which keep and drop leave alone (git add one on the task's branch if it belongs there): ${s.newFiles.slice(0, 10).join(', ')}`,
     ]);
     return 0;
   }

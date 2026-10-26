@@ -122,13 +122,28 @@ export const removeOverlay = (pv) => {
   return { ok: true };
 };
 
-/** The person's own edits in the preview, the overlay already off: tracked changes and new files. */
-export const editsIn = (pv) =>
-  // Porcelain's leading space is part of the status, so the lines are not trimmed.
-  (git(['status', '--porcelain', '--untracked-files=all'], pv.dir) ?? '')
+// Porcelain's leading space is part of the status, so its lines are not trimmed.
+const porcelain = (pv, untracked) =>
+  (git(['status', '--porcelain', `--untracked-files=${untracked}`], pv.dir) ?? '')
     .split('\n')
     .filter(Boolean)
     .map((line) => ({ code: line.slice(0, 2), path: line.slice(3).replace(/^"|"$/g, '') }));
+
+/**
+ * The person's edits to tracked files, the overlay already off. Untracked
+ * files are left out on purpose: a running stack writes them (builds,
+ * uploads, logs), and keeping or dropping them would commit or destroy its
+ * output.
+ */
+export const editsIn = (pv) => porcelain(pv, 'no');
+
+/** Untracked files other than the overlay's, for status to mention: never kept, dropped or blocking. */
+export const newFiles = (pv) => {
+  const laid = new Set(overlayFiles(pv));
+  return porcelain(pv, 'all')
+    .filter((e) => e.code === '??' && !laid.has(e.path))
+    .map((e) => e.path);
+};
 
 // One file's hunks in a unified diff, without the headers that vary (index lines, modes).
 const hunksOf = (diff, path) => {

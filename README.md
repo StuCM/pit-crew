@@ -640,6 +640,11 @@ reviewed, and it notes the edit under the task's **Review rounds**, since no
 reviewer saw it. `crew preview drop` throws the edits away. Nothing switches
 while the preview has edits of its own.
 
+Keep, drop and switching only ever touch tracked files. Untracked files are
+what a running stack writes (builds, uploads, logs), so they are never
+committed, deleted or allowed to block a switch; status lists them, and a
+new file that belongs on the task's branch is added there by hand.
+
 `crew preview status` reads all this without writing a file, so the pit
 wall can show it without reloading the stack.
 

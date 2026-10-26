@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { run } from '../src/commands/preview.js';
 import { globToRegex } from '../src/lib/preview.js';
@@ -39,6 +39,7 @@ const fixture = () => {
   sh(root, 'config', 'user.name', 't');
   writeFileSync(join(root, 'app.txt'), 'one\ntwo\nthree\n');
   writeFileSync(join(root, 'lib.txt'), 'lib\n');
+  writeFileSync(join(root, 'misc.txt'), 'misc\n');
   writeFileSync(join(root, 'settings.py'), 'DEBUG = False\n');
   writeTask(root, '007-thing.md', taskFor('007', 'thing', 'app.txt'));
   writeTask(root, '008-other.md', taskFor('008', 'other', 'lib.txt'));
@@ -83,6 +84,14 @@ const fixture = () => {
 };
 
 const read = (path) => readFileSync(path, 'utf8');
+// A file on a branch, or null when the branch does not have it.
+const onBranch = (root, branch, path) => {
+  try {
+    return sh(root, 'show', `${branch}:${path}`);
+  } catch {
+    return null;
+  }
+};
 
 test('globs match the way afterSwitch writes them', () => {
   assert.ok(globToRegex('**/*.{js,vue}').test('src/a/b.vue'));
@@ -142,10 +151,10 @@ test('drop throws the edits away and keeps the overlay', () => {
   quietly(() => run(cfg, ['init']));
   quietly(() => run(cfg, ['7']));
   writeFileSync(join(dir, 'app.txt'), 'scratch\n');
-  writeFileSync(join(dir, 'new.txt'), 'scratch\n');
+  writeFileSync(join(dir, 'build.log'), 'the stack wrote this\n');
   assert.equal(quietly(() => run(cfg, ['drop'])).code, 0);
   assert.equal(read(join(dir, 'app.txt')), 'one\nTWO\nthree\nfour\n');
-  assert.equal(existsSync(join(dir, 'new.txt')), false);
+  assert.equal(existsSync(join(dir, 'build.log')), true, 'what the stack wrote is never deleted');
   assert.equal(read(join(dir, '.env')), 'PROJECT_NAME=x\n');
 });
 
@@ -158,12 +167,12 @@ test('a group preview merges its branches, and an edit goes to the task that cha
   assert.equal(read(join(dir, 'lib.txt')), 'lib\nmore\n');
 
   writeFileSync(join(dir, 'lib.txt'), 'lib\nmore!\n');
-  writeFileSync(join(dir, 'notes.txt'), 'todo\n');
+  writeFileSync(join(dir, 'misc.txt'), 'edited\n');
   const unclear = quietly(() => run(cfg, ['keep']));
   assert.equal(unclear.code, 1);
-  assert.match(unclear.err, /notes\.txt \(no task changed it\) — say with --to/);
+  assert.match(unclear.err, /misc\.txt \(no task changed it\) — say with --to/);
 
-  rmSync(join(dir, 'notes.txt'));
+  writeFileSync(join(dir, 'misc.txt'), 'misc\n');
   const kept = quietly(() => run(cfg, ['keep']));
   assert.equal(kept.code, 0, kept.err);
   assert.equal(sh(root, 'show', 'crew/008-other:lib.txt'), 'lib\nmore!');
@@ -229,4 +238,18 @@ test('status reads the edits without writing, so a running stack is not reloaded
   assert.deepEqual(edits.sort(), ['app.txt', 'settings.py']);
   assert.equal(statSync(settings).mtimeMs, after, 'status wrote nothing');
   assert.ok(after >= before);
+});
+
+test('files the stack writes neither block a switch nor get kept onto a branch', () => {
+  const { root, dir, cfg } = fixture();
+  quietly(() => run(cfg, ['init']));
+  quietly(() => run(cfg, ['7']));
+  writeFileSync(join(dir, 'bundle.js'), 'built\n');
+  writeFileSync(join(dir, 'app.txt'), 'one\nTWO\nthree\nfour\nfive\n');
+  const status = JSON.parse(quietly(() => run(cfg, ['status', '--json'])).out);
+  assert.deepEqual(status.newFiles, ['bundle.js']);
+  assert.equal(quietly(() => run(cfg, ['keep'])).code, 0);
+  assert.equal(onBranch(root, 'crew/007-thing', 'bundle.js'), null);
+  assert.equal(quietly(() => run(cfg, ['main'])).code, 0);
+  assert.equal(read(join(dir, 'bundle.js')), 'built\n');
 });
