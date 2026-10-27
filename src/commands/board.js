@@ -10,6 +10,9 @@ import { branches } from '../lib/git.js';
 import { readLiveTasks } from '../lib/worktrees.js';
 import { statuses } from '../lib/config.js';
 import { snapshot } from '../lib/wall.js';
+import { groupView } from './work.js';
+import { previewConfig } from '../lib/preview.js';
+import { status as previewStatus } from './preview.js';
 
 // Waiting on a person first — it is the only category they can act on now.
 const rank = (status, known) => {
@@ -20,6 +23,12 @@ const rank = (status, known) => {
   if (meta.terminal) return 3;
   return 2;
 };
+
+// A blocked task says who stopped it and why; anything else, what its status waits on.
+export const waitReason = (task, known) =>
+  task.meta.status === 'blocked' && task.meta.blocked
+    ? `${task.meta['blocked-by'] ?? 'stopped'}: ${task.meta.blocked}`
+    : known[task.meta.status].waitsOnUser;
 
 export const render = (tasks, known, live, cfg) => {
   const ordered = [...tasks].sort((a, b) => {
@@ -49,7 +58,7 @@ export const render = (tasks, known, live, cfg) => {
   out.push('', '## Waiting on you', '');
   if (waiting.length) {
     for (const task of waiting) {
-      out.push(`- **${task.id} ${task.title}** — ${known[task.meta.status].waitsOnUser}`);
+      out.push(`- **${task.id} ${task.title}** — ${waitReason(task, known)}`);
     }
   } else {
     out.push('Nothing.');
@@ -75,7 +84,7 @@ export const render = (tasks, known, live, cfg) => {
 
 export const run = (cfg, args = []) => {
   if (args.includes('--json')) {
-    const { tasks } = snapshot(cfg);
+    const { tasks, works } = snapshot(cfg);
     console.log(
       JSON.stringify({
         project: cfg.project,
@@ -83,6 +92,8 @@ export const run = (cfg, args = []) => {
         tasksDir: join(cfg.root, cfg.tasksDir),
         statuses: statuses(cfg),
         tasks,
+        works: works.map(groupView),
+        preview: previewConfig(cfg) ? previewStatus(cfg, previewConfig(cfg)) : null,
       }),
     );
     return 0;

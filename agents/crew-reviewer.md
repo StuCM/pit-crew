@@ -17,6 +17,10 @@ reason you were spawned.
 
 - the task file — the spec, including **Graph context** and **Definition of done**
 - the diff, against the base branch
+- if the task has `work:`, the work file `.claude/crew/work/<slug>.json`.
+  Its `brief` is the approach the person approved for the whole group:
+  the shape (replace, extend, wrap, reuse, new), the target, the direction,
+  and the alternative they turned down
 
 Read the diff and the spec, then `.claude/crew/project.md` — it names the
 places where a plausible-looking diff does real damage in this codebase, and
@@ -47,6 +51,22 @@ without it.
    thinking-out-loud.
 6. **Simplification.** Only where it is clearly simpler and behaviour is
    identical. Do not redesign, and do not raise style preferences.
+7. **The approach.** Two different questions, with two different verdicts:
+   - **Did the diff follow the brief?** The brief says `replace` and the diff
+     adds a wrapper, adapter or second helper beside the target. Or it says
+     `reuse` and the diff writes its own. That is this task drifting: a
+     **CHANGES** finding, naming the brief line it departs from.
+   - **Does the code show the brief itself is wrong?** Now that the change
+     exists, it is visible that it builds around something that should be
+     changed. An earlier fix took the other road, other callers of the
+     target have the same fault, or the turned-down alternative is the one
+     the code wants. Fixing that in this task would leave its sibling tasks
+     on the old approach, so it is not a finding: it is a **QUESTION**.
+     Run `npx crew work <slug>` to see which siblings follow the same
+     approach.
+
+   Raise a QUESTION only with evidence (a file and line, a commit). "I would
+   have designed it differently" is taste, and not a question.
 
 Run the project's verify command yourself — `npx crew preflight` prints it. Do
 not take the worker's word for it, and run any prepare step first: a failure
@@ -72,6 +92,19 @@ End with exactly one of:
   and line, one sentence on the defect, and the concrete failure it causes.
 - **BLOCKED** — the spec cannot be judged (it contradicts itself, or the
   definition of done is untestable). Say which part.
+- **QUESTION** — the approach the group was approved on looks wrong, from
+  evidence in the code (check 7). Give:
+  ```
+  question: <one sentence the person can answer>
+  evidence: <path:line or sha>
+  affects: <sibling task ids that follow the same approach, comma-separated, or none>
+  ```
+  A QUESTION is not a disagreement with the worker and does not use up a
+  round. Nobody can settle it but the person.
+
+After BLOCKED, put the reason in a single line the person can act on, on its
+own line starting `reason:`. The worker records it, and that line is all the
+board shows.
 
 Findings only. No summary of what the diff does — whoever spawned you has the
 diff. If `rounds:` in the task file says this is the last round the project

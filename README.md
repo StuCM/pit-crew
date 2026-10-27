@@ -203,6 +203,7 @@ offered a plan.
 | `/crew:crew-close` | orchestrator | verify the gate stamp, **stop for your approval**, merge, write the graph, deploy or queue |
 | `crew-worker` | the task session | not for you to invoke — it is the brief `/crew:crew-run` hands over |
 | `crew-scout` | the orchestrator | a read-only agent that finds prior fixes, helpers, call sites and graph chains before a spec is written |
+| `crew-challenger` | the orchestrator | a read-only agent that questions a piece of work's approach before you approve it: building around code that should be replaced, the wrong shape, or something you only floated taken as decided |
 | `crew-reviewer` | the task session | a read-only agent, spawned by the worker after the gate passes |
 
 The two skills you never call yourself are the point of the design: the worker
@@ -232,7 +233,18 @@ into tasks". See [Planning](#planning).
 | `crew scope <task> [base]` | changed files against the spec's `files:` |
 | `crew review <task>` | open a round, refusing one past the limit |
 | `crew board` | render `BOARD.md` from the task files |
+| `crew work [slug]` | a piece of work's decision card (shape, direction, the road not taken, the challenge) and its tasks in build order |
+| `crew work <slug> approve` | approve the card and every draft task in it; refuses while a challenge point is unanswered |
+| `crew task <id> block <who> <reason>` | stop a task, saying who stopped it and why; the board and pit wall show that line |
+| `crew task <id> question [--affects ids] <q>` | a reviewer's doubt about the group's approach: blocks the task, puts the question on the work's card, and holds the tasks it names from dispatch until answered |
+| `crew work <slug> answer <c1\|r1> <answer>` | record the person's answer to a challenge point or a raised question |
+| `crew work <slug> order <id,…>` / `pilot <id\|none>` | the group's build order, and the one task built first while the rest wait |
+| `crew changes <id\|slug>` | what a task or group changed, read from git: files, commits, `--commit <sha>`, `--file <path>`, `--grep <text>` |
+| `crew suggest <id> <path> <line\|-> <note>` | a change for the fixer, aimed at the commit that wrote that line |
 | `crew fix <id>` | apply a task's open suggestions to its branch with the fixer |
+| `crew preview init` | create the preview worktree, from `preview` in `.claude/crew.local.json` |
+| `crew preview <id>` / `group <slug>` / `main` | point the one running preview at a task, a group merged over the base, or the base |
+| `crew preview status` / `keep [--to <id>]` / `drop` | the edits made in the preview; fold them into the task's commits, or throw them away |
 | `crew log <task> <event>` | append one line to the cost log |
 | `crew commit-msg <file>` | the commit convention (git hook) |
 | `crew pre-commit` | staged-file format and lint (git hook) |
@@ -501,8 +513,16 @@ panel beside the conversation. Close it and it stays closed for that
 session; the **Pit wall** button or `/pitwall` brings it back. Where the
 pane sits is the app's choice: a mod can open a pane but not pick its slot.
 
-Its board is the crew list: every task as a plain row in one of four
-sections by who has it.
+It opens on **Groups**: each piece of work as a header that folds, with its
+shape, how many tasks are done or running, ⚑ for each waiting on you and ?
+for each open reviewer question. Unfolded, it shows Approve group (or what
+is missing before it can be approved), the open questions with the tasks
+they hold, and the tasks in build order. A task not started yet has ↑ ↓ to
+reorder it and pilot to build it first. Tasks with no group sit under
+Ungrouped.
+
+**Crew** switches to the list by role: every task as a plain row in one of
+four sections by who has it.
 
 | Section | Statuses |
 | --- | --- |
@@ -512,11 +532,30 @@ sections by who has it.
 | Done | `done` (the five newest), `pending-<env>` |
 
 Each row is its mark (● running, ✔ done, ○ waiting), a button with the id and
-title, its status, and a ⚑ with what it needs from you. Click a row to open
+title, its status, and a ⚑ with what it needs from you. A blocked task says
+who stopped it and why: `⚑ reviewer: wraps post_save instead of replacing it`. Click a row to open
 its spec in its own pane: the title and status, then the Spec, Context,
 Build record and Diagrams tabs, with editing, approve and sign-off. The
 diagrams are Markdown: steps against the files they touch, the behaviour
 flow, and the task's part from the plan. Nothing is drawn as SVG.
+
+**Reviewing what changed.** Review changes on a running or finished task,
+or Review the group on a piece of work, opens a third pane. It reads git
+only, so the worktree never needs opening:
+
+- the files changed, each with its counts, uncommitted work marked and a ⚠
+  on any outside `files:`. In a group, each file says which task changed it
+- the commits: All changes as one diff, or one commit at a time to step
+  through what the worker did
+- **Diff** or **File**: the diff, or the whole file as the branch has it,
+  numbered
+- a search of the code on the branch, each hit opening the file at its line
+- **Suggest**: `42: use the helper` records a change on that line of the
+  file shown, aimed at the commit that wrote it. **Apply** asks the session
+  to run `crew fix`, which folds it into that commit and keeps the history
+  clean.
+
+The header stays put and the code window under it scrolls on its own.
 
 **What it costs while it sits there.** Every 15 seconds, and only while one
 of its panes is open, it lists the tasks folder and compares file times.
@@ -555,6 +594,59 @@ login `claude` has on your machine, so on a Pro or Max subscription its runs
 count against that plan's usage limits, not the API. The exception is
 `ANTHROPIC_API_KEY`: if it is set, it takes precedence and every run is
 billed to the API. Set `CREW_CLAUDE` if `claude` is not on your `PATH`.
+
+## The preview
+
+Trying a task usually means switching branches in the checkout you work in,
+or running another copy of the stack for each worktree. The preview is one
+copy of the app that you point at whatever you want to try: a task, a whole
+group merged over the base, or the base itself. It is a detached worktree of
+the repository, so your own checkout never moves and the stack you started
+there keeps running and reloading as the code under it changes.
+
+It is set up per machine, in `.claude/crew.local.json`, which is never
+committed and is read over `crew.config.json`:
+
+```json
+{
+  "preview": {
+    "dir": "../coral-arches-preview",
+    "start": "arches-toolkit dev",
+    "overlay": "../coral-preview-overlay"
+  }
+}
+```
+
+- **`overlay`** is a folder laid over every switch: its files are copied in
+  untracked (a `.env`, an `apps.yaml`), and a `patch.diff` in it is applied
+  to tracked files (an env-overrides block in `settings.py`). This is how a
+  project runs under a stack its committed code is not set up for, such as
+  coral under the new arches-toolkit, without committing that set-up.
+- **`afterSwitch`**, optional, runs a command after a switch that changed
+  files matching `when`, for what the stack does not reload by itself:
+  `[{ "when": "**/*.{js,vue}", "run": "make webpack" }]` on a stack with no
+  watcher. A stack with hot reload needs none.
+- A switch warns when migrations or dependencies changed: the preview has
+  one database, so a task's migrations stay applied when you move on.
+
+**A quick fix while trying something.** Edit in the preview folder; the
+stack reloads and you see it at once. Then `crew preview keep` (or **Keep**
+on the pit wall's preview line) puts the edit on the task's branch, as a
+fixup of the last commit that touched each file, folded in so the history
+reads as if it had been right first time. In a group preview each file goes
+to the task that changed it, and `--to <id>` settles a file no task or
+several tasks changed. It refuses while the task is still being built or
+reviewed, and it notes the edit under the task's **Review rounds**, since no
+reviewer saw it. `crew preview drop` throws the edits away. Nothing switches
+while the preview has edits of its own.
+
+Keep, drop and switching only ever touch tracked files. Untracked files are
+what a running stack writes (builds, uploads, logs), so they are never
+committed, deleted or allowed to block a switch; status lists them, and a
+new file that belongs on the task's branch is added there by hand.
+
+`crew preview status` reads all this without writing a file, so the pit
+wall can show it without reloading the stack.
 
 ## The memory graph
 

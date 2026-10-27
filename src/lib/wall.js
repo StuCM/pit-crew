@@ -103,6 +103,8 @@ export const taskView = (root, task) => {
     branch: task.meta.branch ?? null,
     part: task.meta.part ?? null,
     work: task.meta.work ?? null,
+    blocked: task.meta.blocked ?? null,
+    blockedBy: task.meta['blocked-by'] ?? null,
     files,
     goal: part.Goal ?? '',
     background: part.Background ?? '',

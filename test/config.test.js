@@ -111,6 +111,6 @@ test('an unreachable environment creates its own pending status', () => {
   assert.ok(known.building.inFlight && known.review.inFlight);
 });
 
-test('the blocked reason quotes the configured round limit', () => {
-  assert.match(statuses(config('/x', { reviewRounds: 3 })).blocked.waitsOnUser, /3 review rounds/);
+test('blocked on its own waits on the person; the task carries the reason', () => {
+  assert.match(statuses(config('/x')).blocked.waitsOnUser, /needs your call/);
 });

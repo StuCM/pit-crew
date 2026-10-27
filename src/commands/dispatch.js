@@ -11,6 +11,8 @@ import { setField } from '../lib/task.js';
 import { run as board } from './board.js';
 import { run as log } from './log.js';
 import { findCollisions } from './preflight.js';
+import { heldBy, pilotHolds, workPath } from './work.js';
+import { readWorks } from '../lib/wall.js';
 
 // board and log report on stdout, which --json keeps for the result alone.
 const quietly = (fn) => {
@@ -30,6 +32,25 @@ const quietly = (fn) => {
 export const dispatch = (cfg, task, { force = false } = {}) => {
   if (task.meta.status !== 'approved') {
     return { ok: false, reason: `task ${task.id} is ${task.meta.status}, not approved` };
+  }
+
+  // A reviewer's question about the approach holds every task it names, so
+  // the next one is not built on the approach in doubt.
+  const work = task.meta.work && readWorks(cfg.root).find((w) => w.slug === task.meta.work);
+  const held = work && heldBy(work, task.id);
+  if (!force && held) {
+    return {
+      ok: false,
+      reason: `held by an open question from task ${held.task}: ${held.q} — answer it with crew work ${work.slug} answer`,
+    };
+  }
+
+  const pilot = work && pilotHolds(cfg, work, task);
+  if (!force && pilot) {
+    return {
+      ok: false,
+      reason: `${pilot.id} pilots ${work.slug} and is ${pilot.meta.status}: the rest wait until it is done`,
+    };
   }
 
   const collisions = findCollisions(cfg, task);
@@ -62,7 +83,9 @@ export const dispatch = (cfg, task, { force = false } = {}) => {
   // .claude/ is gitignored, so a fresh worktree has none of what the gate
   // reads, nor a spec that was never committed.
   const copied = [];
-  for (const rel of [CONFIG_PATH, cfg.projectBrief, relative(cfg.root, task.path)]) {
+  const briefFile = work ? relative(cfg.root, workPath(cfg.root, work.slug)) : null;
+  for (const rel of [CONFIG_PATH, cfg.projectBrief, relative(cfg.root, task.path), briefFile]) {
+    if (!rel) continue;
     const from = join(cfg.root, rel);
     const to = join(tree, rel);
     if (existsSync(to) || !existsSync(from)) continue;

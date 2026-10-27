@@ -1,6 +1,6 @@
 ---
 name: crew-run
-description: Hand an approved task to its own session in an isolated worktree. Use when the user says "run task N", "start building it", or approves a spec.
+description: Hand an approved task, or an approved group of them, to its own session in an isolated worktree. Use when the user says "run task N", "run the <slug> group", "start building it", or approves a spec.
 ---
 
 # Handing a task to a session
@@ -11,6 +11,22 @@ Refuse to start unless `status:` is `approved`. A `draft` goes back to
 Each task gets **its own session and its own worktree**. The orchestrator does
 not implement, does not review, and does not watch. It hands over, then reads
 the board.
+
+## A group
+
+"Run the `<slug>` group" means every approved task with `work: <slug>`, in
+the card's order (`npx crew work <slug>` lists them).
+
+- **With a pilot** (`★ pilot` on the card): dispatch the pilot alone. When
+  it reaches `done`, or `pending-<env>`, stop and ask the person to look at it
+  before the rest go: the pilot exists so a wrong approach costs one task.
+  Dispatch refuses the others until the pilot is done. Do not pass `--force`
+  to get round it unless the person says so.
+- **Without one**: dispatch them in order, each through the steps below,
+  holding back any that collides with one already in flight.
+
+A task dispatch refuses as held by an open question waits for the person's
+answer. Say which question, and carry on with the rest.
 
 ## 1. Check it can run alongside what is already in flight
 
@@ -103,8 +119,16 @@ The task file's `status:` tells you what happened:
 - `done` → the gate and review passed. Go to `/crew:crew-close`.
 - `pending-<env>` → code-complete, and only that environment can prove it. Tell
   the user what to check. The loop cannot clear this and must not pretend to.
-- `blocked` → the rounds disagreed, or the spec could not be judged. Put the
-  disagreement in front of the user in a few lines and let them settle it.
-  Do not spawn another round to break the tie.
+- `blocked` → its `blocked-by:` says who stopped it and `blocked:` says why,
+  in one line. Lead with that line, then the detail from **Review rounds**,
+  and let the user settle it. Do not spawn another round to break the tie.
+- `blocked` with `blocked: question: …` → the reviewer doubts the group's
+  approach. Show `npx crew work <slug>`, which lists the question, its
+  evidence and the tasks it holds. Ask it as it stands, without arguing for
+  the current plan: agreeing too quickly is the failure this exists to
+  catch. Record the answer with `npx crew work <slug> answer r<n> "<answer>"`.
+  If the approach holds, `npx crew task <id> sendback`. If it changed,
+  update the brief and the affected tasks first, then send back. Dispatch
+  refuses the held tasks until the question has an answer.
 
 Re-render the board after any status change.

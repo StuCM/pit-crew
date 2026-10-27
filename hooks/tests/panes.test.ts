@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing';
+import { diffRows, nextTop, windowParts } from '../register.js';
 
 const SPEC = `---
 id: 031
@@ -90,6 +91,45 @@ const BOARD = {
   ],
 };
 
+// What `crew changes` answers for task 001: one long file, one outside files:, two commits.
+const hunk = (start: number, n: number) => ({
+  header: `@@ -${start},${n} +${start},${n + 1} @@`,
+  lines: [
+    ...Array.from({ length: n }, (_, i) => ({ kind: ' ', text: `ctx ${start + i}` })),
+    { kind: '+', text: 'added' },
+  ],
+});
+const CHANGES = {
+  kind: 'task',
+  title: '001 First thing',
+  files: [
+    {
+      path: 'src/a.ts',
+      status: 'modified',
+      added: 2,
+      removed: 0,
+      scope: 'declared',
+      task: '001',
+      hunks: [hunk(1, 40), hunk(100, 40)],
+    },
+    {
+      path: 'src/stray.ts',
+      status: 'added',
+      added: 1,
+      removed: 0,
+      scope: 'outside',
+      task: '001',
+      hunks: [hunk(1, 0)],
+    },
+  ],
+  commits: [
+    { sha: 'aaaaaaa1', short: 'aaaaaaa', when: '1 hour ago', subject: 'feat: one', task: '001' },
+    { sha: 'bbbbbbb2', short: 'bbbbbbb', when: '2 hours ago', subject: 'feat: two', task: '001' },
+  ],
+  missing: [],
+  suggestions: [{ id: 's1', task: '001', status: 'open' }],
+};
+
 const planView = (layer: string) => ({
   layer,
   part: {
@@ -125,10 +165,14 @@ const stubs = (
     refuse,
     complete,
     status,
+    taskFields,
+    patch,
     panes = ['crew-wall'],
   }: {
+    patch?: (board: any) => void;
     panes?: string[];
     status?: string;
+    taskFields?: Record<string, unknown>;
     boardRun?: any;
     refuse?: string;
     complete?: (e: any) => any;
@@ -136,6 +180,8 @@ const stubs = (
 ) => {
   const board = structuredClone(BOARD);
   if (status) board.tasks[0].status = status;
+  Object.assign(board.tasks[0], taskFields);
+  patch?.(board);
   // The mod reads the time to know how old its board is; a test moves this clock itself.
   const clock = mock.clock(on);
   const seen = {
@@ -178,6 +224,38 @@ const stubs = (
     }
     seen.calls.push({ args, stdin: e.init?.stdin && JSON.parse(e.init.stdin) });
     if (refuse) return { value: { exitCode: 1, stdout: '', stderr: refuse + '\nmore' } };
+    if (args[0] === 'work') return { value: { exitCode: 0, stdout: '', stderr: '' } };
+    if (args[0] === 'changes') {
+      const [, , flag, value] = args;
+      const out =
+        flag === '--commit'
+          ? { sha: value, subject: 'one commit', files: [CHANGES.files[1]] }
+          : flag === '--file'
+            ? {
+                path: value,
+                task: '001',
+                lines: Array.from({ length: 200 }, (_, i) => `line ${i + 1}`),
+              }
+            : flag === '--grep'
+              ? {
+                  text: value,
+                  hits: [{ path: 'src/a.ts', line: 120, text: 'helper()', task: '001' }],
+                  more: 0,
+                }
+              : CHANGES;
+      return { value: { exitCode: 0, stdout: JSON.stringify(out), stderr: '' } };
+    }
+    if (args[0] === 'suggest') return { value: { exitCode: 0, stdout: 'ok', stderr: '' } };
+    if (args[0] === 'preview') {
+      if (args[1] === 'keep') board.preview.edits = [];
+      return {
+        value: {
+          exitCode: 0,
+          stdout: `preview: showing ${args.slice(1).join(' ')}\n  ⚠ migrations changed — the preview shares its database`,
+          stderr: '',
+        },
+      };
+    }
     const task = board.tasks.find((t) => t.id === args[1])!;
     if (args[2] === 'approve') task.status = 'approved';
     if (args[2] === 'signoff') task.status = 'done';
@@ -527,6 +605,20 @@ test('a blocked task shows its reason and Send back', async ($, on) => {
   await ui.unmount();
 });
 
+test('a blocked task with a reason says who stopped it and why, on its row and its page', async ($, on) => {
+  stubs(on, {
+    status: 'blocked',
+    taskFields: { blocked: 'wraps post_save instead of replacing it', blockedBy: 'reviewer' },
+  });
+  const line = '⚑ reviewer: wraps post_save instead of replacing it';
+  const wall = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  expect(await wall.find({ type: 'Text', text: line })).toBeDefined();
+  await wall.unmount();
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
+  expect(await ui.find({ type: 'Text', text: line })).toBeDefined();
+  await ui.unmount();
+});
+
 test('a done or building task offers neither', async ($, on) => {
   stubs(on, { status: 'done' });
   for (const key of ['open-001', 'open-002']) {
@@ -590,4 +682,191 @@ test('a quiet folder is still reloaded once the board is two minutes old', async
   expect(seen.boardRuns).toBe(runs);
   await clock.advance(15_000); // the next check finds it older, and reloads
   expect(seen.boardRuns).toBe(runs + 1);
+});
+
+// Three tasks in one piece of work, 003 piloting it, and one task outside any group.
+const grouped =
+  (work: Record<string, unknown> = {}) =>
+  (board: any) => {
+    for (const t of board.tasks) if (['001', '003', '004'].includes(t.id)) t.work = 'smm';
+    board.works = [
+      {
+        slug: 'smm',
+        title: 'SMM labels',
+        shape: 'replace',
+        approved: '2026-10-20',
+        problems: [],
+        order: ['003', '001', '004'],
+        pilot: '003',
+        raised: [
+          {
+            ref: 'r1',
+            task: '004',
+            from: 'reviewer',
+            q: 'Replace post_save?',
+            affects: ['001'],
+            answer: null,
+          },
+        ],
+        ...work,
+      },
+    ];
+  };
+
+test('the wall opens on groups: each in build order, with its pilot, its questions and what waits', async ($, on) => {
+  stubs(on, { patch: grouped() });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  expect(await ui.find({ key: 'group-smm' })).toBeDefined();
+  expect(
+    await ui.find({ type: 'Text', text: /replace · 0\/3 done · 1 running · ⚑ 1 · \? 1/ }),
+  ).toBeDefined();
+  expect(
+    await ui.find({ type: 'Text', text: '? r1 reviewer on 004: Replace post_save? · holds 001' }),
+  ).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: '★ pilot' })).toBeDefined();
+  expect(await ui.find({ key: 'group-none' })).toBeDefined();
+  expect(await ui.find({ key: 'up-003' })).toBeUndefined();
+  expect(await ui.find({ key: 'down-003' })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: /^Scout · / })).toBeUndefined();
+  await ui.unmount();
+});
+
+test('arrows reorder a group, pilot moves the pilot, and a header folds its group', async ($, on) => {
+  const seen = stubs(on, { patch: grouped() });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  await ui.press({ key: 'down-003' });
+  await ui.press({ key: 'pilot-001' });
+  expect(seen.calls.map((c) => c.args)).toEqual([
+    ['work', 'smm', 'order', '001,003,004'],
+    ['work', 'smm', 'pilot', '001'],
+  ]);
+  await ui.press({ key: 'group-smm' });
+  expect(await ui.find({ key: 'open-003' })).toBeUndefined();
+  await ui.press({ key: 'view-crew' });
+  expect(await ui.find({ type: 'Text', text: /^Scout · / })).toBeDefined();
+  await ui.unmount();
+});
+
+test('an unapproved group offers Approve group when ready, and says why when not', async ($, on) => {
+  const seen = stubs(on, { patch: grouped({ approved: null }) });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  await ui.press({ key: 'approve-smm' });
+  expect(seen.calls.map((c) => c.args)).toEqual([['work', 'smm', 'approve']]);
+  expect(seen.submitted).toEqual(['Run the smm group with /crew:crew-run']);
+  await ui.unmount();
+});
+
+test('a group that is not ready to approve names what is missing', async ($, on) => {
+  stubs(on, { patch: grouped({ approved: null, problems: ['brief.direction is empty'] }) });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  expect(await ui.find({ key: 'approve-smm' })).toBeUndefined();
+  expect(
+    await ui.find({ type: 'Text', text: 'Not ready: brief.direction is empty' }),
+  ).toBeDefined();
+  await ui.unmount();
+});
+
+const reviewing = (board: any) => {
+  board.tasks[0].status = 'building';
+  board.tasks[0].branch = 'crew/001-first';
+};
+
+test('a running task opens a review of its files and commits, the stray file flagged', async ($, on) => {
+  const seen = stubs(on, { patch: reviewing, panes: ['crew-wall', 'crew-spec'] });
+  const spec = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
+  await spec.press({ key: 'review-task' });
+  await spec.unmount();
+  expect(seen.opens.at(-1)).toMatchObject({ id: 'crew-review', focus: true });
+  const ui = await $.ui.mount({ ...pane('crew-review'), surface: 'desktop' });
+  expect(await ui.find({ key: 'pick-001-src/a.ts' })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: '+1 −0 ⚠ outside files:' })).toBeDefined();
+  expect(await ui.find({ key: 'commit-btn-aaaaaaa' })).toBeDefined();
+  // The whole diff, as hunks that parse, with each file named above its own.
+  const code = await ui.findAll({ type: 'Code' });
+  expect(code.length).toBeGreaterThan(0);
+  expect(await ui.find({ type: 'Text', text: 'src/a.ts' })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: '1 suggestion waiting for the fixer' })).toBeDefined();
+  await ui.press({ key: 'apply-fixes' });
+  expect(seen.submitted.at(-1)).toMatch(/npx crew fix 001/);
+  await ui.unmount();
+});
+
+test('a commit narrows the diff to itself; File shows the file numbered; search opens a hit at its line', async ($, on) => {
+  const seen = stubs(on, { patch: reviewing });
+  const spec = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
+  await spec.press({ key: 'review-task' });
+  await spec.unmount();
+  const ui = await $.ui.mount({ ...pane('crew-review'), surface: 'desktop' });
+  await ui.press({ key: 'commit-btn-bbbbbbb' });
+  expect(await ui.find({ type: 'Text', text: 'src/stray.ts' })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: 'src/a.ts' })).toBeUndefined();
+  await ui.press({ key: 'pick-001-src/a.ts' });
+  await ui.press({ key: 'mode-file' });
+  expect((await ui.find({ type: 'Code' }))?.props).toMatchObject({
+    path: 'src/a.ts',
+    startLine: 1,
+  });
+  await ui.input({ key: 'review-search', text: 'helper()' });
+  await ui.press({ key: 'hit-btn-0' });
+  // The hit's line is in the window, which stays full rather than running past the end.
+  const hit = (await ui.find({ type: 'Code' }))?.props as any;
+  expect(hit.startLine).toBeLessThanOrEqual(117);
+  expect(hit.source.split('\n')).toContain('line 120');
+  await ui.input({ key: 'review-suggest', text: '42: use the helper' });
+  expect(seen.calls.map((c) => c.args).find((a) => a[0] === 'suggest')).toEqual([
+    'suggest',
+    '001',
+    'src/a.ts',
+    '42',
+    'use the helper',
+  ]);
+  await ui.unmount();
+});
+
+test('the code window scrolls within its rows and stops where the window is still full', () => {
+  expect(nextTop(0, 3, 100, 20)).toBe(3);
+  expect(nextTop(78, 5, 100, 20)).toBe(80);
+  expect(nextTop(2, -5, 100, 20)).toBe(0);
+  expect(nextTop(0, 10, 15, 20)).toBe(0);
+});
+
+test('a cut hunk is redrawn with a header that matches its lines', () => {
+  const rows = diffRows([{ path: 'x.ts', hunks: [hunk(10, 3)] }]);
+  const [part] = windowParts(rows, 2, 3);
+  expect(part.source).toBe('@@ -11,2 +11,3 @@\n ctx 11\n ctx 12\n+added');
+});
+
+const previewing = (board: any) => {
+  reviewing(board);
+  board.preview = {
+    dir: '/p',
+    state: { label: '001 First thing' },
+    edits: [{ code: ' M', path: 'src/a.ts' }],
+  };
+};
+
+test('the wall says what the preview shows; Keep folds its edits in, and a task can be previewed from its page', async ($, on) => {
+  const seen = stubs(on, { patch: previewing });
+  const wall = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  expect(await wall.find({ type: 'Text', text: '001 First thing' })).toBeDefined();
+  expect(await wall.find({ type: 'Text', text: '✎ src/a.ts' })).toBeDefined();
+  await wall.press({ key: 'preview-keep' });
+  expect(seen.calls.map((c) => c.args).at(-1)).toEqual(['preview', 'keep']);
+  expect(await wall.find({ key: 'preview-keep' })).toBeUndefined();
+  await wall.unmount();
+  const spec = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
+  await spec.press({ key: 'preview-task' });
+  expect(seen.calls.map((c) => c.args).at(-1)).toEqual(['preview', '001']);
+  expect(seen.toasts.some((t) => t.startsWith('⚠ migrations changed'))).toBe(true);
+  await spec.unmount();
+});
+
+test('with no preview set up there is no preview line and no Preview button', async ($, on) => {
+  stubs(on, { patch: reviewing });
+  const wall = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  expect(await wall.find({ key: 'preview-main' })).toBeUndefined();
+  await wall.unmount();
+  const spec = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
+  expect(await spec.find({ key: 'preview-task' })).toBeUndefined();
+  await spec.unmount();
 });

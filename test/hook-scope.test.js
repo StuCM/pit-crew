@@ -50,7 +50,7 @@ test('an undeclared file is denied, and the reason names the contract', () => {
   assert.match(decision.permissionDecisionReason, /src\/player\.ts is not in the files: list/);
   assert.match(decision.permissionDecisionReason, /007-thing\.md/);
   assert.match(decision.permissionDecisionReason, /Declared: src\/a\.ts, css\//);
-  assert.match(decision.permissionDecisionReason, /status: blocked/);
+  assert.match(decision.permissionDecisionReason, /npx crew task 007 block scope/);
 });
 
 test('the task file, the board and the log stay writable', () => {

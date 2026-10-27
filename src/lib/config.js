@@ -8,6 +8,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export const CONFIG_PATH = join('.claude', 'crew.config.json');
+// One person's machine: where their preview lives and how it starts. Never committed.
+export const LOCAL_PATH = join('.claude', 'crew.local.json');
 
 export const DEFAULTS = {
   project: null,
@@ -40,6 +42,7 @@ export const DEFAULTS = {
   preCommit: [],
   environments: {},
   deploy: null,
+  preview: null,
   log: '.claude/crew/log.jsonl',
 };
 
@@ -66,7 +69,7 @@ export const statuses = (cfg) => {
     approved: {},
     building: { inFlight: true },
     review: { inFlight: true },
-    blocked: { waitsOnUser: `${cfg.reviewRounds} review rounds disagreed — needs your call` },
+    blocked: { waitsOnUser: 'stopped — needs your call' },
     done: { terminal: true },
   };
 
@@ -102,7 +105,11 @@ export const loadConfig = (root) => {
     throw error;
   }
 
-  const cfg = merge(DEFAULTS, raw);
+  let local = {};
+  try {
+    local = JSON.parse(readFileSync(join(root, LOCAL_PATH), 'utf8'));
+  } catch {}
+  const cfg = merge(merge(DEFAULTS, raw), local);
   cfg.scopes.fromDir = asList(cfg.scopes.fromDir);
   cfg.scopes.extra = asList(cfg.scopes.extra);
   cfg.prepare = asList(cfg.prepare);

@@ -138,7 +138,7 @@ const showPart = (plan, entry, part) => {
   if (part.open?.length) {
     console.log('\n  OPEN QUESTIONS ON THIS PART — do not answer these in code:');
     for (const q of part.open) console.log(`    ? ${q}`);
-    console.log('\n  Set status: blocked and say which one you hit.');
+    console.log('\n  Stop with `npx crew task <id> block worker "<the question you hit>"`.');
   }
 };
 

@@ -36,14 +36,22 @@ the dumps stay out of your context.
   the answer in one line, and whether it changed what you built. That list
   is how the orchestrator learns what its specs keep missing.
 - **An answer can inform the work, not widen it.** If it shows a file that
-  should be in `files:`, or a decision the spec did not make, set
-  `status: blocked`, name the file or the decision, and stop. The scope hook
+  should be in `files:`, or a decision the spec did not make, block (below),
+  naming the file or the decision, and stop. The scope hook
   refuses the write anyway.
 
 If the spec is wrong, ambiguous, or missing a decision you would have to
-invent — **set `status: blocked`, write why, and stop.** Do not guess and do
-not improve the plan. A spec bug costs one message; a wrong implementation
-costs a whole round.
+invent — **block, and stop.** Do not guess and do not improve the plan. A spec
+bug costs one message; a wrong implementation costs a whole round.
+
+```sh
+npx crew task <id> block worker "<what is missing, in one line the person can act on>"
+```
+
+Never set `status: blocked` by hand. The one line is what the person sees
+on the board and the pit wall. "Spec unclear" tells them nothing; "files:
+lacks coral/views/report.py, which renders the label" lets them decide in
+seconds.
 
 Never query the memory graph yourself. Everything the orchestrator found is
 in **Graph context**, and anything more comes through a scout request, which
@@ -71,8 +79,8 @@ Two rules:
 - **The map is a reference, not an authority.** Where it and the code
   disagree, the code wins and the spec is wrong — say so in the task file.
   Do not edit the map; you are not its writer.
-- **An open question printed on your part means stop.** Set `status: blocked`
-  and name the question. It reached you because the gate was bypassed or the
+- **An open question printed on your part means stop.** Block, naming the
+  question. It reached you because the gate was bypassed or the
   map moved on, and answering it silently in code is exactly the failure the
   whole planning layer exists to prevent.
 
@@ -155,9 +163,19 @@ you. Never hand back with a round open. It judges; it never edits.
 
 - **PASS** → go to *Finishing*.
 - **CHANGES** → fix them, re-run the gate, `crew review` again.
-- **BLOCKED**, or a round the counter refuses → set `status: blocked`, write
-  the disagreement in a few lines, and stop. A further round is two agents
-  disagreeing, which is a decision, not an iteration.
+- **BLOCKED** → `npx crew task <id> block reviewer "<the reviewer's reason>"`,
+  and stop.
+- **QUESTION** → the reviewer doubts the approach the whole group was
+  approved on, not your diff. Do not change the approach yourself, even if
+  you agree. Record it, and stop:
+  `npx crew task <id> question --affects <ids> --evidence "<evidence>" "<question>"`.
+  It reaches the person on the work's card, and holds the tasks it names
+  until they answer.
+- **A round the counter refuses** → it has already blocked the task. Replace
+  its placeholder with the disagreement:
+  `npx crew task <id> block rounds "<you think X, the reviewer thinks Y>"`.
+  A further round is two agents disagreeing, which is a decision, not an
+  iteration.
 
 Append every round to **Review rounds** in the task file.
 

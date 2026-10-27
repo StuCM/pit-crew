@@ -118,3 +118,12 @@ export const setField = (path, key, value) => {
 
   writeFileSync(path, `---\n${block}\n---\n${text.slice(fenced[0].length)}`);
 };
+
+/** Remove a frontmatter scalar, if present. */
+export const clearField = (path, key) => {
+  const text = readFileSync(path, 'utf8');
+  const fenced = FENCE.exec(text);
+  if (!fenced) return;
+  const block = fenced[1].replace(new RegExp(`^${key}:.*(\\r?\\n|$)`, 'm'), '').replace(/\n$/, '');
+  writeFileSync(path, `---\n${block}\n---\n${text.slice(fenced[0].length)}`);
+};

@@ -103,7 +103,7 @@ test('an open question on the part is shouted about', () => {
   open.parts[0].open = ['Separate .mmd file, or a fenced block?'];
   const out = capture(() => run(config(withPlan(open)), ['p-build']));
   assert.match(out, /OPEN QUESTIONS ON THIS PART/);
-  assert.match(out, /Set status: blocked/);
+  assert.match(out, /crew task <id> block worker/);
 });
 
 test('a task file is resolved through its part: field', () => {
