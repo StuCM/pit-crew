@@ -204,3 +204,17 @@ test('a task file deleted in the worktree falls back to the branch copy', () => 
   rmSync(join(tree, '.claude', 'tasks', '007-thing.md'));
   assert.equal(boardStatus(root), 'done');
 });
+
+test('a gitignored task file is read from the worktree, never from the branch', () => {
+  const root = sandbox();
+  writeTask(root, '007-thing.md', taskFile({ status: 'approved' }));
+  writeFileSync(join(root, '.gitignore'), '.claude/\n');
+  sh(root, 'git init -q -b main && git config user.email a@b.c && git config user.name t');
+  sh(root, 'git add -A && git commit -qm base');
+  const tree = `${root}-ignored`;
+  sh(root, `git worktree add -q -b crew/007-thing ${tree}`);
+  sh(tree, 'echo two > code.txt && git add code.txt && git commit -qm "feat: two"');
+  mkdirSync(join(tree, '.claude', 'tasks'), { recursive: true });
+  writeTask(tree, '007-thing.md', taskFile({ status: 'done' }));
+  assert.equal(boardStatus(root), 'done');
+});

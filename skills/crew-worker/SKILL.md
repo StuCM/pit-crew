@@ -167,14 +167,17 @@ Append every round to **Review rounds** in the task file.
 no full stop. Body optional and short. No attribution footers; the commit-msg
 hook rejects them and will reject you.
 
-Commit in your worktree as you go. Never push.
+Commit in your worktree as you go. Never push. **Never commit the task
+file** — keep it up to date in the worktree (status, review rounds, notes),
+where the orchestrator and the board read it. The gate ignores it when it
+checks the tree is clean.
 
 **Fix a review finding in the commit that introduced it**, not in a new
 commit on top. Commit the fix with `git commit --fixup=<sha>`, then fold it in
 before re-running the gate:
 
 ```sh
-GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <base>
+GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash --autostash <base>
 ```
 
 The person reads this branch commit by commit; a history of mistakes and

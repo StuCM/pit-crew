@@ -337,8 +337,9 @@ there for anyone who wants it.
 reason: a wrong spec is the most expensive thing in the system, and it is
 cheapest to fix right now.
 
-On approval set `status: approved`, run `crew log <task> spec`, and tell
-them `/crew:crew-run <id>` is next.
+On approval set `status: approved`, run `crew log <task> spec`, and go
+straight on to `/crew:crew-run <id>`. Approval is the go-ahead to build: do
+not ask whether to start it.
 
 ## When the conversation moves
 

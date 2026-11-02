@@ -47,7 +47,7 @@ the limit is yours to keep.
 ## Then fold the fixups in
 
 ```sh
-git rebase -i --autosquash <base>
+git rebase -i --autosquash --autostash <base>
 ```
 
 The editor is set to accept the plan unchanged, so this does not stop for

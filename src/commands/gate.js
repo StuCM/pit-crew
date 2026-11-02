@@ -7,7 +7,7 @@
 
 import { execSync } from 'node:child_process';
 import { relative, resolve } from 'node:path';
-import { git, headSha, isClean } from '../lib/git.js';
+import { git, gitLines, headSha } from '../lib/git.js';
 import { bookkeeping, declaredFiles, readTask, setField } from '../lib/task.js';
 import { run as scopeCheck } from './scope-check.js';
 
@@ -102,8 +102,9 @@ export const run = (cfg, args) => {
   }
 
   // A stamp on a dirty tree would certify a commit that does not contain what
-  // was proved.
-  if (!isClean(cfg.root)) {
+  // was proved. Bookkeeping is never committed, so it does not count.
+  const unbooked = bookkeeping(cfg, task).map((file) => `:(exclude)${file}`);
+  if (gitLines(['status', '--porcelain', '--', '.', ...unbooked], cfg.root).length) {
     console.error('\ngate: passed, but the work tree is dirty — commit, then run the gate again.');
     return 1;
   }

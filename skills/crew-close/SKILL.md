@@ -51,9 +51,11 @@ body from `.github/pull_request_template.md` when there is one. Set the task
 file's `branch:` to the new name. The merge, the worktree removal and step 4
 wait until the PR lands.
 
-The board reads the branch's copy of the task file until merge, so do not
-hand-edit the main checkout's copy first: the merge brings the worker's copy
-in, and a local edit makes `git merge` refuse or conflict.
+The task file is never committed on the branch, so the merge does not bring
+it in: the worker's copy lives in the worktree, and the board reads it there.
+Before removing the worktree, copy it over the main checkout's copy
+(`cp <worktree>/<task file> <task file>`) so its status and notes survive. Do
+not commit it.
 
 Otherwise merge locally:
 

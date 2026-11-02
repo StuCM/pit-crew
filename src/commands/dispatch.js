@@ -25,18 +25,15 @@ const quietly = (fn) => {
 
 /**
  * Everything short of starting the session. Returns `{ ok: false, reason }`
- * when it refuses; nothing on disk has changed then.
+ * when it refuses; nothing on disk has changed then. Collisions are reported,
+ * never refused.
  */
-export const dispatch = (cfg, task, { force = false } = {}) => {
+export const dispatch = (cfg, task) => {
   if (task.meta.status !== 'approved') {
     return { ok: false, reason: `task ${task.id} is ${task.meta.status}, not approved` };
   }
 
   const collisions = findCollisions(cfg, task);
-  if (!force && collisions.length) {
-    return { ok: false, reason: 'unmerged branches already touch these files', collisions };
-  }
-
   const branch = branchFor(cfg, task);
   const path = worktreePath(cfg, task);
   const existing = worktrees(cfg.root).find((tree) => tree.branch === branch);
@@ -101,17 +98,16 @@ export const dispatch = (cfg, task, { force = false } = {}) => {
 
 export const run = (cfg, args) => {
   const json = args.includes('--json');
-  const force = args.includes('--force');
   const arg = args.find((a) => !a.startsWith('--'));
 
   const task = findTask(cfg, arg);
   if (!task) {
     if (json) console.log(JSON.stringify({ ok: false, reason: `no task "${arg ?? ''}"` }));
-    else console.error('usage: crew dispatch <task id or file> [--force] [--json]');
+    else console.error('usage: crew dispatch <task id or file> [--json]');
     return 2;
   }
 
-  const result = dispatch(cfg, task, { force });
+  const result = dispatch(cfg, task);
   if (json) {
     console.log(JSON.stringify(result));
     return result.ok ? 0 : 1;
@@ -119,18 +115,14 @@ export const run = (cfg, args) => {
 
   if (!result.ok) {
     console.error(`dispatch: refused — ${result.reason}`);
-    for (const hit of result.collisions ?? []) {
-      console.error(`  ${hit.branch}  ${hit.commit}  [${hit.path}]`);
-    }
-    if (result.collisions?.length) {
-      console.error('Land or respec around them, or pass --force if the person says proceed.');
-    }
     return 1;
   }
 
   console.log(`dispatch: ${result.id} → ${result.worktree} on ${result.branch}`);
   if (result.copied.length) console.log(`  copied in: ${result.copied.join(', ')}`);
-  if (result.collisions.length) console.log('  dispatched over collisions (--force)');
+  for (const hit of result.collisions) {
+    console.log(`  collides: ${hit.branch}  ${hit.commit}  [${hit.path}]`);
+  }
   console.log(`  model: ${result.model}`);
   console.log(`  brief: ${result.brief}`);
   return 0;
