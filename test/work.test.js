@@ -153,13 +153,20 @@ test('the group view carries what the pit wall needs, and why it cannot be appro
   const view = groupView({
     slug: 'smm',
     title: 'SMM',
-    brief: { ...BRIEF },
+    summary: 'Why',
+    brief: { ...BRIEF, target: ['a.js'], rejected: ['x'], decided: ['d'], exploring: ['e'] },
     pilot: 24,
     raised: [{ task: '024', q: 'Replace?', answer: null }],
   });
   assert.equal(view.shape, 'replace');
   assert.equal(view.pilot, '24');
   assert.equal(view.raised[0].ref, 'r1');
+  assert.equal(view.summary, 'Why');
+  assert.deepEqual(view.target, ['a.js']);
+  assert.deepEqual(view.rejected, ['x']);
+  assert.deepEqual(view.decided, ['d']);
+  assert.deepEqual(view.exploring, ['e']);
+  assert.equal(view.challenge, null);
   assert.deepEqual(view.problems, [
     'no challenge: run crew-challenger, or record {"skipped": "<why>"}',
   ]);
