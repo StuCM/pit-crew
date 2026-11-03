@@ -18,8 +18,8 @@ and say which one you left.
 ## 1. Make sure the files exist
 
 ```sh
-npx crew init
-npx crew doctor
+crew init
+crew doctor
 ```
 
 `doctor` lists every fault at once. That list is your worklist.
@@ -95,7 +95,7 @@ file. Name anything you left as `CHANGE-ME` and why.
 Then:
 
 ```sh
-npx crew doctor
+crew doctor
 ```
 
 It must come back clean, or the faults it still reports must be ones the user

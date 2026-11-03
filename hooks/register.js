@@ -116,8 +116,6 @@ const crew = async ($, args, stdin) => {
   return run.exitCode === 0;
 };
 
-const editSpec = ($, change) => crew($, ['task', selected, 'edit'], JSON.stringify(change));
-
 // Desktop draws a plain Button's hover itself with no padding prop, so spaces in the label widen it.
 const pad = (label) => ' ' + label + ' ';
 
@@ -170,19 +168,58 @@ export const buildSections = ({ statuses, tasks }) => {
 const markOf = (meta) =>
   meta.inFlight ? ['●', C.blue] : meta.terminal ? ['✔', C.green] : ['○', C.faint];
 
-// One row per task: its mark, a button with its id and title that opens it, its status and what it waits on.
-const boardList = ($, { Box, Text, Button }) => {
-  const row = (task, color) => {
+// A narrow-pane row: what to click on the first line, what it says about itself indented on the second.
+const twoLine = ({ Box }, key, first, second) =>
+  Box({
+    key,
+    flexDirection: 'column',
+    flexShrink: 0,
+    children: [
+      Box({ flexDirection: 'row', columnGap: S.sm, alignItems: 'center', children: first }),
+      Box({
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        columnGap: S.sm,
+        paddingLeft: S.md,
+        alignItems: 'center',
+        children: second,
+      }),
+    ],
+  });
+
+const flag = (Text, task, meta) =>
+  meta.waitsOnUser
+    ? [Text({ color: C.amb, wrap: 'truncate', children: ['⚑ ' + waitText(task, meta)] })]
+    : [];
+
+// A section's tasks in groups: those with no work first, then one group per work in the order met.
+const groupByWork = (tasks) => {
+  const groups = new Map();
+  for (const task of tasks) {
+    const key = task.work ?? '';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(task);
+  }
+  const loose = groups.get('') ?? [];
+  groups.delete('');
+  return [['', loose], ...groups].filter(([, members]) => members.length);
+};
+
+// Two lines per task: its mark, id and title (the button that opens it), then its status and what it waits on.
+const boardList = ($, { Box, Text, Button }, width) => {
+  const titles = Object.fromEntries((board.works ?? []).map((w) => [w.slug, w.title]));
+  const rule = Text({
+    color: C.border,
+    wrap: 'truncate',
+    children: ['─'.repeat(Math.max(width, 1))],
+  });
+  const row = (task) => {
     const meta = board.statuses[task.status] ?? {};
     const [mark, markColor] = markOf(meta);
-    return Box({
-      key: 'row-' + task.id,
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      columnGap: S.sm,
-      alignItems: 'center',
-      flexShrink: 0,
-      children: [
+    return twoLine(
+      { Box },
+      'row-' + task.id,
+      [
         Text({ color: markColor, children: [mark] }),
         Button({
           key: 'open-' + task.id,
@@ -190,26 +227,38 @@ const boardList = ($, { Box, Text, Button }) => {
           plain: true,
           onPress: () => select($, task.id),
         }),
-        Text({ color, children: [task.status] }),
-        ...(meta.waitsOnUser
-          ? [Text({ color: C.amb, children: ['⚑ ' + waitText(task, meta)] })]
-          : []),
       ],
-    });
+      [Text({ dimColor: true, children: [task.status] }), ...flag(Text, task, meta)],
+    );
   };
-  const children = [];
-  for (const section of buildSections(board)) {
-    children.push(
+  const sectionBox = (section) => {
+    const children = [
       Text({
         key: 'section-' + section.name,
         bold: true,
-        color: C.ink,
+        color: section.color,
         children: [`${section.name} · ${section.tasks.length}`],
       }),
-    );
-    for (const task of section.tasks) children.push(row(task, section.color));
-  }
-  return Box({ flexDirection: 'column', rowGap: S.xs, children });
+      rule,
+    ];
+    for (const [work, members] of groupByWork(section.tasks)) {
+      if (work)
+        children.push(
+          Text({
+            key: `work-${section.name}-${work}`,
+            dimColor: true,
+            children: [titles[work] ?? work],
+          }),
+        );
+      for (const task of members) children.push(row(task));
+    }
+    return Box({ key: 'box-' + section.name, flexDirection: 'column', rowGap: S.xs, children });
+  };
+  return Box({
+    flexDirection: 'column',
+    rowGap: S.sm,
+    children: buildSections(board).map(sectionBox),
+  });
 };
 
 // ---- The group view: each piece of work with its tasks in build order, its pilot, and what holds it.
@@ -286,14 +335,10 @@ const groupList = ($, { Box, Text, Button }) => {
       counts.questions ? `? ${counts.questions}` : '',
     ].filter(Boolean);
     children.push(
-      Box({
-        key: 'grouprow-' + (group.slug || 'none'),
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        columnGap: S.sm,
-        alignItems: 'center',
-        flexShrink: 0,
-        children: [
+      twoLine(
+        { Box },
+        'grouprow-' + (group.slug || 'none'),
+        [
           Button({
             key: 'group-' + (group.slug || 'none'),
             label: pad(`${isOpen ? '▾' : '▸'} ${group.title}`),
@@ -303,12 +348,14 @@ const groupList = ($, { Box, Text, Button }) => {
               $.ui.invalidate('ui.render');
             },
           }),
+        ],
+        [
           Text({
             color: counts.waiting || counts.questions ? C.amb : C.mut,
             children: [summary.join(' · ')],
           }),
         ],
-      }),
+      ),
     );
     if (!isOpen) continue;
 
@@ -361,14 +408,10 @@ const groupList = ($, { Box, Text, Button }) => {
       const isPilot = group.pilot === task.id;
       const canMove = group.slug && (task.status === 'draft' || task.status === 'approved');
       body.push(
-        Box({
-          key: 'row-' + task.id,
-          flexDirection: 'row',
-          flexWrap: 'wrap',
-          columnGap: S.sm,
-          alignItems: 'center',
-          flexShrink: 0,
-          children: [
+        twoLine(
+          { Box },
+          'row-' + task.id,
+          [
             Text({ color: markColor, children: [mark] }),
             Button({
               key: 'open-' + task.id,
@@ -376,11 +419,11 @@ const groupList = ($, { Box, Text, Button }) => {
               plain: true,
               onPress: () => select($, task.id),
             }),
-            Text({ color: sectionOf(task.status).color, children: [task.status] }),
+          ],
+          [
+            Text({ dimColor: true, children: [task.status] }),
             ...(isPilot ? [Text({ color: C.clay, children: ['★ pilot'] })] : []),
-            ...(meta.waitsOnUser
-              ? [Text({ color: C.amb, children: ['⚑ ' + waitText(task, meta)] })]
-              : []),
+            ...flag(Text, task, meta),
             ...(canMove
               ? [
                   ...(i > 0
@@ -413,7 +456,7 @@ const groupList = ($, { Box, Text, Button }) => {
                 ]
               : []),
           ],
-        }),
+        ),
       );
     });
     children.push(
@@ -441,42 +484,38 @@ const previewLine = ($, { Box, Text, Button }) => {
   const pv = board?.preview;
   if (!pv || pv.error) return null;
   const edits = pv.edits ?? [];
-  return Box({
-    key: 'preview-line',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    columnGap: S.sm,
-    alignItems: 'center',
-    flexShrink: 0,
-    children: [
+  return twoLine(
+    { Box },
+    'preview-line',
+    [
       Text({ color: C.mut, children: ['Preview'] }),
       Text({ color: C.ink, wrap: 'truncate', children: [pv.state?.label ?? 'unknown'] }),
-      ...(edits.length
-        ? [
-            Text({ color: C.amb, children: [`✎ ${edits.map((e) => e.path).join(', ')}`] }),
-            Button({
-              key: 'preview-keep',
-              label: 'Keep',
-              variant: 'primary',
-              onPress: () => preview($, ['keep']),
-            }),
-            Button({
-              key: 'preview-drop',
-              label: pad('Drop'),
-              plain: true,
-              onPress: () => preview($, ['drop']),
-            }),
-          ]
-        : [
-            Button({
-              key: 'preview-main',
-              label: pad('show main'),
-              plain: true,
-              onPress: () => preview($, ['main']),
-            }),
-          ]),
     ],
-  });
+    edits.length
+      ? [
+          Text({ color: C.amb, children: [`✎ ${edits.map((e) => e.path).join(', ')}`] }),
+          Button({
+            key: 'preview-keep',
+            label: 'Keep',
+            variant: 'primary',
+            onPress: () => preview($, ['keep']),
+          }),
+          Button({
+            key: 'preview-drop',
+            label: pad('Drop'),
+            plain: true,
+            onPress: () => preview($, ['drop']),
+          }),
+        ]
+      : [
+          Button({
+            key: 'preview-main',
+            label: pad('show main'),
+            plain: true,
+            onPress: () => preview($, ['main']),
+          }),
+        ],
+  );
 };
 
 // ---- The review pane: what a task or group changed, read from git, without opening its worktree.
@@ -642,7 +681,7 @@ const suggestChange = async ($, text) => {
 const applyFixes = ($, ids) => {
   for (const id of ids) {
     void $.prompt.submit({
-      text: `Apply the open suggestions on task ${id} with \`npx crew fix ${id}\`, and tell me what the fixer did`,
+      text: `Apply the open suggestions on task ${id} with \`crew fix ${id}\`, and tell me what the fixer did`,
       asUser: true,
     });
   }
@@ -678,6 +717,8 @@ const reviewBody = ($, { Box, Text, Button, Input, Code }, { bodyRows, inner }) 
   const removed = files.reduce((n, f) => n + f.removed, 0);
   line('review-title', [
     Text({ bold: true, color: C.ink, wrap: 'truncate', children: [review.title] }),
+  ]);
+  line('review-stats', [
     Text({
       color: C.mut,
       children: [
@@ -872,7 +913,7 @@ const CONTEXT = new Set([
 const tierOf = (heading) =>
   AGREEMENT.has(heading) ? 'agreement' : CONTEXT.has(heading) ? 'context' : 'record';
 
-// One block per list item, numbered step or paragraph, so a multi-line step is edited as one thing.
+// One block per list item, numbered step or paragraph, so a multi-line step reads as one thing.
 export const parseSpec = (source) => {
   const [, front = '', body = source] = source.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/) ?? [];
   const meta = Object.fromEntries([...front.matchAll(/^(\w+): (.+)$/gm)].map((m) => [m[1], m[2]]));
@@ -891,7 +932,7 @@ export const parseSpec = (source) => {
         continue;
       }
       if (isItem || !current) {
-        current = { text: line, state: 'open' };
+        current = { text: line };
         blocks.push(current);
       } else {
         current.text += '\n' + line;
@@ -903,18 +944,6 @@ export const parseSpec = (source) => {
 };
 
 let doc = null;
-let newFiles = new Set(); // files: entries not yet in the repository
-let editing = null; // { s, b } of the block being edited, or { s, b: 'new' } for an added line
-const marks = {}; // block text → 'ok': view-only, never written, so kept across reloads
-const loadPlan = async ($, task) => {
-  if (!task.part || plans[task.id]) return;
-  plans[task.id] = [];
-  const run = await $.process.run(crewArgv($, ['plan', task.part, '--json']));
-  try {
-    if (run.exitCode === 0) plans[task.id] = JSON.parse(run.stdout);
-  } catch {}
-};
-
 const loadDoc = async ($) => {
   const task = selectedTask();
   if (!task) {
@@ -926,10 +955,6 @@ const loadDoc = async ($) => {
   } catch {
     doc = { meta: {}, files: [], title: 'Could not read ' + task.file, sections: [] };
   }
-  for (const block of doc.sections.flatMap((s) => s.blocks))
-    block.state = marks[block.text] ?? 'open';
-  newFiles = new Set(task.files.filter((f) => !f.exists).map((f) => f.path));
-  await loadPlan($, task);
 };
 
 // The main session runs crew-run itself; the mod only asks, and the board shows when it has started.
@@ -956,271 +981,25 @@ const sendBack = async ($) => {
   if (await crew($, ['task', selected, 'sendback'])) log = 'sent back';
 };
 
-// ---- Diagrams: the spec's shape as text. Steps against files, a model-drawn flow, and the task's part from the plan.
-
-// Approach steps against the files they name: a step "touches" a file whose path or file name it mentions.
-export const changeMap = (spec) => {
-  const approach = spec.sections.find((s) => s.heading === 'Approach');
-  const steps = (approach?.blocks ?? []).map((b, i) => {
-    const text = b.text.replace(/^\s*\d+\.\s*/, '');
-    return {
-      id: 's' + (i + 1),
-      label: i + 1 + '. ' + text.split('\n')[0].replace(/[`*]/g, ''),
-      text,
-    };
-  });
-  const files = spec.files.map((path) => ({ id: path, label: path }));
-  const edges = [];
-  for (const step of steps)
-    for (const file of files) {
-      const name = file.id.split('/').pop();
-      if (step.text.includes(file.id) || step.text.includes(name))
-        edges.push({ from: step.id, to: file.id });
-    }
-  return { steps, files, edges };
-};
-
-// Each step with the files it touches; a file the repository does not have yet is marked new.
-const changeMapText = ({ steps, edges }, isNew) =>
-  steps
-    .map((s) => {
-      const files = edges
-        .filter((e) => e.from === s.id)
-        .map((e) => '`' + e.to + '`' + (isNew(e.to) ? ' (new)' : ''));
-      return `- **${s.label}** → ${files.join(', ') || 'no file named'}`;
-    })
-    .join('\n');
-
-// The flow's edges in order from the start, with decision labels; a flow with no edges lists its nodes.
-const flowText = ({ nodes, edges }) => {
-  const label = (id) => nodes.find((n) => n.id === id)?.label ?? id;
-  if (!edges.length) return nodes.map((n) => `- ${n.label}`).join('\n');
-  return edges
-    .map((e) => `- ${label(e.from)} → ${label(e.to)}${e.label ? ' (' + e.label + ')' : ''}`)
-    .join('\n');
-};
-
-// The part with what feeds it and what it feeds; the feature layer adds statuses and the part's symbols.
-const partText = ({ part, edges, neighbours }, layer) => {
-  const isFeature = layer === 'feature';
-  const name = (id) => {
-    const n = neighbours.find((x) => x.id === id);
-    return (n?.label ?? id) + (isFeature && n?.status ? ` _(${n.status})_` : '');
-  };
-  const lines = [
-    `**${part.label}**` + (isFeature && part.status ? ` _(${part.status})_` : ''),
-    ...edges.map((e) =>
-      e.to === part.id
-        ? `- ← ${name(e.from)}${e.label ? ' · ' + e.label : ''}`
-        : `- → ${name(e.to)}${e.label ? ' · ' + e.label : ''}`,
-    ),
-  ];
-  if (isFeature && part.surface?.length) {
-    lines.push('', 'Symbols:');
-    for (const sym of part.surface)
-      lines.push(`- ${sym.verified ? '✔' : '·'} \`${sym.name}\`${sym.use ? ' · ' + sym.use : ''}`);
-  }
-  return lines.join('\n');
-};
-
-const FLOW_SYSTEM =
-  'You turn a software task spec into a runtime behaviour flowchart. Reply with JSON only, no prose: ' +
-  '{"nodes":[{"id":"a","label":"short label","kind":"start|step|decision|end"}],"edges":[{"from":"a","to":"b","label":"optional, e.g. yes/no"}]}. ' +
-  'At most 12 nodes, labels under 34 characters. Describe what the user and the system do, not the build steps.';
-
-let diagram = 'change'; // which diagram the Diagrams tab shows
-let flow = null; // { nodes, edges } once generated
-const plans = {}; // task id → views from `crew plan <part> --json`, or [] when there is no plan for it
-let flowState = 'idle'; // idle → working → done | failed
-
-const generateFlow = async ($) => {
-  flowState = 'working';
-  $.ui.invalidate('ui.render');
-  const part = (h) =>
-    doc.sections
-      .find((s) => s.heading === h)
-      ?.blocks.map((b) => b.text)
-      .join('\n') ?? '';
-  const r = await $.model.complete({
-    model: 'haiku',
-    system: FLOW_SYSTEM,
-    prompt: `# ${doc.title}\n\n## Goal\n${part('Goal')}\n\n## Approach\n${part('Approach')}`,
-  });
-  try {
-    if (!r.isAnswered) throw new Error(r.reason);
-    const parsed = JSON.parse(r.text.slice(r.text.indexOf('{'), r.text.lastIndexOf('}') + 1));
-    if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) throw new Error('no nodes');
-    flow = parsed;
-    flowState = 'done';
-  } catch {
-    flowState = 'failed';
-  }
-  $.ui.invalidate('ui.render');
-};
-
 const TABS = [
   { tier: 'agreement', label: 'Spec' },
   { tier: 'context', label: 'Context' },
   { tier: 'record', label: 'Build record' },
-  { tier: 'diagram', label: 'Diagrams' },
 ];
 let tab = 'agreement';
 
-const ICON = { ok: '✔', edit: '✏', remove: '✖', add: '＋' };
-
-const PLAN_POINTER =
-  'No plan covers this task. Map it with /pit-crew-planning:feature-map, then give the task a `part:`.';
-
-// The Diagrams tab: a picker, then the chosen diagram as Markdown.
-const diagramItems = ($, { Box, Text, Button, Markdown }, act) => {
-  const task = selectedTask();
-  const planned = Boolean(task?.part);
-  if (!planned && (diagram === 'architecture' || diagram === 'feature')) diagram = 'change';
-  const chip = (id, label) =>
-    Button({
-      key: 'diagram-' + id,
-      label: pad(label),
-      plain: true,
-      dimColor: diagram !== id,
-      onPress: act(() => {
-        diagram = id;
-      }),
-    });
-  const picker = Box({
-    flexDirection: 'row',
-    columnGap: S.sm,
-    alignItems: 'center',
-    children: [
-      chip('change', 'Change map'),
-      chip('flow', 'Behaviour flow'),
-      ...(planned ? [chip('architecture', 'Architecture'), chip('feature', 'Feature')] : []),
-      Box({ flexGrow: 1, children: [] }),
-      ...(diagram === 'flow'
-        ? [
-            Button({
-              key: 'generate-flow',
-              label: flowState === 'working' ? 'Drawing…' : flow ? 'Redraw' : 'Generate',
-              variant: 'primary',
-              onPress: () => {
-                if (flowState !== 'working') generateFlow($);
-              },
-            }),
-          ]
-        : []),
-    ],
-  });
-  const view = (text) => ({
-    el: Box({ key: 'diagram-view', children: [Markdown({ text })] }),
-  });
-  const out = [{ el: picker }];
-  if (!planned) out.push({ el: Text({ color: C.faint, children: [PLAN_POINTER] }) });
-  if (diagram === 'architecture' || diagram === 'feature') {
-    const found = (plans[task.id] ?? []).find((v) => v.layer === diagram);
-    out.push(
-      found
-        ? view(partText(found, diagram))
-        : { el: Text({ color: C.faint, children: [PLAN_POINTER] }) },
-    );
-  } else if (diagram === 'change') {
-    const map = changeMap(doc);
-    out.push(view(changeMapText(map, (path) => newFiles.has(path))));
-    const untouched = map.files.filter((f) => !map.edges.some((e) => e.to === f.id));
-    if (untouched.length)
-      out.push({
-        el: Text({
-          color: C.amb,
-          children: [`No step names ${untouched.map((f) => f.id).join(', ')}`],
-        }),
-      });
-  } else if (flowState === 'failed') {
-    out.push({
-      el: Text({
-        color: C.clay,
-        children: ['The model did not return a usable flow. Try Redraw.'],
-      }),
-    });
-  } else if (!flow) {
-    out.push({
-      el: Text({
-        color: C.faint,
-        children: [
-          flowState === 'working'
-            ? 'Asking the model for the flow…'
-            : 'Generate draws what the change does at runtime, from the Goal and Approach.',
-        ],
-      }),
-    });
-  } else {
-    out.push(view(flowText(flow)));
-  }
-  return out;
-};
-
-const specBody = ($, { Box, Text, Button, Input, Markdown }) => {
+const specBody = ($, { Box, Text, Button, Markdown }) => {
   const redraw = () => $.ui.invalidate('ui.render');
   const act = (fn) => () => {
     fn();
     redraw();
   };
-  const blockRow = (section, si, block, bi) => {
-    if (editing && editing.s === si && editing.b === bi) {
-      return Input({
-        key: `edit-${si}-${bi}`,
-        label: '',
-        value: block.text.replace(/^\s*([-*]|\d+\.) (\[[ x]\] )?/, ''),
-        submitLabel: 'save',
-        autoFocus: true,
-        onSubmit: (value) => {
-          const prefix = (block.text.match(/^\s*([-*]|\d+\.) (\[[ x]\] )?/) ?? [''])[0];
-          editing = null;
-          editSpec($, { old: block.text, new: prefix + value });
-        },
-      });
-    }
-    const controls =
-      section.tier !== 'agreement'
-        ? []
-        : [
-            Button({
-              key: `ok-${si}-${bi}`,
-              label: pad(ICON.ok),
-              plain: true,
-              dimColor: block.state !== 'ok',
-              onPress: act(() => {
-                block.state = marks[block.text] = block.state === 'ok' ? 'open' : 'ok';
-              }),
-            }),
-            Button({
-              key: `edit-btn-${si}-${bi}`,
-              label: pad(ICON.edit),
-              plain: true,
-              dimColor: true,
-              onPress: act(() => {
-                editing = { s: si, b: bi };
-              }),
-            }),
-            Button({
-              key: `rm-${si}-${bi}`,
-              label: pad(ICON.remove),
-              plain: true,
-              dimColor: true,
-              onPress: () => editSpec($, { old: block.text, new: '' }),
-            }),
-          ];
-    return Box({
+  const blockRow = (section, si, block, bi) =>
+    Box({
       key: `block-${si}-${bi}`,
-      flexDirection: 'row',
-      columnGap: S.sm,
-      children: [
-        Box({
-          flexGrow: 1,
-          flexDirection: 'column',
-          children: [Markdown({ text: block.text, dimColor: section.tier === 'record' })],
-        }),
-        Box({ flexDirection: 'row', children: controls }),
-      ],
+      flexDirection: 'column',
+      children: [Markdown({ text: block.text, dimColor: section.tier === 'record' })],
     });
-  };
 
   // The active tab's sections as one flat list of items, so scrolling can drop whole items off the top.
   const items = [];
@@ -1228,61 +1007,15 @@ const specBody = ($, { Box, Text, Button, Input, Markdown }) => {
     if (section.tier !== tab) return;
     items.push({
       el: Box({
-        flexDirection: 'row',
-        columnGap: S.sm,
         marginTop: items.length ? S.sm : 0,
-        children: [
-          Text({ bold: true, color: C.ink, children: [section.heading] }),
-          Box({ flexGrow: 1, children: [] }),
-          ...(section.tier === 'agreement'
-            ? [
-                Button({
-                  key: `add-${si}`,
-                  label: pad(ICON.add),
-                  plain: true,
-                  dimColor: true,
-                  onPress: act(() => {
-                    editing = { s: si, b: 'new' };
-                  }),
-                }),
-                Button({
-                  key: `rm-section-${si}`,
-                  label: pad(ICON.remove + ' section'),
-                  plain: true,
-                  dimColor: true,
-                  onPress: async () => {
-                    for (const block of section.blocks)
-                      if (!(await editSpec($, { old: block.text, new: '' }))) return;
-                  },
-                }),
-              ]
-            : []),
-        ],
+        children: [Text({ bold: true, color: C.ink, children: [section.heading] })],
       }),
     });
     section.blocks.forEach((block, bi) => items.push({ el: blockRow(section, si, block, bi) }));
-    if (editing && editing.s === si && editing.b === 'new') {
-      items.push({
-        el: Input({
-          key: `new-${si}`,
-          label: '',
-          placeholder: 'Add to ' + section.heading + '…',
-          value: '',
-          submitLabel: 'add',
-          autoFocus: true,
-          onSubmit: (value) => {
-            editing = null;
-            editSpec($, { section: section.heading, append: value });
-          },
-        }),
-      });
-    }
   });
-  if (tab === 'diagram') items.push(...diagramItems($, { Box, Text, Button, Markdown }, act));
   if (!items.length) items.push({ el: Text({ color: C.faint, children: ['Nothing here yet.'] }) });
 
-  const count = (tier) =>
-    tier === 'diagram' ? 2 : doc.sections.filter((s) => s.tier === tier).length;
+  const count = (tier) => doc.sections.filter((s) => s.tier === tier).length;
   const tabs = Box({
     flexDirection: 'row',
     columnGap: S.sm,
@@ -1302,7 +1035,6 @@ const specBody = ($, { Box, Text, Button, Input, Markdown }) => {
             dimColor: tab !== t.tier,
             onPress: act(() => {
               tab = t.tier;
-              editing = null;
             }),
           }),
         ],
@@ -1471,7 +1203,7 @@ export function register(on) {
           ? Text({ color: C.amb, children: [boardError] })
           : byGroup
             ? groupList($, ui)
-            : boardList($, ui),
+            : boardList($, ui, inner),
       ]);
     }
 
@@ -1479,7 +1211,7 @@ export function register(on) {
     const task = selectedTask();
     const status = task?.status;
     const statusMeta = board?.statuses?.[status] ?? {};
-    const waiting = statusMeta.waitsOnUser && waitText(task, statusMeta);
+    const why = statusMeta.waitsOnUser ? waitText(task, statusMeta) : '';
     const pendingEnv = statusMeta.pendingEnv;
     const runControls = pendingEnv
       ? [
@@ -1491,10 +1223,7 @@ export function register(on) {
           }),
         ]
       : status === 'blocked'
-        ? [
-            Text({ color: C.mut, children: [waiting] }),
-            Button({ key: 'sendback', label: 'Send back', onPress: () => sendBack($) }),
-          ]
+        ? [Button({ key: 'sendback', label: 'Send back', onPress: () => sendBack($) })]
         : status === 'draft'
           ? [
               Button({
@@ -1573,37 +1302,40 @@ export function register(on) {
           ]
         : []),
     ];
-    const specHeader = row(
-      [
+    const specHeader = Box({
+      flexDirection: 'column',
+      rowGap: S.xs,
+      children: [
+        ui.Markdown({ text: '## ' + doc.title }),
         Box({
-          flexDirection: 'column',
-          rowGap: S.xs,
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          columnGap: S.sm,
           children: [
-            ui.Markdown({ text: '## ' + doc.title }),
-            Box({
-              flexDirection: 'row',
-              flexWrap: 'wrap',
-              columnGap: S.sm,
-              children: [
-                ...(task
-                  ? [
-                      Text({
-                        key: 'spec-status',
-                        bold: true,
-                        color: sectionOf(status).color,
-                        children: [status],
-                      }),
-                    ]
-                  : []),
-                ...(waiting ? [Text({ color: C.amb, children: ['⚑ ' + waiting] })] : []),
-                Text({ color: C.mut, children: [meta] }),
-              ],
-            }),
+            ...(task
+              ? [
+                  Text({
+                    key: 'spec-status',
+                    bold: true,
+                    color: sectionOf(status).color,
+                    children: [status],
+                  }),
+                ]
+              : []),
+            Text({ color: C.mut, children: [meta] }),
           ],
         }),
+        ...(why ? [Text({ color: C.amb, children: ['⚑ ' + why] })] : []),
+        Box({
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          columnGap: S.sm,
+          rowGap: S.xs,
+          alignItems: 'center',
+          children: controls,
+        }),
       ],
-      controls,
-    );
+    });
 
     return frame(window('spec-window', specHeader, specBody($, ui)));
   });

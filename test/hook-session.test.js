@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { sandbox } from './helpers.js';
 
@@ -64,4 +64,26 @@ test('empty or invalid stdin still gets the no-orchestrator text', () => {
       /No orchestrator is set/,
     );
   }
+});
+
+test('the hook puts the plugin bin on PATH once, and only when CLAUDE_ENV_FILE is set', () => {
+  const root = repo(true);
+  const envFile = join(root, 'env.sh');
+  const run = (env) =>
+    execFileSync('node', [CLI, 'hook', 'session'], {
+      cwd: root,
+      input: '',
+      env: { ...process.env, ...env },
+    });
+  run({ CLAUDE_ENV_FILE: envFile });
+  run({ CLAUDE_ENV_FILE: envFile });
+  const lines = readFileSync(envFile, 'utf8').trim().split('\n');
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^export PATH=".*\/bin:\$PATH"$/);
+  // unset: exits 0 (execFileSync throws otherwise) and writes no file
+  const env = { ...process.env };
+  delete env.CLAUDE_ENV_FILE;
+  const before = readdirSync(root);
+  execFileSync('node', [CLI, 'hook', 'session'], { cwd: root, input: '', env });
+  assert.deepEqual(readdirSync(root), before);
 });

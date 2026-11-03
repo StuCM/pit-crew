@@ -27,7 +27,8 @@ const quietly = (fn) => {
 
 /**
  * Everything short of starting the session. Returns `{ ok: false, reason }`
- * when it refuses; nothing on disk has changed then.
+ * when it refuses; nothing on disk has changed then. Collisions are reported,
+ * never refused; `force` overrides only a pilot or an open question holding it.
  */
 export const dispatch = (cfg, task, { force = false } = {}) => {
   if (task.meta.status !== 'approved') {
@@ -54,10 +55,6 @@ export const dispatch = (cfg, task, { force = false } = {}) => {
   }
 
   const collisions = findCollisions(cfg, task);
-  if (!force && collisions.length) {
-    return { ok: false, reason: 'unmerged branches already touch these files', collisions };
-  }
-
   const branch = branchFor(cfg, task);
   const path = worktreePath(cfg, task);
   const existing = worktrees(cfg.root).find((tree) => tree.branch === branch);
@@ -142,18 +139,14 @@ export const run = (cfg, args) => {
 
   if (!result.ok) {
     console.error(`dispatch: refused — ${result.reason}`);
-    for (const hit of result.collisions ?? []) {
-      console.error(`  ${hit.branch}  ${hit.commit}  [${hit.path}]`);
-    }
-    if (result.collisions?.length) {
-      console.error('Land or respec around them, or pass --force if the person says proceed.');
-    }
     return 1;
   }
 
   console.log(`dispatch: ${result.id} → ${result.worktree} on ${result.branch}`);
   if (result.copied.length) console.log(`  copied in: ${result.copied.join(', ')}`);
-  if (result.collisions.length) console.log('  dispatched over collisions (--force)');
+  for (const hit of result.collisions) {
+    console.log(`  collides: ${hit.branch}  ${hit.commit}  [${hit.path}]`);
+  }
   console.log(`  model: ${result.model}`);
   console.log(`  brief: ${result.brief}`);
   return 0;

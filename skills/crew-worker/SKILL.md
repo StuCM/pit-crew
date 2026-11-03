@@ -45,7 +45,7 @@ invent — **block, and stop.** Do not guess and do not improve the plan. A spec
 bug costs one message; a wrong implementation costs a whole round.
 
 ```sh
-npx crew task <id> block worker "<what is missing, in one line the person can act on>"
+crew task <id> block worker "<what is missing, in one line the person can act on>"
 ```
 
 Never set `status: blocked` by hand. The one line is what the person sees
@@ -60,7 +60,7 @@ is logged. If that section looks empty or wrong, say so in the task file.
 ## The diagram, if the task names one
 
 ```sh
-npx crew plan <task-file>
+crew plan <task-file>
 ```
 
 If the task has a `part:`, this prints the part you are building: its purpose,
@@ -89,7 +89,7 @@ Two rules:
 - Touch only the paths in `files:`. If the scope hook is installed it will
   refuse the write; if it is not, the gate will fail. Either way the answer is
   the same: a path the spec did not authorise is a spec bug, not an obstacle.
-- Never push, never merge, never deploy. `npx crew preflight <env>` says what
+- Never push, never merge, never deploy. `crew preflight <env>` says what
   this machine can prove. If a deploy command fails, that is the bench, not a
   bug — do not try to fix it.
 - Never edit the spec's Goal, Approach, Out of scope or Definition of done.
@@ -133,7 +133,7 @@ what you think.
 ## The gate — run this before you ask for review
 
 ```sh
-npx crew gate <task-file>
+crew gate <task-file>
 ```
 
 It runs the project's prepare commands, the scope check and `verify`, then
@@ -151,7 +151,7 @@ Do not ask for review on work that does not build.
 ## Review
 
 ```sh
-npx crew review <task-file>
+crew review <task-file>
 ```
 
 This opens a round — it refuses to open one past the configured limit, and
@@ -163,17 +163,17 @@ you. Never hand back with a round open. It judges; it never edits.
 
 - **PASS** → go to *Finishing*.
 - **CHANGES** → fix them, re-run the gate, `crew review` again.
-- **BLOCKED** → `npx crew task <id> block reviewer "<the reviewer's reason>"`,
+- **BLOCKED** → `crew task <id> block reviewer "<the reviewer's reason>"`,
   and stop.
 - **QUESTION** → the reviewer doubts the approach the whole group was
   approved on, not your diff. Do not change the approach yourself, even if
   you agree. Record it, and stop:
-  `npx crew task <id> question --affects <ids> --evidence "<evidence>" "<question>"`.
+  `crew task <id> question --affects <ids> --evidence "<evidence>" "<question>"`.
   It reaches the person on the work's card, and holds the tasks it names
   until they answer.
 - **A round the counter refuses** → it has already blocked the task. Replace
   its placeholder with the disagreement:
-  `npx crew task <id> block rounds "<you think X, the reviewer thinks Y>"`.
+  `crew task <id> block rounds "<you think X, the reviewer thinks Y>"`.
   A further round is two agents disagreeing, which is a decision, not an
   iteration.
 
@@ -185,14 +185,17 @@ Append every round to **Review rounds** in the task file.
 no full stop. Body optional and short. No attribution footers; the commit-msg
 hook rejects them and will reject you.
 
-Commit in your worktree as you go. Never push.
+Commit in your worktree as you go. Never push. **Never commit the task
+file** — keep it up to date in the worktree (status, review rounds, notes),
+where the orchestrator and the board read it. The gate ignores it when it
+checks the tree is clean.
 
 **Fix a review finding in the commit that introduced it**, not in a new
 commit on top. Commit the fix with `git commit --fixup=<sha>`, then fold it in
 before re-running the gate:
 
 ```sh
-GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <base>
+GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash --autostash <base>
 ```
 
 The person reads this branch commit by commit; a history of mistakes and
@@ -202,13 +205,18 @@ worth a broken one. The rebase rewrites commits, so re-run the gate after it.
 
 ## Finishing
 
-Set `status:`:
+Set `status:` with the command, not by hand. `crew review` left it at
+`review`, and a report that says `done` over a file that says `review` is
+the most common way a finished task gets lost:
 
-- `done` if this environment can prove it
-- `pending-<env>` if only an environment no agent can reach can prove it —
-  `npx crew doctor` lists the statuses this project has
+- `crew task <id> set status done` if this environment can prove it
+- `crew task <id> set status pending-<env>` if only an environment no
+  agent can reach can prove it — `crew doctor` lists the statuses this
+  project has
 
-Append to the task file: what changed per file (one line each), anything the
+Append to the task file, under the headings it already has. Never add a
+second copy of a heading: the gate lints every tracked markdown file, so a
+duplicate breaks the next task's gate, not yours: what changed per file (one line each), anything the
 spec got wrong, and — under **Graph writes proposed** — anything durable you
 learnt. A Decision with its rationale, or a Pattern for a trap that cost you
 time. The orchestrator decides what gets committed to the graph; you only
@@ -221,4 +229,4 @@ git refuses a branch that another worktree holds:
 git switch --detach
 ```
 
-Then run `npx crew board` and stop. Do not start anything else.
+Then run `crew board` and stop. Do not start anything else.

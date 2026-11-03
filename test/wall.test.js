@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   agentArgs,
+  fixerArgs,
   items,
   listDir,
   mentions,
@@ -92,6 +93,19 @@ test('the snapshot marks a declared file that does not exist yet as new', () => 
   assert.ok(view.mentions.some((m) => m.path === 'src/labels.py' && m.line === 1));
 });
 
+test("the snapshot carries a blocked task's reason and who set it, from frontmatter", () => {
+  const root = repo();
+  assert.equal(snapshot(config(root)).tasks[0].blocked, null);
+  const withReason = spec.replace(
+    'status: draft',
+    'status: blocked\nblocked: Needs the key rotated\nblocked-by: worker',
+  );
+  writeTask(root, '024-smm.md', withReason);
+  const [view] = snapshot(config(root)).tasks;
+  assert.equal(view.blocked, 'Needs the key rotated');
+  assert.equal(view.blockedBy, 'worker');
+});
+
 test('the file viewer reads lines and the browser lists folders first', () => {
   const root = repo();
   assert.deepEqual(readSource(root, 'src/notify.py').lines.slice(0, 3), ['a', 'b', 'c']);
@@ -112,4 +126,11 @@ test('a path-scoped Edit entry keeps Edit allowed; no Edit entry disallows it', 
     'Write',
     'NotebookEdit',
   ]);
+});
+
+test('the fixer may run crew gate directly, and still through npx for older specs', () => {
+  const agent = new URL('../agents/crew-fixer.md', import.meta.url).pathname;
+  const args = fixerArgs(agent);
+  assert.ok(args.includes('Bash(crew gate:*)'));
+  assert.ok(args.includes('Bash(npx crew gate:*)'));
 });

@@ -101,21 +101,41 @@ test('a draft is refused and nothing is created', () => {
   assert.equal(statusOf(file), 'draft');
 });
 
-test('an unmerged branch touching the same files refuses, unless forced', () => {
-  const { root, cfg } = fixture();
+test('an unmerged branch touching the same files is reported, not refused', () => {
+  const { root } = fixture();
   sh(root, 'switch', '-qc', 'other');
   writeFileSync(join(root, 'src', 'a.ts'), 'two\n');
   sh(root, 'commit', '-qam', 'feat: two');
   sh(root, 'switch', '-q', 'main');
 
-  const refused = dispatch(cfg, findTask(cfg, '7'));
-  assert.equal(refused.ok, false);
+  // --force is a no-op kept for old commands, in either order.
+  const out = crew(root, 'dispatch', '7', '--json', '--force');
+  assert.equal(out.status, 0, out.stderr);
+  const result = JSON.parse(out.stdout);
+  assert.equal(result.ok, true);
   assert.deepEqual(
-    refused.collisions.map((hit) => [hit.branch, hit.path]),
+    result.collisions.map((hit) => [hit.branch, hit.path]),
     [['other', 'src/a.ts']],
   );
-  assert.equal(existsSync(join(root, 'p-007')), false);
-  assert.equal(dispatch(cfg, findTask(cfg, '7'), { force: true }).ok, true);
+  assert.equal(existsSync(join(root, 'p-007')), true);
+});
+
+test('the gate stamps over an uncommitted task file, but not over uncommitted code', () => {
+  const { root } = fixture();
+  writeFileSync(join(root, '.git', 'info', 'exclude'), '.claude/crew*\n');
+  assert.equal(crew(root, 'dispatch', '7', '--json').status, 0);
+  const tree = join(root, 'p-007');
+  writeFileSync(join(tree, 'src', 'a.ts'), 'two\n');
+  sh(tree, 'commit', '-qm', 'feat: two', 'src/a.ts');
+  const taskFile = '.claude/tasks/007-thing.md';
+  assert.notEqual(sh(tree, 'status', '--porcelain', '--', taskFile), '');
+
+  const passed = crew(tree, 'gate', taskFile);
+  assert.equal(passed.status, 0, passed.stderr);
+  assert.equal(statusOf(join(tree, taskFile)), 'building');
+
+  writeFileSync(join(tree, 'src', 'a.ts'), 'three\n');
+  assert.match(crew(tree, 'gate', taskFile).stderr, /work tree is dirty/);
 });
 
 test('a reviewer question raised in a worktree reaches the main work file and holds the tasks it names', () => {

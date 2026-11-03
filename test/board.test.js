@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { render, run } from '../src/commands/board.js';
 import { statuses } from '../src/lib/config.js';
@@ -139,7 +139,7 @@ const liveRepo = (branchStatus) => {
   return { root, file };
 };
 
-const boardStatus = (root) => {
+const boardJson = (root) => {
   const lines = [];
   const log = console.log;
   console.log = (line) => lines.push(line);
@@ -148,8 +148,10 @@ const boardStatus = (root) => {
   } finally {
     console.log = log;
   }
-  return JSON.parse(lines.join('\n')).tasks[0].status;
+  return JSON.parse(lines.join('\n'));
 };
+
+const boardStatus = (root) => boardJson(root).tasks[0].status;
 
 test('an unmerged branch commit is what the board shows, in BOARD.md too', () => {
   const { root } = liveRepo('done');
@@ -158,6 +160,17 @@ test('an unmerged branch commit is what the board shows, in BOARD.md too', () =>
   assert.match(
     readFileSync(join(root, '.claude', 'tasks', 'BOARD.md'), 'utf8'),
     /\| 007 \| A thing \| `done`/,
+  );
+});
+
+test('--json emits the work titles by slug', () => {
+  const root = sandbox();
+  writeTask(root, '007-thing.md', taskFile({ extra: 'work: wall\n' }));
+  mkdirSync(join(root, '.claude', 'crew', 'work'), { recursive: true });
+  writeFileSync(join(root, '.claude', 'crew', 'work', 'wall.json'), '{"title":"The pit wall"}');
+  assert.deepEqual(
+    boardJson(root).works.map((w) => [w.slug, w.title]),
+    [['wall', 'The pit wall']],
   );
 });
 
@@ -200,5 +213,19 @@ test('a task file deleted in the worktree falls back to the branch copy', () => 
   const tree = `${root}-wt2`;
   sh(root, `git worktree add -q ${tree} crew/007-thing`);
   rmSync(join(tree, '.claude', 'tasks', '007-thing.md'));
+  assert.equal(boardStatus(root), 'done');
+});
+
+test('a gitignored task file is read from the worktree, never from the branch', () => {
+  const root = sandbox();
+  writeTask(root, '007-thing.md', taskFile({ status: 'approved' }));
+  writeFileSync(join(root, '.gitignore'), '.claude/\n');
+  sh(root, 'git init -q -b main && git config user.email a@b.c && git config user.name t');
+  sh(root, 'git add -A && git commit -qm base');
+  const tree = `${root}-ignored`;
+  sh(root, `git worktree add -q -b crew/007-thing ${tree}`);
+  sh(tree, 'echo two > code.txt && git add code.txt && git commit -qm "feat: two"');
+  mkdirSync(join(tree, '.claude', 'tasks'), { recursive: true });
+  writeTask(tree, '007-thing.md', taskFile({ status: 'done' }));
   assert.equal(boardStatus(root), 'done');
 });

@@ -70,7 +70,7 @@ const withText = (task, text) => ({
   title: /^#\s+(.+)$/m.exec(text)?.[1].trim() ?? task.file,
 });
 
-/** The tasks as workers have left them: a dirty worktree copy, else an unmerged task's own branch, over the main checkout's. */
+/** The tasks as workers have left them: the worktree copy, else an unmerged task's own branch, over the main checkout's. */
 export const readLiveTasks = (cfg) => {
   const tasks = readTasks(join(cfg.root, cfg.tasksDir));
   const base = baseRef(cfg);
@@ -81,11 +81,9 @@ export const readLiveTasks = (cfg) => {
     if (!local.includes(branch)) return task;
     const rel = `${cfg.tasksDir}/${task.file}`;
     const tree = trees.find((t) => taskFor(cfg, [task], t));
-    const dirty =
-      tree && !isGone(tree) && gitLines(['status', '--porcelain', '--', rel], tree.path).length;
     // Before the merged check: a just-dispatched branch has no commits, so it
     // counts as merged while its worktree copy already says building.
-    const edited = dirty && readText(join(tree.path, rel));
+    const edited = tree && !isGone(tree) && readText(join(tree.path, rel));
     if (edited) return withText(task, edited);
     if (isMerged(cfg, base, branch)) return task;
     const text = git(['show', `${branch}:${rel}`], cfg.root);

@@ -47,7 +47,7 @@ the limit is yours to keep.
 ## Then fold the fixups in
 
 ```sh
-git rebase -i --autosquash <base>
+git rebase -i --autosquash --autostash <base>
 ```
 
 The editor is set to accept the plan unchanged, so this does not stop for
@@ -57,7 +57,7 @@ commits as they are, and report it. A clean history is not worth a broken one.
 ## Then prove it still works
 
 ```sh
-npx crew gate <task file>
+crew gate <task file>
 ```
 
 The rebase rewrote the commits, so the old gate stamp no longer counts.

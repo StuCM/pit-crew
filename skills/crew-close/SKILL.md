@@ -16,7 +16,7 @@ Only the orchestrator does this. Workers never push and never deploy.
 - `blocked` → not yours to close. Put the disagreement to the user first.
 
 ```sh
-npx crew gate --check .claude/tasks/<id>-<slug>.md
+crew gate --check .claude/tasks/<id>-<slug>.md
 ```
 
 This is not a formality. It says whether the gate passed on the code that is
@@ -51,9 +51,11 @@ body from `.github/pull_request_template.md` when there is one. Set the task
 file's `branch:` to the new name. The merge, the worktree removal and step 4
 wait until the PR lands.
 
-The board reads the branch's copy of the task file until merge, so do not
-hand-edit the main checkout's copy first: the merge brings the worker's copy
-in, and a local edit makes `git merge` refuse or conflict.
+The task file is never committed on the branch, so the merge does not bring
+it in: the worker's copy lives in the worktree, and the board reads it there.
+Before removing the worktree, copy it over the main checkout's copy
+(`cp <worktree>/<task file> <task file>`) so its status and notes survive. Do
+not commit it.
 
 Otherwise merge locally:
 
@@ -73,8 +75,8 @@ close.
 
 ```sh
 git branch -d <branch>
-npx crew board
-npx crew log .claude/tasks/<id>-<slug>.md close
+crew board
+crew log .claude/tasks/<id>-<slug>.md close
 ```
 
 Verify on the base branch after merging, not just in the worktree — two tasks
@@ -146,7 +148,7 @@ drift, and crew queries one.
 ## 5. Deploy, or say why not
 
 ```sh
-npx crew preflight <env>
+crew preflight <env>
 ```
 
 If it reports the environment is unreachable, **stop**. Do not attempt the

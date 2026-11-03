@@ -187,6 +187,9 @@ Plugin skills are namespaced by the plugin, so the four orchestrator skills are
 `/crew:<name>`. They also trigger from their descriptions — asking "spec this"
 or "where do things stand" reaches the same place without typing a command.
 
+Agents call `crew` directly, not `npx crew`: the session hook puts the plugin's
+`bin/` on PATH, which saves the `npm exec` wrapper (~86 MB) per running command.
+
 **Installing this does not turn every session into an orchestrator.** Nothing
 here fires on a question about how existing code works; `crew-spec` is scoped
 to the moment a piece of *work* starts, and its first job is to decide what
@@ -532,12 +535,13 @@ four sections by who has it.
 | Done | `done` (the five newest), `pending-<env>` |
 
 Each row is its mark (● running, ✔ done, ○ waiting), a button with the id and
-title, its status, and a ⚑ with what it needs from you. A blocked task says
-who stopped it and why: `⚑ reviewer: wraps post_save instead of replacing it`. Click a row to open
-its spec in its own pane: the title and status, then the Spec, Context,
-Build record and Diagrams tabs, with editing, approve and sign-off. The
-diagrams are Markdown: steps against the files they touch, the behaviour
-flow, and the task's part from the plan. Nothing is drawn as SVG.
+title on the first line, its status and a ⚑ with what it needs from you on the
+second. Within each section, tasks are grouped under their work's title. A
+blocked task's second line says who stopped it and why, from the `blocked-by:`
+and `blocked:` fields `crew task <id> block` writes:
+`⚑ reviewer: wraps post_save instead of replacing it`. Click a row to open
+its spec in its own pane: the title and status, then the Spec, Context and
+Build record tabs, with approve and sign-off.
 
 **Reviewing what changed.** Review changes on a running or finished task,
 or Review the group on a piece of work, opens a third pane. It reads git
@@ -565,8 +569,7 @@ only when the board differs, and re-reads the open spec only when its file
 changed. With the pane closed it does nothing.
 
 It reads the task files and `.claude/crew/work/<slug>.json`, which
-`/crew:crew-spec` writes after the scout runs, and writes through the `crew` CLI (`crew task`). There is no task chat; the
-behaviour-flow diagram is the one thing that asks the session's own model.
+`/crew:crew-spec` writes after the scout runs, and writes through the `crew` CLI (`crew task`). There is no task chat.
 
 It needs Claude Code 2.1.287 or later in the terminal and 2.1.286 or later in
 the Desktop Code tab. Desktop bundles its own copy of Claude Code; an older
@@ -669,16 +672,15 @@ subsystem in general. That is one query per task instead of one per
 agent, filtered by judgement, and it keeps workers hermetic — no MCP, no
 network, no dependence on a store that may not exist in CI or a container.
 
-`crew graph chain <text>` is the one read that crosses links. It starts from
-every node whose name or description holds all the words, then walks the open
-links out from them — two hops by default, three at most — so a Pattern about
-this project leads to the Decision that fixed it and on to the Pattern
-anchored where that fix lives. It is deliberately **not** scoped to the
-project, because the same fix in a sibling project is often the best lead in
-the store; each line names the project it came from instead. A node with more
-than 25 links (a Project, or a Technology half the store points at) is named
-and not walked through, which is what kept `recall --depth 2` from being
-readable.
+`crew graph chain <text>` is the one read that crosses links, and it is
+`claude-memory-graph chain` underneath. It starts from the nodes that best
+match the words, then at each hop follows only the open links that score best
+against them — two hops by default, three at most — so a Pattern about this
+project leads to the Decision that fixed it and on to the Pattern anchored
+where that fix lives. It is deliberately **not** scoped to the project,
+because the same fix in a sibling project is often the best lead in the store;
+each line names the project it came from instead. The edges it did not follow
+are counted at the end, so a reader can ask for them by narrowing the words.
 
 Traps are the highest-value writes. *"A 403 here is the agent proxy, not the
 app"* recorded once stops every future agent chasing it.

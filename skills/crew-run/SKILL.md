@@ -1,12 +1,15 @@
 ---
 name: crew-run
-description: Hand an approved task, or an approved group of them, to its own session in an isolated worktree. Use when the user says "run task N", "run the <slug> group", "start building it", or approves a spec.
+description: Hand an approved task, or an approved group of them, to its own session in an isolated worktree. Use when the user says "run task N", "run the <slug> group", "start building it", or approves a spec — straight away, without asking whether to start.
 ---
 
 # Handing a task to a session
 
 Refuse to start unless `status:` is `approved`. A `draft` goes back to
 `/crew:crew-spec` — the approval gate is the point of the whole system.
+
+Once it is `approved`, start it. Do not ask the person whether to run it:
+approving the spec was the go-ahead.
 
 Each task gets **its own session and its own worktree**. The orchestrator does
 not implement, does not review, and does not watch. It hands over, then reads
@@ -15,7 +18,7 @@ the board.
 ## A group
 
 "Run the `<slug>` group" means every approved task with `work: <slug>`, in
-the card's order (`npx crew work <slug>` lists them).
+the card's order (`crew work <slug>` lists them).
 
 - **With a pilot** (`★ pilot` on the card): dispatch the pilot alone. When
   it reaches `done`, or `pending-<env>`, stop and ask the person to look at it
@@ -41,7 +44,7 @@ these files — is asked by the dispatch itself in step 2.
 ## 2. Worktree
 
 ```sh
-npx crew dispatch <id> --json
+crew dispatch <id> --json
 ```
 
 It cuts `<worktreeDir>/<project>-<id>` on the task's `branch:` from the base
@@ -50,10 +53,10 @@ crew config, the project brief and an uncommitted spec, sets `status:
 building` in the **worktree's** copy only, and runs `crew board` and
 `crew log <task> dispatch`.
 
-If it refuses with `collisions`, an unmerged branch already touches these
-files. **Do not dispatch.** Name the branch and the commits, and offer to land
-them, respec around them, or proceed anyway. The user may say proceed — then
-pass `--force` — but you may not decide it for them, exactly as with a `draft`.
+`collisions` in the result lists unmerged branches that already touch these
+files. It never stops the dispatch — stale and backup branches would block
+everything — so mention them in one line and carry on. `--force` overrides
+only a pilot or an open question holding the task, never on your own call.
 
 ## 3. Hand over
 
@@ -84,12 +87,13 @@ three lines, nothing else:
 <brief>
 Your worktree is <worktree>. Your shell starts elsewhere: run every command as `cd <worktree> && ...` and use absolute paths under it for every Read, Edit and Write. Keep to `files:` yourself; the scope hook cannot see your branch from here.
 Spawn crew-reviewer in the foreground and wait for its verdict. Do not hand back with a round open.
-Finish by committing the task file on the branch, then `git switch --detach`.
+Never commit the task file; leave it updated in the worktree. Finish with `git switch --detach`.
 ```
 
-Then stop. You are told when the Agent finishes; read the task file on its
-branch (`git show <branch>:<task file>`), not the Agent's report, for the
-status — a report has said `done` over a file that still said `review`.
+Then stop. You are told when the Agent finishes; read the task file in its
+worktree (`<worktree>/<task file>`), not the Agent's report, for the status —
+a report has said `done` over a file that still said `review`. The task file
+is never committed, so `git show <branch>:<task file>` does not have it.
 
 Queue `card` with `mcp__ccd_session__spawn_task` instead only when the person
 asks to watch or steer the task in its own chat, and give `command` to paste
@@ -123,11 +127,11 @@ The task file's `status:` tells you what happened:
   in one line. Lead with that line, then the detail from **Review rounds**,
   and let the user settle it. Do not spawn another round to break the tie.
 - `blocked` with `blocked: question: …` → the reviewer doubts the group's
-  approach. Show `npx crew work <slug>`, which lists the question, its
+  approach. Show `crew work <slug>`, which lists the question, its
   evidence and the tasks it holds. Ask it as it stands, without arguing for
   the current plan: agreeing too quickly is the failure this exists to
-  catch. Record the answer with `npx crew work <slug> answer r<n> "<answer>"`.
-  If the approach holds, `npx crew task <id> sendback`. If it changed,
+  catch. Record the answer with `crew work <slug> answer r<n> "<answer>"`.
+  If the approach holds, `crew task <id> sendback`. If it changed,
   update the brief and the affected tasks first, then send back. Dispatch
   refuses the held tasks until the question has an answer.
 

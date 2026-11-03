@@ -65,7 +65,7 @@ most of these in one round trip.
 ### Then look at what already exists
 
 ```sh
-npx crew plan
+crew plan
 ```
 
 - **A draft already covers this.** `agent-tasks` writes `status: draft` specs
@@ -73,7 +73,7 @@ npx crew plan
   maps. Do not rewrite one. The planning conversation already did step 1, so
   do the three things the draft deliberately did not: the graph (a scout, step
   2, with the part's symbols as leads), collisions, and approval.
-- **A plan with a part covering this.** Read it — `npx crew plan <part-id>` —
+- **A plan with a part covering this.** Read it — `crew plan <part-id>` —
   and put its id in the task's `part:` so the worker and the reviewer read the
   same thing. If it still carries open questions or unverified symbols, say so
   and offer `open-threads` or a rebuild; do not spec over the top of it.
@@ -279,7 +279,7 @@ Talk it through with the user. Push on:
   the scope hook refuses a write outside it — so a missing one blocks the
   worker. If the scout found the same cause in more files than the person
   mentioned, ask whether they are this task or the next one.
-- **Where can it be proven?** Set `env:`. `npx crew doctor` lists the
+- **Where can it be proven?** Set `env:`. `crew doctor` lists the
   environments and their statuses. If the answer is an environment no agent can
   reach, say so now and set expectations: code-complete is the best the loop
   can reach.
@@ -293,7 +293,7 @@ Talk it through with the user. Push on:
 Once `files:` is settled, ask whether the work already exists:
 
 ```sh
-npx crew collisions .claude/tasks/<NNN>-<slug>.md
+crew collisions .claude/tasks/<NNN>-<slug>.md
 ```
 
 The board only knows about *tasks*. A commit sitting on a branch nobody turned
@@ -309,7 +309,7 @@ see it; finding it at dispatch is a round too late. If it prints nothing, say
 ## 4. Write it
 
 ```sh
-npx crew spec-template > .claude/tasks/<NNN>-<slug>.md
+crew spec-template > .claude/tasks/<NNN>-<slug>.md
 ```
 
 Next free number, three digits. Fill every section. The Definition of done is
@@ -374,7 +374,7 @@ not ask again.
 **A piece of work with a brief is approved as a group.** Show the card:
 
 ```sh
-npx crew work <slug>
+crew work <slug>
 ```
 
 It prints the shape, direction, the rejected road, what came from them and
@@ -384,12 +384,14 @@ answer into its `answer`. Then say the tasks are there to skim or reorder, and
 ask for a yes to the card. On yes:
 
 ```sh
-npx crew work <slug> approve
+crew work <slug> approve
 ```
 
 It refuses while a challenge point has no answer, or the brief lacks a shape,
 target, direction or rejected road. It approves every draft task in the group
-and logs each one. Tell them `/crew:crew-run` is next, in the card's order.
+and logs each one. Go straight on to `/crew:crew-run <slug>`, which runs
+them in the card's order. Approval is the go-ahead to build: do not ask
+whether to start.
 
 **A lone task without a work file** is approved as before:
 
@@ -410,8 +412,9 @@ there for anyone who wants it.
 reason: a wrong spec is the most expensive thing in the system, and it is
 cheapest to fix right now.
 
-On approval run `npx crew task <id> approve`, and tell them
-`/crew:crew-run <id>` is next.
+On approval run `crew task <id> approve`, and go straight on to
+`/crew:crew-run <id>`. Approval is the go-ahead to build: do not ask whether
+to start it.
 
 ## When the conversation moves
 

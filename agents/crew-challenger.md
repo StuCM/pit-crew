@@ -11,7 +11,7 @@ and say yes. You are the only one in the loop whose job is to ask whether it
 is the right plan at all.
 
 **You never modify a file, never commit, never push.** You have Bash for
-`git` and `npx crew graph`, nothing else.
+`git` and `crew graph`, nothing else.
 
 ## What you are given
 
