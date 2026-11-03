@@ -41,6 +41,8 @@ let isLoaded = false;
 let loadedAt = 0;
 let taskTimes = {}; // task file name → mtime and size at the last load
 let selected = '';
+let selectedGroup = ''; // the work slug whose page the side pane shows, or ''
+let groupTab = 'brief'; // or 'review'
 let log = '';
 
 // The plugin's own copy of crew, run with node: no npx resolution on every call, and always the version this mod was written for.
@@ -121,12 +123,21 @@ const pad = (label) => ' ' + label + ' ';
 
 const select = async ($, id) => {
   selected = id;
+  selectedGroup = '';
   doc = null;
   await $.ui.open({
     id: SPEC_PANE,
     title: id + ' · ' + (selectedTask()?.title ?? ''),
     focus: true,
   });
+  $.ui.invalidate('ui.render');
+};
+
+const selectGroup = async ($, group) => {
+  selectedGroup = group.slug;
+  selected = '';
+  groupTab = 'brief';
+  await $.ui.open({ id: SPEC_PANE, title: group.title, focus: true });
   $.ui.invalidate('ui.render');
 };
 
@@ -299,6 +310,25 @@ export const groupCounts = ({ statuses }, group) => {
   };
 };
 
+// Only a group with a draft task has anything left to approve.
+const needsApproval = (group) =>
+  group.slug && !group.approved && group.tasks.some((t) => t.status === 'draft');
+
+const approveRow = ($, { Text, Button }, group) =>
+  group.problems.length
+    ? Text({ color: C.mut, children: ['Not ready: ' + group.problems.join('; ')] })
+    : Button({
+        key: 'approve-' + group.slug,
+        label: 'Approve group',
+        variant: 'primary',
+        onPress: () => approveGroup($, group),
+      });
+
+const raisedText = (r) => {
+  const holds = r.affects?.length ? ` · holds ${r.affects.join(', ')}` : '';
+  return `? ${r.ref} ${r.from ?? 'reviewer'} on ${r.task}: ${r.q}${holds}`;
+};
+
 const isExpanded = (group, counts) =>
   expanded[group.slug] ?? (counts.waiting > 0 || counts.questions > 0 || !group.approved);
 
@@ -327,6 +357,10 @@ const groupList = ($, { Box, Text, Button }) => {
   for (const group of buildGroups(board)) {
     const counts = groupCounts(board, group);
     const isOpen = isExpanded(group, counts);
+    const fold = () => {
+      expanded[group.slug] = !isOpen;
+      $.ui.invalidate('ui.render');
+    };
     const summary = [
       group.shape,
       `${counts.done}/${group.tasks.length} done`,
@@ -340,13 +374,16 @@ const groupList = ($, { Box, Text, Button }) => {
         'grouprow-' + (group.slug || 'none'),
         [
           Button({
-            key: 'group-' + (group.slug || 'none'),
-            label: pad(`${isOpen ? '▾' : '▸'} ${group.title}`),
+            key: 'fold-' + (group.slug || 'none'),
+            label: pad(isOpen ? '▾' : '▸'),
             plain: true,
-            onPress: () => {
-              expanded[group.slug] = !isOpen;
-              $.ui.invalidate('ui.render');
-            },
+            onPress: fold,
+          }),
+          Button({
+            key: 'group-' + (group.slug || 'none'),
+            label: pad(group.title),
+            plain: true,
+            onPress: group.slug ? () => selectGroup($, group) : fold,
           }),
         ],
         [
@@ -379,26 +416,14 @@ const groupList = ($, { Box, Text, Button }) => {
           }),
         );
     }
-    if (group.slug && !group.approved) {
-      body.push(
-        group.problems.length
-          ? Text({ color: C.mut, children: ['Not ready: ' + group.problems.join('; ')] })
-          : Button({
-              key: 'approve-' + group.slug,
-              label: 'Approve group',
-              variant: 'primary',
-              onPress: () => approveGroup($, group),
-            }),
-      );
-    }
+    if (needsApproval(group)) body.push(approveRow($, { Text, Button }, group));
     for (const r of group.raised ?? []) {
       if (r.answer) continue;
-      const holds = r.affects?.length ? ` · holds ${r.affects.join(', ')}` : '';
       body.push(
         Text({
           key: `raised-${group.slug}-${r.ref}`,
           color: C.amb,
-          children: [`? ${r.ref} ${r.from ?? 'reviewer'} on ${r.task}: ${r.q}${holds}`],
+          children: [raisedText(r)],
         }),
       );
     }
@@ -853,7 +878,7 @@ const reviewBody = ($, { Box, Text, Button, Input, Code }, { bodyRows, inner }) 
   );
 
   // The window: as many rows as the pane leaves under the header, scrolled by the ui.scroll hook.
-  reviewHeader = head.length + 1;
+  reviewHeader = head.length + (head.length - 1) * S.xs + 1;
   const count = Math.max(bodyRows - reviewHeader - 2, 8);
   reviewCount = count;
   const rows = reviewRows();
@@ -897,7 +922,10 @@ const reviewBody = ($, { Box, Text, Button, Input, Code }, { bodyRows, inner }) 
     ? `${review.top + 1}–${Math.min(review.top + count, rows.length)} of ${rows.length}`
     : '';
   body.push(Text({ key: 'review-pos', color: C.faint, children: [shown] }));
-  return [...head, ...body];
+  return [
+    Box({ key: 'review-head', flexDirection: 'column', rowGap: S.xs, children: head }),
+    ...body,
+  ];
 };
 
 // Agreement is what approval signs; context informs it; the build record is appended by the worker later.
@@ -1053,6 +1081,110 @@ const specBody = ($, { Box, Text, Button, Markdown }) => {
   });
 };
 
+const where = (ref) =>
+  typeof ref === 'string'
+    ? ref
+    : `${ref.path}${ref.line ? `:${ref.line}` : ''}${ref.name ? ` ${ref.name}` : ''}`;
+
+const firstSentence = (text) => /^.*?(?:[.!?](?=\s)|$)/s.exec(text.trim())[0].replace(/\s+/g, ' ');
+
+// The group page's body: a tab row, then the brief or the way into the diffs. Kept flat for Desktop's node limit.
+const groupBody = ($, { Box, Text, Button }, group) => {
+  const redraw = () => $.ui.invalidate('ui.render');
+  const brief = [];
+  const heading = (text) => brief.push(Text({ bold: true, color: C.ink, children: [text] }));
+  const lines = (title, items) => {
+    if (!items.length) return;
+    heading(title);
+    for (const item of items) brief.push(Text({ children: [item] }));
+  };
+  if (group.summary) brief.push(Text({ children: [group.summary] }));
+  lines('Plan', [group.direction, ...group.target.map(where)].filter(Boolean));
+  lines(
+    'Not doing',
+    group.rejected.map((r) => (typeof r === 'string' ? r : `${r.option} — ${r.why}`)),
+  );
+  lines('You decided', group.decided);
+  lines('Exploring', group.exploring);
+  const challenge = group.challenge;
+  if (challenge?.skipped) lines('Challenge', ['skipped: ' + challenge.skipped]);
+  else if (challenge)
+    lines(
+      'Challenge',
+      (challenge.points ?? []).map((p) => `${p.q} → ${p.answer ?? 'unanswered'}`),
+    );
+  lines('Questions', (group.raised ?? []).filter((r) => !r.answer).map(raisedText));
+  heading('Tasks');
+  for (const task of group.tasks) {
+    const [mark, markColor] = markOf(board.statuses[task.status] ?? {});
+    brief.push(
+      twoLine(
+        { Box },
+        'grouptask-' + task.id,
+        [
+          Text({ color: markColor, children: [mark] }),
+          Button({
+            key: 'open-' + task.id,
+            label: pad(`${task.id}  ${task.title}`),
+            plain: true,
+            onPress: () => select($, task.id),
+          }),
+        ],
+        [Text({ dimColor: true, children: [firstSentence(task.goal ?? '')] })],
+      ),
+    );
+  }
+  if (needsApproval(group)) brief.push(approveRow($, { Text, Button }, group));
+
+  const built = group.tasks.filter((t) => !['draft', 'approved'].includes(t.status));
+  const diffs = built.length
+    ? [
+        Text({ children: [`${built.length} task(s) with changes`] }),
+        Button({
+          key: 'review-group',
+          label: pad('Open the diffs'),
+          plain: true,
+          onPress: () => openReview($, group.slug, group.title),
+        }),
+      ]
+    : [Text({ color: C.mut, children: ['Nothing built yet'] })];
+
+  const tabs = Box({
+    flexDirection: 'row',
+    columnGap: S.sm,
+    children: [
+      ['brief', 'Brief'],
+      ['review', 'Review'],
+    ].map(([name, label]) =>
+      Box({
+        key: 'gtab-box-' + name,
+        borderStyle: 'round',
+        borderColor: groupTab === name ? C.border : C.cardBorder,
+        backgroundColor: groupTab === name ? C.card : C.well,
+        paddingX: S.xs,
+        hover: { borderColor: C.border },
+        children: [
+          Button({
+            key: 'gtab-' + name,
+            label: pad(label),
+            plain: true,
+            dimColor: groupTab !== name,
+            onPress: () => {
+              groupTab = name;
+              redraw();
+            },
+          }),
+        ],
+      }),
+    ),
+  });
+  return Box({
+    flexDirection: 'column',
+    rowGap: S.sm,
+    children: [tabs, ...(groupTab === 'brief' ? brief : diffs)],
+  });
+};
+
 const openWall = ($, focus) =>
   $.ui.open({ id: PANE, title: 'Pit wall', columns: 72, ...(focus ? { focus: true } : {}) });
 
@@ -1205,6 +1337,25 @@ export function register(on) {
             ? groupList($, ui)
             : boardList($, ui, inner),
       ]);
+    }
+
+    const group = selectedGroup && buildGroups(board).find((g) => g.slug === selectedGroup);
+    if (group) {
+      const counts = groupCounts(board, group);
+      const facts = [
+        group.shape,
+        `${counts.done}/${group.tasks.length} done`,
+        group.pilot && 'pilot ' + group.pilot,
+      ].filter(Boolean);
+      const header = Box({
+        flexDirection: 'column',
+        rowGap: S.xs,
+        children: [
+          Text({ bold: true, color: C.ink, children: [group.title] }),
+          Text({ dimColor: true, children: [facts.join(' · ')] }),
+        ],
+      });
+      return frame(window('group-window', header, groupBody($, ui, group)));
     }
 
     if (!doc) await loadDoc($);

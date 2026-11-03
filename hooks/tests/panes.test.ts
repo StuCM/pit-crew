@@ -613,6 +613,8 @@ const grouped =
   (work: Record<string, unknown> = {}) =>
   (board: any) => {
     for (const t of board.tasks) if (['001', '003', '004'].includes(t.id)) t.work = 'smm';
+    board.tasks[0].goal = 'Label the first thing. It also does more.';
+    board.tasks[2].goal = 'Start the pilot.';
     board.works = [
       {
         slug: 'smm',
@@ -622,6 +624,12 @@ const grouped =
         problems: [],
         order: ['003', '001', '004'],
         pilot: '003',
+        summary: 'Labels everywhere',
+        target: [{ path: 'src/labels.ts', line: 4 }],
+        rejected: [{ option: 'a new table', why: 'too heavy' }],
+        decided: ['keep the API'],
+        exploring: ['caching'],
+        challenge: { points: [{ q: 'Why not reuse?', answer: 'it differs' }] },
         raised: [
           {
             ref: 'r1',
@@ -664,15 +672,20 @@ test('arrows reorder a group, pilot moves the pilot, and a header folds its grou
     ['work', 'smm', 'order', '001,003,004'],
     ['work', 'smm', 'pilot', '001'],
   ]);
-  await ui.press({ key: 'group-smm' });
+  await ui.press({ key: 'fold-smm' });
   expect(await ui.find({ key: 'open-003' })).toBeUndefined();
   await ui.press({ key: 'view-crew' });
   expect(await ui.find({ type: 'Text', text: /^Scout · / })).toBeDefined();
   await ui.unmount();
 });
 
+const drafts = (work: Record<string, unknown>) => (board: any) => {
+  grouped(work)(board);
+  for (const t of board.tasks) if (t.work === 'smm') t.status = 'draft';
+};
+
 test('an unapproved group offers Approve group when ready, and says why when not', async ($, on) => {
-  const seen = stubs(on, { patch: grouped({ approved: null }) });
+  const seen = stubs(on, { patch: drafts({ approved: null }) });
   const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
   await ui.press({ key: 'approve-smm' });
   expect(seen.calls.map((c) => c.args)).toEqual([['work', 'smm', 'approve']]);
@@ -681,12 +694,55 @@ test('an unapproved group offers Approve group when ready, and says why when not
 });
 
 test('a group that is not ready to approve names what is missing', async ($, on) => {
-  stubs(on, { patch: grouped({ approved: null, problems: ['brief.direction is empty'] }) });
+  stubs(on, { patch: drafts({ approved: null, problems: ['brief.direction is empty'] }) });
   const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
   expect(await ui.find({ key: 'approve-smm' })).toBeUndefined();
   expect(
     await ui.find({ type: 'Text', text: 'Not ready: brief.direction is empty' }),
   ).toBeDefined();
+  await ui.unmount();
+});
+
+const settled = (board: any) => {
+  grouped({ approved: null, problems: ['brief.direction is empty'] })(board);
+  board.tasks[0].status = 'review';
+};
+
+test('a group with no draft task shows neither Approve group nor Not ready', async ($, on) => {
+  stubs(on, { patch: settled });
+  const ui = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  expect(await ui.find({ key: 'group-smm' })).toBeDefined();
+  expect(await ui.find({ key: 'approve-smm' })).toBeUndefined();
+  expect(await ui.find({ type: 'Text', text: /^Not ready/ })).toBeUndefined();
+  await ui.unmount();
+});
+
+test('pressing a group title opens its page: the brief, the tasks in order, then the diffs tab', async ($, on) => {
+  const seen = stubs(on, { patch: grouped(), panes: ['crew-wall', 'crew-spec'] });
+  const wall = await $.ui.mount({ ...pane('crew-wall'), surface: 'desktop' });
+  await wall.press({ key: 'group-smm' });
+  await wall.unmount();
+  expect(seen.opens.at(-1)).toMatchObject({ id: 'crew-spec', focus: true });
+  const ui = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
+  for (const text of [
+    'Labels everywhere',
+    'Why not reuse? → it differs',
+    'a new table — too heavy',
+    'src/labels.ts:4',
+    'Start the pilot.',
+    'Label the first thing.',
+  ])
+    expect(await ui.find({ type: 'Text', text })).toBeDefined();
+  const labels = (await ui.findAll({ type: 'Button' })).map((el: any) => String(el.props.label));
+  expect(labels.filter((l: string) => l.includes('\n'))).toEqual([]);
+  await ui.press({ key: 'gtab-review' });
+  expect(await ui.find({ type: 'Text', text: '1 task(s) with changes' })).toBeDefined();
+  await ui.press({ key: 'review-group' });
+  expect(seen.opens.at(-1)).toMatchObject({ id: 'crew-review', focus: true });
+  await ui.press({ key: 'gtab-brief' });
+  await ui.press({ key: 'open-001' });
+  expect(await ui.find({ key: 'spec-window' })).toBeDefined();
+  expect(await ui.find({ key: 'group-window' })).toBeUndefined();
   await ui.unmount();
 });
 
@@ -712,6 +768,37 @@ test('a running task opens a review of its files and commits, the stray file fla
   expect(await ui.find({ type: 'Text', text: '1 suggestion waiting for the fixer' })).toBeDefined();
   await ui.press({ key: 'apply-fixes' });
   expect(seen.submitted.at(-1)).toMatch(/`crew fix 001`/);
+  await ui.unmount();
+});
+
+test('the review head is spaced, and a wheel below it scrolls the code while one over it does not', async ($, on) => {
+  stubs(on, { patch: reviewing });
+  const spec = await $.ui.mount({ ...pane('crew-spec'), surface: 'desktop' });
+  await spec.press({ key: 'review-task' });
+  await spec.unmount();
+  const ui = await $.ui.mount({ ...pane('crew-review'), surface: 'desktop' });
+  await ui.press({ key: 'pick-001-src/a.ts' });
+  await ui.press({ key: 'mode-file' });
+  const head: any = await ui.find({ key: 'review-head' });
+  expect(head.props.rowGap).toBeGreaterThanOrEqual(1);
+  const rows = head.children.length;
+  const header = rows + (rows - 1) * head.props.rowGap + 1;
+  const start = async () => ((await ui.find({ type: 'Code' })) as any).props.startLine;
+  const before = await start();
+  await $.ui.scroll({
+    component: 'Pane',
+    requestId: 'crew-review',
+    by: 3,
+    pointer: { row: header - 1 },
+  });
+  expect(await start()).toBe(before);
+  await $.ui.scroll({
+    component: 'Pane',
+    requestId: 'crew-review',
+    by: 3,
+    pointer: { row: header },
+  });
+  expect(await start()).not.toBe(before);
   await ui.unmount();
 });
 
