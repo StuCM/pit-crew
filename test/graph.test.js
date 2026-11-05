@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FILES_QUERY, SCOPED } from '../src/commands/graph.js';
@@ -140,4 +140,47 @@ test('tree with no plans says so and exits 0', async () => {
   const { code, out } = tree(['tree', 'x']);
   assert.equal(code, 0);
   assert.equal(out, 'No plans in the graph for x.\n');
+});
+
+test('tree --html writes a page with plans, decisions, supersession and out-of-scope', async () => {
+  const tree = await fakeTree(TREE_ROWS, 'treehtml');
+  const file = join(mkdtempSync(join(tmpdir(), 'crew-html-')), 'out.html');
+  const { code, out } = tree(['tree', 'x', '--html', file]);
+  assert.equal(code, 0);
+  assert.equal(out, `wrote ${file}\n`);
+  const page = readFileSync(file, 'utf8');
+  assert.match(page, /<h2>A<\/h2>/);
+  assert.match(page, /<h2>B<\/h2>/);
+  assert.match(page, /<p class="dest">dA<\/p>/);
+  assert.match(page, /<strong>D1<\/strong>/);
+  assert.match(page, /<strong>D2<\/strong>/);
+  assert.match(page, /superseded by D2/);
+  assert.match(page, /<s>no ui<\/s>/);
+  assert.match(page, /<s>no db<\/s>/);
+  assert.doesNotMatch(page, /<script|https?:\/\//);
+});
+
+test('tree --html escapes graph strings', async () => {
+  const tree = await fakeTree(
+    [{ plan: '<script>alert(1)</script>', destination: 'a&b' }],
+    'treeesc',
+  );
+  const file = join(mkdtempSync(join(tmpdir(), 'crew-html-')), 'out.html');
+  tree(['tree', 'x', '--html', file]);
+  const page = readFileSync(file, 'utf8');
+  assert.ok(page.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
+  assert.ok(page.includes('a&amp;b'));
+  assert.doesNotMatch(page, /<script/);
+});
+
+test('tree --html with no plans still writes the message', async () => {
+  const tree = await fakeTree([], 'treehtmlnone');
+  const file = join(mkdtempSync(join(tmpdir(), 'crew-html-')), 'out.html');
+  tree(['tree', 'x', '--html', file]);
+  assert.ok(readFileSync(file, 'utf8').includes('No plans in the graph for x.'));
+});
+
+test('tree --html without a path is a usage error', async () => {
+  const tree = await fakeTree(TREE_ROWS, 'treehtmlusage');
+  assert.equal(tree(['tree', 'x', '--html']).code, 2);
 });
