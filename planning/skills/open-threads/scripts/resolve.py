@@ -45,17 +45,47 @@ def find_part(d, pid):
     sys.exit(f"no part or node with id {pid!r} in this map")
 
 
+def question_text(q):
+    return q["q"] if isinstance(q, dict) else q
+
+
 def match_question(part, needle):
     """Match one open question by substring. Ambiguity is an error, not a guess."""
     opens = part.get("open") or []
-    hits = [q for q in opens if needle.lower() in q.lower()]
+    hits = [q for q in opens if needle.lower() in question_text(q).lower()]
     if not hits:
         sys.exit(f"no open question on {part.get('id')} contains {needle!r}\n"
-                 + "\n".join("  - " + q for q in opens))
+                 + "\n".join("  - " + question_text(q) for q in opens))
     if len(hits) > 1:
         sys.exit(f"{needle!r} matches {len(hits)} open questions — be more specific:\n"
-                 + "\n".join("  - " + q for q in hits))
+                 + "\n".join("  - " + question_text(q) for q in hits))
     return hits[0]
+
+
+def rule_out(a):
+    """Move a question off the part and into plan.json out_of_scope."""
+    if not (a.what and a.why and a.plan and a.question):
+        sys.exit("--out-of-scope needs --question, --what, --why and --plan")
+    if len(a.what.split()) > 7:
+        sys.exit("--what is a short label: seven words or fewer")
+    path = pathlib.Path(a.map)
+    d = json.loads(path.read_text(encoding="utf-8"))
+    part = find_part(d, a.part)
+    question = match_question(part, a.question)
+    plan_path = pathlib.Path(a.plan)
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    plan.setdefault("out_of_scope", []).append(
+        {"what": a.what, "why": a.why, "question": question_text(question)})
+    part["open"] = [q for q in part["open"] if q != question]
+    if not part["open"]:
+        part.pop("open")
+    msg = f"ruled out of scope on {a.part}: {question_text(question)[:70]}"
+    if a.dry_run:
+        print("would write:\n  - " + msg)
+        return
+    path.write_text(json.dumps(d, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    plan_path.write_text(json.dumps(plan, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print("  - " + msg)
 
 
 def main():
@@ -70,9 +100,16 @@ def main():
     ap.add_argument("--status", help=f"new status for the part {sorted(PLAN_STATUSES)}")
     ap.add_argument("--keep-open", action="store_true",
                     help="record the decision but leave the question on the map")
+    ap.add_argument("--out-of-scope", action="store_true",
+                    help="rule the --question out of scope; needs --what, --why and --plan")
+    ap.add_argument("--what", help="short name (seven words or fewer) for what was ruled out")
+    ap.add_argument("--plan", help="the plan.json that records out_of_scope")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
 
+    if a.out_of_scope:
+        rule_out(a)
+        return
     if a.decided and a.options:
         sys.exit("--decided and --options are mutually exclusive: either it was settled or it was not")
     if not any([a.decided, a.options, a.note, a.status]):
@@ -95,7 +132,7 @@ def main():
         "source": "session",
     }
     if question:
-        record["question"] = question
+        record["question"] = question_text(question)
     if a.decided:
         record["kind"] = "decided"
         record["decided"] = a.decided
@@ -114,9 +151,9 @@ def main():
         part["open"] = [q for q in part["open"] if q != question]
         if not part["open"]:
             part.pop("open")
-        changes.append(f"closed open question on {a.part}: {question[:70]}")
+        changes.append(f"closed open question on {a.part}: {question_text(question)[:70]}")
     elif question and a.options:
-        changes.append(f"left open (options recorded) on {a.part}: {question[:70]}")
+        changes.append(f"left open (options recorded) on {a.part}: {question_text(question)[:70]}")
 
     if a.status and part.get("status") != a.status:
         changes.append(f"status {part.get('status')!r} -> {a.status!r} on {a.part}")
