@@ -46,7 +46,11 @@ That shape goes into the brief; the diff does not.
 crew graph chain <a lead, in two or three words> --depth=2
 crew graph traps
 crew graph decisions
+crew graph tree
 ```
+
+When the work falls inside an exploration, report its destination, decisions and
+out-of-scope items from `crew graph tree` so the spec follows the plan.
 
 `chain` starts from the nodes that best match the words and, at each hop,
 follows only the edges that score best against them, two hops by default, so
