@@ -4,6 +4,7 @@
     python3 scripts/graph_propose.py plan.json
     python3 scripts/graph_propose.py plan.json --json
     python3 scripts/graph_propose.py plan.json --append .claude/tasks/007-thing.md
+    python3 scripts/graph_propose.py plan.json --only d3 --project crew
 
 Proposals only. crew has one graph writer — the orchestrator — and writes go
 through the MCP, so this prints a block for a human to review and commit. It
@@ -18,12 +19,18 @@ What it will and will not propose, deliberately:
   calls these the highest-value writes and they are the reason this exists.
 - **Constraint** — `not` entries, which are boundaries a future agent should
   not quietly cross.
+- **Concept / Task / Constraint** — the planning hub, the plan itself (one
+  plan.json is one exploration) and its `out_of_scope` entries, so a plan is
+  found as Project -> `<project> planning` -> plan. Fog and open questions
+  never reach the graph.
 - Nothing from `proposed`, `open` or `unknown` parts. A graph full of guesses
   gives bad advice, which defeats the point of having one.
 """
 import argparse
 import json
+import datetime
 import pathlib
+import subprocess
 import sys
 
 LAYERS = ("brainstorm", "architecture", "feature")
@@ -53,15 +60,43 @@ def trim(s, n=200):
     return s if len(s) <= n else s[: n - 1].rstrip() + "…"
 
 
-def collect(plan, maps):
+def node_title(n):
+    return n.get("label") or n["name"]
+
+
+def git_project():
+    common = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                            capture_output=True, text=True).stdout.strip()
+    return pathlib.Path(common).parent.name if common else pathlib.Path.cwd().name
+
+
+def collect(plan, maps, project, only=None):
     out = []
     seen = set()
+    context = f"{project}__{datetime.date.today().isoformat()}"
+    hub = f"{project} planning"
+    exploration = plan.get("name", "plan")
 
     def add(node):
-        key = (node["type"], node["name"].lower())
+        key = (node["type"], node_title(node).lower())
         if key not in seen:
             seen.add(key)
+            node["sourceContext"] = context
             out.append(node)
+
+    scope = [{"what": o.get("what", ""), "why": o.get("why", "")}
+             for o in plan.get("out_of_scope") or [] if not only]
+    add({"type": "Concept", "label": hub,
+         "linkedFrom": [["hasConcept", f"Project/{project}"]],
+         "source": "plan"})
+    add({"type": "Task", "name": exploration,
+         "destination": plan.get("destination", ""),
+         "links": [["partOf", f"Project/{project}"], ["hasConcept", f"Concept/{hub}"]]
+                  + [["hasConstraint", f"Constraint/{trim(o['what'], 90)}"] for o in scope],
+         "source": "plan"})
+    for o in scope:
+        add({"type": "Constraint", "label": trim(o["what"], 90),
+             "description": trim(o["why"]), "source": "plan out_of_scope"})
 
     for m in maps:
         title = m.get("title", "")
@@ -70,16 +105,19 @@ def collect(plan, maps):
         for d in m.get("decisions") or []:
             if d.get("kind") != "decided":
                 continue                      # options and notes are not record
+            if only and d.get("id") != only:
+                continue
             label = d.get("part_label") or by_id.get(d.get("part"), {}).get("label", "")
             add({"type": "Decision",
                  "name": trim(f"{label}: {d.get('decided')}", 90),
                  "description": trim(d.get("decided", "")),
                  "rationale": trim(d.get("why", "")),
                  "affects": label,
+                 "links": [["affects", f"Task/{exploration}"]],
                  "date": d.get("date"),
                  "source": f"{title} ({d.get('id')})"})
 
-        for p in m.get("parts") or []:
+        for p in [] if only else m.get("parts") or []:
             if p.get("status") in TRAPPY:
                 why = p.get("why_split") or p.get("why_here") or ""
                 if not why.strip():
@@ -93,14 +131,14 @@ def collect(plan, maps):
             if p.get("status") in ("agreed", "exists", "extend", "new"):
                 for n in p.get("not") or []:
                     add({"type": "Constraint",
-                         "name": trim(f"{p.get('label')} is not responsible for "
+                         "label": trim(f"{p.get('label')} is not responsible for "
                                       + n.rstrip("."), 90),
                          "description": trim(n),
                          "affects": p.get("label"),
                          "source": title})
 
         # brainstorm maps carry the same traps at discussion level
-        for t in m.get("themes") or []:
+        for t in [] if only else m.get("themes") or []:
             stack = list(t.get("nodes") or [])
             while stack:
                 n = stack.pop()
@@ -115,24 +153,31 @@ def collect(plan, maps):
 
 
 def markdown(nodes, plan):
-    if not nodes:
-        return "## Graph writes proposed\n\nNone — nothing in this plan is confirmed yet.\n"
     L = ["## Graph writes proposed", "",
          f"From the plan maps for **{plan.get('name', 'this plan')}**. "
-         "Review before committing; the orchestrator is the only writer.", ""]
-    for kind in ("Decision", "Pattern", "Constraint", "Preference"):
+         "Review before committing; the orchestrator is the only writer.",
+         "The planning hub and the plan are create-if-missing: `memory_search` "
+         "for them before storing, and only add what is not there.", ""]
+    for kind in ("Concept", "Task", "Decision", "Pattern", "Constraint", "Preference"):
         rows = [n for n in nodes if n["type"] == kind]
         if not rows:
             continue
         L.append(f"### {kind}")
         for n in rows:
-            L.append(f"- **{n['name']}**")
+            L.append(f"- **{node_title(n)}**")
+            if n.get("destination"):
+                L.append(f"  - destination: {n['destination']}")
             if n.get("description"):
                 L.append(f"  - description: {n['description']}")
             if n.get("rationale"):
                 L.append(f"  - rationale: {n['rationale']}")
             if n.get("affects"):
                 L.append(f"  - affects: {n['affects']}")
+            for rel, target in n.get("links", []):
+                L.append(f"  - {rel}: {target}")
+            for rel, target in n.get("linkedFrom", []):
+                L.append(f"  - linked from {target} ({rel})")
+            L.append(f"  - sourceContext: {n['sourceContext']}")
             L.append(f"  - source: {n.get('source', '')}")
         L.append("")
     return "\n".join(L) + "\n"
@@ -142,6 +187,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("plan")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--project", help="graph project name (default: the git repo's directory name)")
+    ap.add_argument("--only", help="propose just this decision id, plus the hub and plan")
     ap.add_argument("--append", help="a crew task file; replaces its "
                                      "'Graph writes proposed' section")
     a = ap.parse_args()
@@ -149,7 +196,9 @@ def main():
     plan, maps = load(a.plan)
     if not maps:
         sys.exit("that plan points at no readable maps")
-    nodes = collect(plan, maps)
+    nodes = collect(plan, maps, a.project or git_project(), a.only)
+    if a.only and not any(n["type"] == "Decision" for n in nodes):
+        sys.exit(f"no decided decision {a.only!r} in that plan")
 
     if a.json:
         print(json.dumps({"plan": plan.get("name"), "proposed": nodes},

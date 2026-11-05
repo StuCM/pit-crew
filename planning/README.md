@@ -42,6 +42,7 @@ and produce files, so an orchestrator can call them without being asked.
 ## The maps are not a second memory
 
 Maps are the working surface for one piece of work. The graph is the durable
-record. Confirmed decisions and dead ends go to the graph; the maps can then be
-thrown away. Nothing queries both, because two stores drift and a drifting
+record. Decisions reach the graph as they are made (`graph_propose.py --only <id>`),
+under Project -> `<project> planning` -> the plan; the maps can then be
+thrown away once the plan is done. Nothing queries both, because two stores drift and a drifting
 store gives bad advice.
