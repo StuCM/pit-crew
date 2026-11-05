@@ -50,10 +50,27 @@ settle this, here is where we each stood" is a legitimate and useful outcome.
 | **Decided** | The user made a call | `--decided` + `--why`, question closes, status may change |
 | **Options** | Real alternatives, no decision | `--options` + `--why`, question stays open |
 | **Note** | Explored, nothing settled | `--note`, nothing else changes |
+| **Out of scope** | The question is beyond the destination | `--out-of-scope --what <seven words or fewer> --why <reason> --plan plan.json`; the question moves to `out_of_scope` and never returns as a thread |
 
 Offering options is a proper outcome, not a failure. When a conversation has
 narrowed the field without picking, write the survivors down with what ruled
 the others out — that is most of the value of having talked.
+
+## Destination, fog and research
+
+**Destination first.** If `plan.json` has no destination, the ranking says so on
+its first line, and the first conversation is naming it: write it with
+`init_plan.py --destination` or by editing `plan.json`. Threads that name the
+destination rank higher.
+
+**The fog test** is "can you state it precisely now", not "can you answer it".
+A question you can state is a thread; one you cannot stays in `fog`. When a
+fog item becomes statable, add it as an open question and remove it from `fog`.
+
+**Research and task threads** are listed under "Agent can do alone". Spawn one
+`crew-scout` per research thread, in parallel, and record each answer with
+`--note`. A scout's finding is never `--decided`: only the person decides. Task
+threads you do yourself, or hand the person as a checklist.
 
 ## Cover the ground — do not just answer the question
 

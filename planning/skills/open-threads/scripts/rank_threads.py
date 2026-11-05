@@ -21,18 +21,21 @@ import pathlib
 import re
 import sys
 
+AGENT_TYPES = ("research", "task")
 STATUS_WEIGHT = {"unknown": 4, "open": 3, "corrected": 1, "proposed": 1, "explored": 1}
 
 
 def expand(paths):
-    """A plan manifest stands in for the maps it points at."""
+    """A plan manifest stands in for the maps it points at; returns (paths, manifest)."""
     out = []
+    manifest = {}
     for p in paths:
         try:
             d = json.loads(pathlib.Path(p).read_text(encoding="utf-8"))
         except Exception:
             out.append(p); continue
         if isinstance(d, dict) and d.get("maps") and not d.get("parts") and not d.get("themes"):
+            manifest = manifest or d
             base = pathlib.Path(p).parent
             for layer in ("brainstorm", "architecture", "feature"):
                 m = d["maps"].get(layer)
@@ -40,18 +43,19 @@ def expand(paths):
                     out.append(str((base / m["file"]).resolve()))
         else:
             out.append(p)
-    return out
+    return out, manifest
 
 
 def load(paths):
     maps = []
-    for p in expand(paths):
+    expanded, manifest = expand(paths)
+    for p in expanded:
         path = pathlib.Path(p)
         d = json.loads(path.read_text(encoding="utf-8"))
         d["_file"] = str(path)
         d["_kind"] = "brainstorm" if d.get("themes") else "plan"
         maps.append(d)
-    return maps
+    return maps, manifest
 
 
 def walk_nodes(theme):
@@ -65,8 +69,13 @@ def _walk(n):
         yield from _walk(c)
 
 
-def collect(maps):
+def question_text(q):
+    return q["q"] if isinstance(q, dict) else q
+
+
+def collect(maps, out_of_scope=()):
     """Every unresolved thing, flattened into comparable threads."""
+    ruled_out = {o.get("question", "").strip().lower() for o in out_of_scope}
     threads = []
     for m in maps:
         title = m.get("title") or m.get("id") or m["_file"]
@@ -77,21 +86,23 @@ def collect(maps):
                         threads.append(dict(
                             map=title, file=m["_file"], owner=n["id"], owner_label=n.get("label", ""),
                             question=n.get("claim") or n.get("rationale") or n.get("label", ""),
-                            kind="discussion", status=n.get("status"),
+                            kind="discussion", type=n.get("type", "grill"), status=n.get("status"),
                             section=t.get("label", "")))
         else:
             for p in m.get("parts") or []:
-                for q in p.get("open") or []:
+                opens = [] if p.get("status") in ("rejected", "deferred") else p.get("open") or []
+                for q in opens:
                     threads.append(dict(
                         map=title, file=m["_file"], owner=p["id"], owner_label=p.get("label", ""),
-                        question=q, kind="question", status=p.get("status"),
+                        question=question_text(q), type=q.get("type", "grill") if isinstance(q, dict) else "grill",
+                        kind="question", status=p.get("status"),
                         section=(p.get("group") or "")))
                 if p.get("status") in ("open", "unknown") and not (p.get("open") or []):
                     threads.append(dict(
                         map=title, file=m["_file"], owner=p["id"], owner_label=p.get("label", ""),
                         question=f"What is {p.get('label')} actually? Its status is {p.get('status')} "
                                  f"and nothing says what would settle it.",
-                        kind="undefined", status=p.get("status"), section=(p.get("group") or "")))
+                        kind="undefined", type="grill", status=p.get("status"), section=(p.get("group") or "")))
                 unver = [s for s in (p.get("surface") or []) if not s.get("verified")
                          and s.get("use") != "add"]
                 if unver:
@@ -100,9 +111,9 @@ def collect(maps):
                         map=title, file=m["_file"], owner=p["id"], owner_label=p.get("label", ""),
                         question=f"{len(unver)} symbol(s) on {p.get('label')} are unverified ({names}). "
                                  f"Confirm against the repo before anything is built on them.",
-                        kind="unverified", status=p.get("status"), section=(p.get("group") or ""),
+                        kind="unverified", type="grill", status=p.get("status"), section=(p.get("group") or ""),
                         count=len(unver)))
-    return threads
+    return [t for t in threads if t["question"].strip().lower() not in ruled_out]
 
 
 def downstream(part_id, edges, seen=None):
@@ -120,10 +131,10 @@ def group(threads):
     turns a conversation into a queue."""
     out = {}
     for t in threads:
-        key = (t["file"], t["owner"])
+        key = (t["file"], t["owner"], t["type"])
         g = out.get(key)
         if not g:
-            g = {k: t[k] for k in ("map", "file", "owner", "owner_label", "status", "section")}
+            g = {k: t[k] for k in ("map", "file", "owner", "owner_label", "status", "section", "type")}
             g["questions"] = []
             g["kinds"] = set()
             g["count"] = 0
@@ -136,7 +147,7 @@ def group(threads):
     return list(out.values())
 
 
-def score(threads, maps):
+def score(threads, maps, destination=""):
     edges_by_file = {m["_file"]: (m.get("edges") or []) for m in maps}
     labels = {}
     for m in maps:
@@ -163,8 +174,12 @@ def score(threads, maps):
         unver = t.get("count", 0)
         sw = STATUS_WEIGHT.get(t.get("status"), 1)
 
-        t["score"] = 3*blocks + 2*touches + 2*named + 2*tr + unver + sw + len(t["questions"])
+        dest = 1 if lab and lab in destination.lower() else 0
+
+        t["score"] = 3*dest + 3*blocks + 2*touches + 2*named + 2*tr + unver + sw + len(t["questions"])
         why = []
+        if dest:
+            why.append("names the destination")
         if blocks:
             why.append(f"{blocks} part(s) downstream")
         if touches:
@@ -191,8 +206,9 @@ def main():
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
 
-    maps = load(a.maps)
-    threads = score(group(collect(maps)), maps)
+    maps, manifest = load(a.maps)
+    destination = manifest.get("destination", "")
+    threads = score(group(collect(maps, manifest.get("out_of_scope") or [])), maps, destination)
     if a.top:
         threads = threads[:a.top]
 
@@ -200,18 +216,38 @@ def main():
         print(json.dumps(threads, indent=2, ensure_ascii=False))
         return
 
-    if not threads:
+    if manifest and not destination:
+        print("No destination yet — settle that before any thread.\n")
+
+    talk = [t for t in threads if t["type"] not in AGENT_TYPES]
+    alone = [t for t in threads if t["type"] in AGENT_TYPES]
+    fog = manifest.get("fog") or []
+
+    if not threads and not fog:
         print("Nothing unresolved across these maps.")
         return
 
-    qs = sum(len(t["questions"]) for t in threads)
-    print(f"{len(threads)} open thread(s) holding {qs} question(s), highest leverage first\n")
-    for i, t in enumerate(threads, 1):
+    qs = sum(len(t["questions"]) for t in talk)
+    print(f"{len(talk)} open thread(s) holding {qs} question(s), highest leverage first\n")
+    for i, t in enumerate(talk, 1):
         print(f"{i}. [{t['score']:>3}] {t['owner_label']}  ({t['map']} · {'/'.join(t['kinds'])})")
         print(f"     why here: {t['why']}")
         for q in t["questions"]:
             print(f"       - {q}")
         print(f"     write back: --map {t['file']} --part {t['owner']}\n")
+
+    if alone:
+        print("Agent can do alone\n")
+        for t in alone:
+            print(f"  [{t['type']}] {t['owner_label']}  ({t['map']})")
+            for q in t["questions"]:
+                print(f"       - {q}")
+        print()
+
+    if fog:
+        print("Not yet specified\n")
+        for f in fog:
+            print(f"  - {f}")
 
 
 if __name__ == "__main__":

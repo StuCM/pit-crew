@@ -76,17 +76,21 @@ def order_parts(parts, edges):
     return [by[i] for i in out]
 
 
+def question_text(q):
+    return q["q"] if isinstance(q, dict) else q
+
+
 def blockers_for(part, arch_by_id):
     out = []
     for q in part.get("open") or []:
-        out.append({"kind": "question", "text": q})
+        out.append({"kind": "question", "text": question_text(q)})
     for s in part.get("surface") or []:
         if not s.get("verified") and s.get("use") != "add":
             out.append({"kind": "unverified",
                         "text": f"{s.get('name')} in {s.get('file')} has not been confirmed in the repo"})
     a = arch_by_id.get(part.get("traces", [{}])[0].get("id")) if part.get("traces") else None
     for q in (a or {}).get("open") or []:
-        out.append({"kind": "question", "text": f"(architecture) {q}"})
+        out.append({"kind": "question", "text": f"(architecture) {question_text(q)}"})
     return out
 
 
