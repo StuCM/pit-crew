@@ -5,6 +5,7 @@
 // never stall because the memory layer is missing.
 
 import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { onPath } from './preflight.js';
 
 const CLI = process.env.CREW_GRAPH_CLI || 'claude-memory-graph';
@@ -130,7 +131,65 @@ const treeText = (tree) => {
   return lines.join('\n');
 };
 
-const tree = (project, json) => {
+const esc = (value) =>
+  String(value).replace(
+    /[&<>"']/g,
+    (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch],
+  );
+
+const STYLE = `
+:root { --bg: #fff; --fg: #1d2330; --line: #8a93a6; --box: #eef1f7; --muted: #6b7384; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #14171f; --fg: #e4e8f1; --line: #6b7384; --box: #232937; --muted: #9aa3b5; }
+}
+body { background: var(--bg); color: var(--fg); font: 15px/1.4 system-ui, sans-serif; margin: 24px; }
+.plans { display: flex; gap: 32px; align-items: flex-start; flex-wrap: wrap; }
+.plan { min-width: 220px; max-width: 320px; }
+.dest { color: var(--muted); margin: 0 0 12px; }
+.decision { background: var(--box); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; position: relative; }
+.decision + .decision { margin-top: 20px; }
+.decision + .decision::before { content: ""; position: absolute; left: 50%; top: -20px; height: 20px; border-left: 2px solid var(--line); }
+.decision.old { opacity: 0.5; }
+.why, .by { color: var(--muted); font-size: 13px; }
+.scope { margin-top: 16px; }
+.scope s { display: block; }
+`;
+
+// One self-contained page: a column per plan, decisions stacked top to bottom.
+export const treeHtml = (tree) => {
+  const columns = tree.plans.map((plan) => {
+    const decisions = plan.decisions.map(
+      (d) =>
+        `<div class="decision${d.supersededBy ? ' old' : ''}"><strong>${esc(d.name)}</strong>` +
+        (d.rationale ? `<div class="why">${esc(d.rationale)}</div>` : '') +
+        (d.supersededBy ? `<div class="by">superseded by ${esc(d.supersededBy)}</div>` : '') +
+        '</div>',
+    );
+    const scope = plan.outOfScope.map(
+      (c) =>
+        `<s>${esc(c.label)}</s>` +
+        (c.description ? `<span class="why">${esc(c.description)}</span>` : ''),
+    );
+    return (
+      `<section class="plan"><h2>${esc(plan.name)}</h2>` +
+      (plan.destination ? `<p class="dest">${esc(plan.destination)}</p>` : '') +
+      decisions.join('') +
+      (scope.length ? `<div class="scope">${scope.join('')}</div>` : '') +
+      '</section>'
+    );
+  });
+  const body = columns.length
+    ? `<div class="plans">${columns.join('')}</div>`
+    : `<p>No plans in the graph for ${esc(tree.project)}.</p>`;
+  return (
+    `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+    `<meta name="viewport" content="width=device-width, initial-scale=1">` +
+    `<title>${esc(tree.hub)}</title><style>${STYLE}</style></head>` +
+    `<body><h1>${esc(tree.hub)}</h1>${body}</body></html>\n`
+  );
+};
+
+const tree = (project, json, htmlFile) => {
   let rows;
   try {
     rows = JSON.parse(
@@ -144,7 +203,10 @@ const tree = (project, json) => {
     return 0;
   }
   const result = foldTree(project, rows);
-  if (json) console.log(JSON.stringify(result, null, 2));
+  if (htmlFile) {
+    writeFileSync(htmlFile, treeHtml(result));
+    console.log(`wrote ${htmlFile}`);
+  } else if (json) console.log(JSON.stringify(result, null, 2));
   else if (!result.plans.length) console.log(`No plans in the graph for ${project}.`);
   else console.log(treeText(result));
   return 0;
@@ -204,8 +266,13 @@ export const run = (cfg, [command = 'prime', ...rest]) => {
       return call(['chain', text, `--depth=${depth}`, `--limit=${limit}`]);
     }
     case 'tree': {
-      const name = rest.find((arg) => !arg.startsWith('--')) || project;
-      return tree(name, rest.includes('--json'));
+      const at = rest.indexOf('--html');
+      if (at >= 0 && (!rest[at + 1] || rest[at + 1].startsWith('--'))) {
+        console.error('usage: crew graph tree [project] --html <file>');
+        return 2;
+      }
+      const name = rest.find((arg, i) => !arg.startsWith('--') && i !== at + 1) || project;
+      return tree(name, rest.includes('--json'), at >= 0 ? rest[at + 1] : null);
     }
     case 'raw': {
       if (!rest.length) {
@@ -217,7 +284,7 @@ export const run = (cfg, [command = 'prime', ...rest]) => {
     default:
       console.error(
         'usage: crew graph {prime|prefs|constraints|traps|decisions|' +
-          'files <path...>|find <text>|chain <text>|tree [project] [--json]|raw <sparql>} [--limit=N]',
+          'files <path...>|find <text>|chain <text>|tree [project] [--json|--html <file>]|raw <sparql>} [--limit=N]',
       );
       return 2;
   }
