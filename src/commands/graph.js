@@ -81,6 +81,75 @@ const FIND_QUERY = (text, limit) => `SELECT ?type ?name ?desc WHERE {
                   || CONTAINS(LCASE(STR(COALESCE(?desc,''))), LCASE(${literal(text)})) ) } }
 LIMIT ${limit}`;
 
+// Project -> hub -> plans, each with its decisions (and what superseded them) and constraints.
+export const TREE_QUERY = (
+  project,
+) => `SELECT ?plan ?destination ?decision ?rationale ?supersededBy ?clabel ?cdesc WHERE {
+  GRAPH ?gp { ?proj rdf:type mem:Project ; mem:name ${literal(project)} ; mem:hasConcept ?hub }
+  GRAPH ?gh { ?hub mem:label ${literal(`${project} planning`)} }
+  GRAPH ?gt { ?t rdf:type mem:Task ; mem:name ?plan ; mem:partOf ?proj ; mem:hasConcept ?hub .
+              OPTIONAL { ?t mem:destination ?destination }
+              OPTIONAL { ?t mem:hasConstraint ?c .
+                         GRAPH ?gc { ?c mem:label ?clabel . OPTIONAL { ?c mem:description ?cdesc } } } }
+  OPTIONAL { GRAPH ?gd { ?d mem:affects ?t ; mem:name ?decision .
+                         OPTIONAL { ?d mem:rationale ?rationale }
+                         OPTIONAL { ?s mem:supersedes ?d . GRAPH ?gs { ?s mem:name ?supersededBy } } } } }`;
+
+// Fold the query's cross-product rows into one entry per plan.
+export const foldTree = (project, rows) => {
+  const plans = new Map();
+  for (const row of rows) {
+    if (!plans.has(row.plan))
+      plans.set(row.plan, {
+        name: row.plan,
+        destination: row.destination ?? null,
+        decisions: [],
+        outOfScope: [],
+      });
+    const plan = plans.get(row.plan);
+    if (row.decision && !plan.decisions.some((d) => d.name === row.decision))
+      plan.decisions.push({
+        name: row.decision,
+        rationale: row.rationale ?? null,
+        supersededBy: row.supersededBy ?? null,
+      });
+    if (row.clabel && !plan.outOfScope.some((c) => c.label === row.clabel))
+      plan.outOfScope.push({ label: row.clabel, description: row.cdesc ?? null });
+  }
+  return { project, hub: `${project} planning`, plans: [...plans.values()] };
+};
+
+const treeText = (tree) => {
+  const lines = [tree.project, `  ${tree.hub}`];
+  for (const plan of tree.plans) {
+    lines.push(`    ${plan.name}${plan.destination ? ` — ${plan.destination}` : ''}`);
+    for (const d of plan.decisions)
+      lines.push(`      ${d.name}${d.supersededBy ? ` (superseded by ${d.supersededBy})` : ''}`);
+    for (const c of plan.outOfScope) lines.push(`      ✗ ${c.label}`);
+  }
+  return lines.join('\n');
+};
+
+const tree = (project, json) => {
+  let rows;
+  try {
+    rows = JSON.parse(
+      execFileSync(CLI, ['query', TREE_QUERY(project)], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }),
+    );
+  } catch {
+    console.log('graph: query failed (the store may be empty)');
+    return 0;
+  }
+  const result = foldTree(project, rows);
+  if (json) console.log(JSON.stringify(result, null, 2));
+  else if (!result.plans.length) console.log(`No plans in the graph for ${project}.`);
+  else console.log(treeText(result));
+  return 0;
+};
+
 export const run = (cfg, [command = 'prime', ...rest]) => {
   if (!onPath(CLI)) {
     console.log(`graph: ${CLI} is not on PATH — no graph context available.`);
@@ -134,6 +203,10 @@ export const run = (cfg, [command = 'prime', ...rest]) => {
       // The graph ranks each hop's edges against the text and follows only the best.
       return call(['chain', text, `--depth=${depth}`, `--limit=${limit}`]);
     }
+    case 'tree': {
+      const name = rest.find((arg) => !arg.startsWith('--')) || project;
+      return tree(name, rest.includes('--json'));
+    }
     case 'raw': {
       if (!rest.length) {
         console.error('usage: crew graph raw <sparql>');
@@ -144,7 +217,7 @@ export const run = (cfg, [command = 'prime', ...rest]) => {
     default:
       console.error(
         'usage: crew graph {prime|prefs|constraints|traps|decisions|' +
-          'files <path...>|find <text>|chain <text>|raw <sparql>} [--limit=N]',
+          'files <path...>|find <text>|chain <text>|tree [project] [--json]|raw <sparql>} [--limit=N]',
       );
       return 2;
   }
