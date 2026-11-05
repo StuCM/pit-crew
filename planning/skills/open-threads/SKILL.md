@@ -140,6 +140,12 @@ a session is fine; twenty at the start is not.
      --question "standard Arches reference" \
      --decided "..." --why "..." --status agreed
    ```
+   After a `--decided`, record it in the graph now, not at crew-close:
+   `python3 scripts/graph_propose.py plan.json --only <decision id>`. After an
+   `--out-of-scope`, run it without `--only`. If this chat is the orchestrator,
+   commit the proposals through the MCP (hub and plan are create-if-missing);
+   a side chat sends them to the orchestrator instead.
+
    Use `--dry-run` first on anything that closes a question. `--question` takes
    a substring and refuses on an ambiguous match rather than guessing.
 

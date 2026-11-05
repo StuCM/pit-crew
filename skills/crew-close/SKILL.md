@@ -127,6 +127,11 @@ python3 ${CLAUDE_PLUGIN_ROOT}/planning/scripts/graph_propose.py <plan.json>
 plugin root. If crew was installed from npm alone there is no plugin root and
 no planning layer either — skip this step.)
 
+Decisions and out-of-scope items should already be in the graph, recorded as
+they were made, so this mostly catches what was not: the ruled-out routes and
+part boundaries. To find a plan again, go Project -> `<project> planning` ->
+the plan (`crew graph tree`).
+
 It proposes; it never writes. Read what comes back, keep what is durable, and
 commit it yourself — you are still the only writer.
 
