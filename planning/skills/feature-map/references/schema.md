@@ -110,3 +110,7 @@ list of things to confirm.
   surrounding code was not read.
 - **Parts that fail the scope rule.** If `why_here` reads like a description of
   the part rather than a reason it is on this map, it probably does not belong.
+
+An `open` entry is a string (a conversation with the person) or
+`{"q": "...", "type": "research"|"task"}` (work to go and do, not to discuss).
+Any other `type` fails validation.

@@ -94,3 +94,7 @@ dashed.
 - **Parts with no trace.** If it came from neither the chat nor the brainstorm,
   it came from the model. Drop it or mark it `proposed` with an `open` entry
   asking whether it should exist.
+
+An `open` entry is a string (a conversation with the person) or
+`{"q": "...", "type": "research"|"task"}` (work to go and do, not to discuss).
+Any other `type` fails validation.
