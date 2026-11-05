@@ -21,6 +21,7 @@ import sys
 
 STATUSES = {"exists", "extend", "new", "unknown"}
 KINDS = {"ui", "service", "job", "store", "external", "data"}
+QUESTION_TYPES = {"research", "task"}   # a plain string question needs the person
 EDGE_KINDS = {"data", "depends", "control", "event"}
 USES = {"call", "read", "subclass", "modify", "replace", "add"}
 CHANGING = {"modify", "replace", "add"}   # these write code; the rest only consume it
@@ -50,6 +51,14 @@ def validate(d):
             errs.append(f"{where}: status {p.get('status')!r} not one of {sorted(STATUSES)}")
         if p.get("kind") not in KINDS:
             errs.append(f"{where}: kind {p.get('kind')!r} not one of {sorted(KINDS)}")
+        for j, q in enumerate(p.get("open") or []):
+            if isinstance(q, dict):
+                if not (q.get("q") or "").strip():
+                    errs.append(f"{where}.open[{j}]: missing q")
+                if q.get("type") not in QUESTION_TYPES:
+                    errs.append(f"{where}.open[{j}]: type {q.get('type')!r} not one of {sorted(QUESTION_TYPES)}")
+            elif not isinstance(q, str):
+                errs.append(f"{where}.open[{j}]: must be a string or {{q, type}}")
         if not (p.get("purpose") or "").strip():
             errs.append(f"{where}: no purpose")
         if not (p.get("why_here") or "").strip():
@@ -179,6 +188,8 @@ def main():
 
     tpl = pathlib.Path(a.template).read_text(encoding="utf-8")
     title = d.get("title", "Feature map")
+    for p in d.get("parts") or []:   # the page shows plain strings; tag the typed questions
+        p["open"] = [q if isinstance(q, str) else f"{q['q']} [{q['type']}]" for q in p.get("open") or []]
     html = tpl.replace("__MAP_DATA__", json.dumps(d, ensure_ascii=False)).replace("__TITLE__", title.replace("<", "&lt;"))
     out = pathlib.Path(a.out)
     out.write_text(html, encoding="utf-8")

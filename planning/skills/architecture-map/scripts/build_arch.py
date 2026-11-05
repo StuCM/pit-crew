@@ -15,6 +15,7 @@ import sys
 STATUSES = {"agreed", "proposed", "open", "deferred", "rejected"}
 # deferred = parked, revisit if X happens. rejected = ruled out, kept for the reason.
 KINDS = {"ui", "service", "job", "store", "external", "data"}
+QUESTION_TYPES = {"research", "task"}   # a plain string question needs the person
 EDGE_KINDS = {"data", "depends", "control", "event"}
 TEMPLATE = pathlib.Path(__file__).resolve().parent.parent / "assets" / "template.html"
 
@@ -47,6 +48,14 @@ def validate(d):
             errs.append(f"{where}: status {p.get('status')!r} not one of {sorted(STATUSES)}")
         if p.get("kind") not in KINDS:
             errs.append(f"{where}: kind {p.get('kind')!r} not one of {sorted(KINDS)}")
+        for j, q in enumerate(p.get("open") or []):
+            if isinstance(q, dict):
+                if not (q.get("q") or "").strip():
+                    errs.append(f"{where}.open[{j}]: missing q")
+                if q.get("type") not in QUESTION_TYPES:
+                    errs.append(f"{where}.open[{j}]: type {q.get('type')!r} not one of {sorted(QUESTION_TYPES)}")
+            elif not isinstance(q, str):
+                errs.append(f"{where}.open[{j}]: must be a string or {{q, type}}")
         if not (p.get("purpose") or "").strip():
             errs.append(f"{where}: no purpose — if you cannot say what it does, it is not a part yet")
         if not (p.get("why_split") or "").strip():
@@ -101,6 +110,8 @@ def main():
             print("error: " + e, file=sys.stderr)
         sys.exit(f"\n{len(errs)} problem(s) — fix the map JSON and rebuild.")
 
+    for p in d.get("parts") or []:   # the page shows plain strings; tag the typed questions
+        p["open"] = [q if isinstance(q, str) else f"{q['q']} [{q['type']}]" for q in p.get("open") or []]
     tpl = pathlib.Path(a.template).read_text(encoding="utf-8")
     title = d.get("title", "Architecture map")
     html = tpl.replace("__MAP_DATA__", json.dumps(d, ensure_ascii=False)).replace("__TITLE__", title.replace("<", "&lt;"))

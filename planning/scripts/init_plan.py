@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 """Scaffold the planning layer in a project. Idempotent; never overwrites.
 
-    python3 scripts/init_plan.py --name my-project
-    python3 scripts/init_plan.py --name my-project --plans-dir .claude/plans
+    python3 scripts/init_plan.py --name wayfinder-planning-graph --destination "what done looks like"
+    python3 scripts/init_plan.py --name another-idea --plans-dir .claude/plans/another-idea
+
+One plan.json is one exploration; --name is the exploration's name, not the
+project's. Optional manifest keys, edited by hand after init:
+    destination:  str
+    out_of_scope: [{"what": str, "why": str}]
+    fog:          [str]
 """
 import argparse
 import json
@@ -14,7 +20,8 @@ CONFIG = pathlib.Path(".claude/crew.config.json")
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--name", required=True)
+    ap.add_argument("--name", required=True, help="the exploration's name")
+    ap.add_argument("--destination", help="what this exploration is trying to reach")
     ap.add_argument("--plans-dir", default=".claude/plans")
     a = ap.parse_args()
 
@@ -26,8 +33,10 @@ def main():
     if manifest.is_file():
         print(f"{manifest} already exists — left alone")
     else:
-        manifest.write_text(json.dumps({"name": a.name, "maps": {}}, indent=2) + "\n",
-                            encoding="utf-8")
+        plan = {"name": a.name, "maps": {}}
+        if a.destination:
+            plan["destination"] = a.destination
+        manifest.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
         print(f"created {manifest}")
     print(f"created {plans}/maps/ for the map JSON")
 

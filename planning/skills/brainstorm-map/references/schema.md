@@ -163,3 +163,7 @@ the source chat in a new tab. Two optional refinements:
 - **Rationale that restates the claim.** "Rejected because it was not suitable"
   is not a reason. Name the specific constraint.
 - **Evidence paraphrased.** Quote verbatim or drop the node.
+
+An open node may carry `"type": "research"|"task"` (work to go and do, not to
+discuss); without it the node is a conversation with the person. Any other
+`type`, or `type` on a non-open node, fails validation.

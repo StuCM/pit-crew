@@ -22,6 +22,17 @@ chat ─▶ brainstorm-map ─▶ architecture-map ─▶ feature-map ─▶ ope
 `scripts/graph_propose.py` turns confirmed outcomes into proposed graph nodes.
 `/plan-init` scaffolds both in a repo.
 
+## plan.json
+
+One `plan.json` is one exploration of an idea; its `name` is the exploration's
+name, not the project's. Optional keys:
+
+- `destination`: a string, what the exploration is trying to reach.
+- `out_of_scope`: `[{"what", "why"}]`, work beyond the destination. It never comes back as a thread.
+- `fog`: `[string]`, questions that cannot yet be stated precisely.
+
+A question is a thread only if it can be stated precisely now; otherwise it is fog.
+
 ## Two tiers
 
 `brainstorm-map` and `open-threads` are conversations with a person and should

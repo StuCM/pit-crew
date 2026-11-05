@@ -14,6 +14,7 @@ import pathlib
 import sys
 
 STATUSES = {"decided", "explored", "rejected", "open", "corrected"}
+QUESTION_TYPES = {"research", "task"}   # no type means a conversation with the person
 TEMPLATE = pathlib.Path(__file__).resolve().parent.parent / "assets" / "template.html"
 
 
@@ -38,6 +39,11 @@ def validate(data):
             errs.append(f"{path}: status {status!r} not one of {sorted(STATUSES)}")
         if not n.get("evidence"):
             errs.append(f"{path}: no evidence — every node must cite the chat")
+        if "type" in n:
+            if status != "open":
+                errs.append(f"{path}: type only applies to open nodes")
+            elif n["type"] not in QUESTION_TYPES:
+                errs.append(f"{path}: type {n['type']!r} not one of {sorted(QUESTION_TYPES)}")
         if status in ("rejected", "corrected") and not (n.get("rationale") or "").strip():
             errs.append(f"{path}: {status} nodes must say why")
         for i, c in enumerate(n.get("children") or []):
