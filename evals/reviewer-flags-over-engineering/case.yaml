@@ -1,0 +1,11 @@
+schema_version: '1.1'
+name: reviewer-flags-over-engineering
+description: 'A task re-implements an existing helper and adds a one-use wrapper class: the reviewer returns CHANGES naming the helper, and edits nothing.'
+tags: [crew-reviewer, over-engineering]
+context:
+  scaffold_script: fixture.sh
+execution:
+  max_turns: 15
+  timeout_seconds: 420
+  allowed_tools:
+    [Read, Glob, Grep, Skill, Agent, 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git diff:*)']

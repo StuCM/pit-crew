@@ -163,6 +163,8 @@ you. Never hand back with a round open. It judges; it never edits.
 
 - **PASS** → go to *Finishing*.
 - **CHANGES** → fix them, re-run the gate, `crew review` again.
+- **Advice** items alongside any verdict are optional: take the cheap ones
+  and say so in the round.
 - **BLOCKED** → `crew task <id> block reviewer "<the reviewer's reason>"`,
   and stop.
 - **QUESTION** → the reviewer doubts the approach the whole group was
