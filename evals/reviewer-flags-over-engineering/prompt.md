@@ -1,0 +1,1 @@
+Task 040 (.claude/tasks/040-smm-reads-list-item.md) is in review. Get its diff with `git diff main...crew/040-smm-reads-list-item`, spawn the crew reviewer with the task file path and that diff, as the worker would, and tell me its verdict. Do not change anything yourself.
