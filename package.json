@@ -1,6 +1,6 @@
 {
   "name": "@stucm/pit-crew",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A task loop for coding agents: an approved spec, a worker in its own worktree, a deterministic gate, and an independent review that cannot edit.",
   "keywords": [
     "claude-code",
