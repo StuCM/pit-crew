@@ -24,7 +24,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          registry-url: https://registry.npmjs.org
+          # No registry-url: it injects a placeholder NODE_AUTH_TOKEN, and npm
+          # then presents that instead of the trusted-publishing OIDC token.
 
       - run: npm ci
       - run: npm run verify
