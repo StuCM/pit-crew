@@ -6,6 +6,7 @@
 // `crew gate --check` refuses a stamp that does not match HEAD.
 
 import { execSync } from 'node:child_process';
+import { setPriority } from 'node:os';
 import { relative, resolve } from 'node:path';
 import { git, gitLines, headSha } from '../lib/git.js';
 import { bookkeeping, declaredFiles, readTask, setField } from '../lib/task.js';
@@ -74,6 +75,10 @@ export const run = (cfg, args) => {
     if (since.length) console.log(`      ${since.length} bookkeeping commit(s) since, no code`);
     return 0;
   }
+
+  // Children inherit niceness, so several gates at once yield to the person's
+  // own apps (a video call) instead of starving them.
+  setPriority(19);
 
   if (!declaredFiles(task).length) {
     console.error(`gate: ${task.file} declares no files: — the spec is incomplete`);
