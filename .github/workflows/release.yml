@@ -34,11 +34,9 @@ jobs:
       - name: Check the tag matches every version
         run: node scripts/version.js --check "${GITHUB_REF_NAME#v}"
 
-      # No token: npm trusts this workflow as the package's Trusted Publisher
-      # (OIDC, via id-token above). That needs npm 11.5.1+, newer than Node 22's.
-      - run: npm install -g npm@11
-
       - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then dist=next; else dist=latest; fi
           npm publish --provenance --access public --tag "$dist"
