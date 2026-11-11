@@ -6,7 +6,7 @@
 // connects to and what those neighbours are explicitly not responsible for.
 // That is where a worker drifts, so that is what this prints.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { readTask } from '../lib/task.js';
 
@@ -46,6 +46,20 @@ export const readPlan = (cfg, manifestPath) => {
   }
   return { path, name: plan.name || '(unnamed plan)', maps };
 };
+
+/** Every plan.json under the plans dir: the top-level one, then one per exploration subdirectory. */
+export const planPaths = (cfg) => {
+  const dir = join(cfg.root, cfg.plansDir);
+  const paths = [join(dir, 'plan.json')];
+  if (existsSync(dir)) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) paths.push(join(dir, entry.name, 'plan.json'));
+    }
+  }
+  return paths.filter((path) => existsSync(path));
+};
+
+const readPlans = (cfg) => planPaths(cfg).map((path) => readPlan(cfg, path));
 
 // Feature and architecture maps hold a flat `parts`; a brainstorm map nests
 // its nodes inside themes. One accessor so nothing downstream has to know.
@@ -154,8 +168,8 @@ const showPlan = (plan) => {
 };
 
 export const run = (cfg, args) => {
-  const plan = readPlan(cfg);
-  if (!plan) {
+  const plans = readPlans(cfg);
+  if (!plans.length) {
     console.log(
       `no plan at ${join(cfg.plansDir, 'plan.json')} — this project has no planning layer.\n` +
         'Run /pit-crew-planning:plan-init to add one, or carry on without it.',
@@ -165,7 +179,7 @@ export const run = (cfg, args) => {
 
   const target = args.find((a) => !a.startsWith('--'));
   if (!target) {
-    showPlan(plan);
+    for (const plan of plans) showPlan(plan);
     return 0;
   }
 
@@ -177,9 +191,16 @@ export const run = (cfg, args) => {
     return 0;
   }
 
-  const hit = findPart(plan, id);
-  if (!hit) fail(`no part "${id}" in any map of ${plan.path}`);
+  const found = plans.filter((plan) => findPart(plan, id));
+  if (!found.length) fail(`no part "${id}" in any map of ${plans.map((p) => p.path).join(', ')}`);
+  if (found.length > 1) {
+    fail(`part "${id}" is in more than one plan: ${found.map((p) => p.path).join(', ')}`);
+  }
+  const [plan] = found;
   if (args.includes('--json')) console.log(JSON.stringify(partView(plan, id)));
-  else showPart(plan, hit.entry, hit.part);
+  else {
+    const hit = findPart(plan, id);
+    showPart(plan, hit.entry, hit.part);
+  }
   return 0;
 };

@@ -12,6 +12,7 @@ import { branches, git } from '../lib/git.js';
 import { problems, statuses } from '../lib/config.js';
 import { readTasks } from '../lib/task.js';
 import { onPath } from './preflight.js';
+import { planPaths } from './plan.js';
 
 const HOOKS = join('.claude', 'crew', 'githooks');
 const MODS_MIN = [2, 1, 286];
@@ -54,7 +55,7 @@ export const run = (cfg) => {
 
   // A note, never a failure: the loop works without a planning layer, and
   // most one-file fixes should not have one.
-  if (existsSync(join(cfg.root, cfg.plansDir, 'plan.json'))) {
+  if (planPaths(cfg).length) {
     notes.push(`note: planning layer at ${cfg.plansDir} — \`crew plan\` reads it`);
   }
 
