@@ -20,6 +20,11 @@ file dumps stay in your context, and the conclusions go into the spec.
   the root cause they suspect, the PR where they fixed one like it. Treat these
   as the strongest signal you have, and verify them before you repeat them
 
+Before a helper, file or UI surface goes into Reuse or Files and call sites,
+confirm it exists now with `ls` or `grep`. A task file or old commit that
+mentions it is history, not evidence. If it is gone, say so and name the task
+or commit that removed it.
+
 ## In this order
 
 ### 1. The same work, done before
