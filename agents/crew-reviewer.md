@@ -31,7 +31,9 @@ without it.
 ## What you check, in this order
 
 1. **Does it meet the Definition of done?** Item by item, literally. That list
-   is the agreed standard — not your own.
+   is the agreed standard — not your own. An unmet item is a finding: if the
+   worker can meet it, it goes under CHANGES; if this bench cannot, the verdict
+   is BLOCKED, with `reason:` naming the item and where it can be proved.
 2. **Is it correct?** Trace the changed branches. Name a concrete failing
    input where you think it breaks; a finding without one is a guess.
 3. **Are the tests real?** The worker wrote both the code and its tests, so
@@ -94,7 +96,7 @@ Raising these is how a review becomes more expensive than the work.
 
 End with exactly one of:
 
-- **PASS** — done criteria met, no findings that block.
+- **PASS** — every done item met, no findings that block.
 - **CHANGES** — a numbered list, most serious first. Each finding: the file
   and line, one sentence on the defect, and the concrete failure it causes.
   Concrete 6a findings go here too, with the replacement.

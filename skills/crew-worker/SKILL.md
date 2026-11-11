@@ -211,10 +211,14 @@ Set `status:` with the command, not by hand. `crew review` left it at
 `review`, and a report that says `done` over a file that says `review` is
 the most common way a finished task gets lost:
 
-- `crew task <id> set status done` if this environment can prove it
+Never `set status done` while a Definition of done item is unmet.
+
+- `crew task <id> set status done` if this environment can prove every item
 - `crew task <id> set status pending-<env>` if only an environment no
   agent can reach can prove it — `crew doctor` lists the statuses this
   project has
+- `crew task <id> block worker "<item>: <why>"` if an item nothing can prove
+  here is unmet
 
 Append to the task file, under the headings it already has. Never add a
 second copy of a heading: the gate lints every tracked markdown file, so a
