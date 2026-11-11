@@ -207,11 +207,11 @@ worth a broken one. The rebase rewrites commits, so re-run the gate after it.
 
 ## Finishing
 
+Never `set status done` while a Definition of done item is unmet.
+
 Set `status:` with the command, not by hand. `crew review` left it at
 `review`, and a report that says `done` over a file that says `review` is
 the most common way a finished task gets lost:
-
-Never `set status done` while a Definition of done item is unmet.
 
 - `crew task <id> set status done` if this environment can prove every item
 - `crew task <id> set status pending-<env>` if only an environment no
