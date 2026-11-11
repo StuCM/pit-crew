@@ -163,3 +163,54 @@ test('--json resolves a task file and still rejects an unknown part', () => {
   assert.equal(views[0].part.id, 'p-build');
   assert.throws(() => run(config(root), ['p-nope', '--json']), /no part "p-nope"/);
 });
+
+const addExploration = (root, name, feature) => {
+  const dir = join(root, '.claude', 'plans', name);
+  mkdirSync(join(dir, 'maps'), { recursive: true });
+  writeFileSync(
+    join(dir, 'plan.json'),
+    JSON.stringify({ name, maps: { feature: { file: 'maps/feature.json' } } }),
+  );
+  writeFileSync(join(dir, 'maps', 'feature.json'), JSON.stringify(feature));
+};
+
+const SUB = {
+  parts: [{ id: 'p-sub', label: 'Sub part', status: 'new', purpose: 'Lives in an exploration.' }],
+};
+
+test('a part defined only in an exploration plan is found', () => {
+  const root = withPlan();
+  addExploration(root, 'spike', SUB);
+  assert.match(
+    capture(() => run(config(root), ['p-sub'])),
+    /Sub part/,
+  );
+  assert.match(
+    capture(() => run(config(root), ['p-build'])),
+    /Build script/,
+  );
+  const listing = capture(() => run(config(root), []));
+  assert.match(listing, /Mermaid export/);
+  assert.match(listing, /spike/);
+});
+
+test('exploration plans work with no top-level plan', () => {
+  const root = sandbox();
+  addExploration(root, 'spike', SUB);
+  assert.match(
+    capture(() => run(config(root), ['p-sub'])),
+    /Sub part/,
+  );
+});
+
+test('a part id in two plans is an error naming both', () => {
+  const root = withPlan();
+  addExploration(root, 'spike', FEATURE);
+  assert.throws(
+    () => run(config(root), ['p-build']),
+    (e) =>
+      /more than one plan/.test(e.message) &&
+      /plans\/plan\.json/.test(e.message) &&
+      /spike/.test(e.message),
+  );
+});

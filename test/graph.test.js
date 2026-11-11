@@ -54,14 +54,18 @@ const fakeTree = async (rows, tag) => {
   return (args) => {
     const written = [];
     const write = process.stdout.write;
+    const errors = [];
+    const errWrite = process.stderr.write;
     process.stdout.write = (chunk) => written.push(String(chunk));
+    process.stderr.write = (chunk) => errors.push(String(chunk));
     let code;
     try {
       code = run({ project: 'x' }, args);
     } finally {
       process.stdout.write = write;
+      process.stderr.write = errWrite;
     }
-    return { code, out: written.join('') };
+    return { code, out: written.join(''), err: errors.join('') };
   };
 };
 
@@ -158,6 +162,14 @@ test('tree --html writes a page with plans, decisions, supersession and out-of-s
   assert.match(page, /<s>no ui<\/s>/);
   assert.match(page, /<s>no db<\/s>/);
   assert.doesNotMatch(page, /<script|https?:\/\//);
+});
+
+test('tree --html to an unwritable path is one stderr line and exit 1', async () => {
+  const tree = await fakeTree(TREE_ROWS, 'treebadpath');
+  const file = join(mkdtempSync(join(tmpdir(), 'crew-html-')), 'missing', 'out.html');
+  const { code, err } = tree(['tree', 'x', '--html', file]);
+  assert.equal(code, 1);
+  assert.equal(err, `graph: cannot write ${file}: ENOENT\n`);
 });
 
 test('tree --html escapes graph strings', async () => {

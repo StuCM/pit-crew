@@ -78,3 +78,9 @@ test('brainstorm open node accepts a type and rejects a bogus one', () => {
   assert.equal(run('task').status, 0);
   assert.match(run('bogus').stderr, /type 'bogus'/);
 });
+
+test('the two plan.py copies are identical', () => {
+  const a = readFileSync(join(PLANNING, 'scripts', 'plan.py'));
+  const b = readFileSync(join(PLANNING, 'skills', 'open-threads', 'scripts', 'plan.py'));
+  assert.ok(a.equals(b));
+});

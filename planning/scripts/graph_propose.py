@@ -65,8 +65,11 @@ def node_title(n):
 
 
 def git_project():
-    common = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
-                            capture_output=True, text=True).stdout.strip()
+    try:
+        common = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                                capture_output=True, text=True).stdout.strip()
+    except FileNotFoundError:
+        common = ""
     return pathlib.Path(common).parent.name if common else pathlib.Path.cwd().name
 
 

@@ -204,7 +204,12 @@ const tree = (project, json, htmlFile) => {
   }
   const result = foldTree(project, rows);
   if (htmlFile) {
-    writeFileSync(htmlFile, treeHtml(result));
+    try {
+      writeFileSync(htmlFile, treeHtml(result));
+    } catch (e) {
+      console.error(`graph: cannot write ${htmlFile}: ${e.code || e.message}`);
+      return 1;
+    }
     console.log(`wrote ${htmlFile}`);
   } else if (json) console.log(JSON.stringify(result, null, 2));
   else if (!result.plans.length) console.log(`No plans in the graph for ${project}.`);
