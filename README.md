@@ -749,7 +749,8 @@ git push --follow-tags
 
 `npm version` bumps `package.json` and copies the version into the three
 plugin manifests, because `/plugin update` compares those and not npm's. It
-commits that as `chore: release X.Y.Z` and tags it `vX.Y.Z`. Pushing the tag
+commits that as `chore(crew): release X.Y.Z` (the commit-msg hook needs the
+scope) and tags it `vX.Y.Z`. Pushing the tag
 runs `.github/workflows/release.yml`: it verifies, checks the tag matches
 all four files, publishes to npm with provenance, and creates a GitHub
 Release with notes generated from the merged pull requests. A pre-release tag
@@ -758,8 +759,14 @@ Release with notes generated from the merged pull requests. A pre-release tag
 Run it from an up-to-date `main`: the tag is what gets published, so a tag
 on an unmerged branch publishes that branch.
 
-It needs one repository secret, `NPM_TOKEN`: an npm granular access token
-with read and write access to `@stucm/pit-crew`.
+There is no token. npm trusts the workflow as the package's Trusted Publisher
+(set on npmjs.com under the package's settings): owner `StuCM`, repository
+`pit-crew`, workflow `release.yml`, direct publish enabled. Each publish is
+then held as "validating" until you approve it on npmjs.com, and only appears
+on npm after that.
+
+A 404 from `npm publish` means the token or account cannot write to the
+package, not that the package is missing.
 
 ## Contributing
 

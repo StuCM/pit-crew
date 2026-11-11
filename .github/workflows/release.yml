@@ -1,6 +1,7 @@
 name: Release
 
-# Push a tag to publish: `npm version minor && git push --follow-tags`.
+# Push a tag to publish: `npm version minor && git push --follow-tags`, then
+# approve the held publish on npmjs.com.
 # A tag with a pre-release part (v1.0.0-beta.1) publishes to npm's `next`
 # tag and is marked a pre-release, so `npm install` does not pick it up.
 on:
@@ -19,10 +20,10 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           registry-url: https://registry.npmjs.org
 
@@ -35,9 +36,7 @@ jobs:
         run: node scripts/version.js --check "${GITHUB_REF_NAME#v}"
 
       # No token: npm trusts this workflow as the package's Trusted Publisher
-      # (OIDC, via id-token above). That needs npm 11.5.1+, newer than Node 22's.
-      - run: npm install -g npm@11
-
+      # (OIDC, via id-token above). Node 24's bundled npm is new enough.
       - name: Publish to npm
         run: |
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then dist=next; else dist=latest; fi
