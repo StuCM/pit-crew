@@ -8,15 +8,21 @@
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { extname } from 'node:path';
-import { gitLines } from '../lib/git.js';
+import { gitLines, isTaskState } from '../lib/git.js';
 
 const NOTHING_TO_DO = /at least one target file|excluded by ignore/i;
 
 export const run = (cfg) => {
-  if (!cfg.preCommit.length) return 0;
-
   const staged = gitLines(['diff', '--cached', '--name-only', '--diff-filter=ACMR'], cfg.root);
   if (!staged.length) return 0;
+
+  const leaked = staged.filter((file) => isTaskState(file));
+  if (leaked.length) {
+    console.error(
+      `  pre-commit: crew task state is never committed — unstage ${leaked.join(', ')}`,
+    );
+    return 1;
+  }
 
   for (const step of cfg.preCommit) {
     const files = staged.filter((file) => step.extensions.includes(extname(file)));

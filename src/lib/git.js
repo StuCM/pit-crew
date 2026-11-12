@@ -37,6 +37,17 @@ export const gitLines = (args, cwd) => {
     .filter(Boolean);
 };
 
+/** Crew's working state: gitignored by `crew init`, refused by the pre-commit hook. */
+export const TASK_STATE = [
+  '.claude/tasks/',
+  '.claude/plans/',
+  '.claude/crew/work/',
+  '.claude/crew/log.jsonl',
+];
+
+export const isTaskState = (file) =>
+  TASK_STATE.some((path) => file === path || (path.endsWith('/') && file.startsWith(path)));
+
 /** The repository root, or null outside a work tree. */
 export const repoRoot = (cwd = process.cwd()) => {
   const out = git(['rev-parse', '--show-toplevel'], cwd);

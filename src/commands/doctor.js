@@ -8,7 +8,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { branches, git } from '../lib/git.js';
+import { TASK_STATE, branches, git, gitLines } from '../lib/git.js';
 import { problems, statuses } from '../lib/config.js';
 import { readTasks } from '../lib/task.js';
 import { onPath } from './preflight.js';
@@ -28,11 +28,31 @@ export const tooOldForMods = (output) => {
   return false;
 };
 
+/** TASK_STATE paths the repository tracks, and those .gitignore does not cover. */
+export const taskStateLeaks = (root) => ({
+  tracked: gitLines(['ls-files', '--', ...TASK_STATE], root),
+  unignored: TASK_STATE.filter(
+    (path) => git(['check-ignore', '-q', '--no-index', path], root) === null,
+  ),
+});
+
 export const run = (cfg) => {
   const notes = [];
   const fails = [];
 
   for (const problem of problems(cfg)) fails.push(problem);
+
+  const leaks = taskStateLeaks(cfg.root);
+  if (leaks.tracked.length) {
+    fails.push(
+      `crew task state is tracked by git (${leaks.tracked.length} file(s), e.g. ${leaks.tracked[0]})`,
+    );
+    notes.push(`  fix: git rm -r --cached --ignore-unmatch ${TASK_STATE.join(' ')}`);
+  }
+  if (leaks.unignored.length) {
+    notes.push(`note: .gitignore does not cover ${leaks.unignored.join(', ')}`);
+    notes.push('  fix: crew init --only tasks');
+  }
 
   // `crew init --global` sets this to an absolute path outside the repo, so
   // resolving against the root rather than joining to it is the difference

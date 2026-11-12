@@ -20,6 +20,7 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { TASK_STATE } from '../lib/git.js';
 
 const PACKAGE = join(import.meta.dirname, '..', '..');
 const REPO_HOOKS = join('.claude', 'crew', 'githooks');
@@ -192,6 +193,19 @@ const upgradeSchemaRef = (root) => {
   console.log('          .claude/crew/crew.config.schema.json is no longer used; safe to delete');
 };
 
+/** Appends whichever TASK_STATE paths .gitignore lacks; the config and brief stay tracked. */
+export const ignoreTaskState = (root) => {
+  const path = join(root, '.gitignore');
+  const text = existsSync(path) ? readFileSync(path, 'utf8') : '';
+  const lines = new Set(text.split('\n').map((line) => line.trim()));
+  const missing = TASK_STATE.filter((entry) => !lines.has(entry));
+  if (!missing.length) return;
+
+  const lead = text && !text.endsWith('\n') ? '\n' : '';
+  writeFileSync(path, `${text}${lead}${missing.join('\n')}\n`);
+  console.log(`  updated .gitignore (${missing.join(', ')})`);
+};
+
 // Order matters: this is the order they run and the order `--list` prints.
 const SECTIONS = [
   {
@@ -206,10 +220,11 @@ const SECTIONS = [
   },
   {
     name: 'tasks',
-    what: '.claude/tasks/ — where specs and the board live',
+    what: '.claude/tasks/ — where specs and the board live, and the .gitignore that keeps them out of commits',
     run: (root) => {
       mkdirSync(join(root, '.claude', 'tasks'), { recursive: true });
       console.log('  ready   .claude/tasks/');
+      ignoreTaskState(root);
     },
   },
   { name: 'hooks', what: 'the git hooks, and core.hooksPath', run: installRepoHooks },

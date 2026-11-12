@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chosen } from '../src/commands/init.js';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { chosen, ignoreTaskState } from '../src/commands/init.js';
+import { sandbox } from './helpers.js';
 
 const names = (args, opts) => chosen(args, opts).map((s) => s.name);
 
@@ -58,4 +61,15 @@ test('a misspelled section is refused, and the message lists the real ones', () 
 test('the old --hook spelling still asks for the scope section', () => {
   assert.ok(names(['--hook']).includes('scope'));
   assert.ok(names(['--hook', '--without=scope']).includes('scope'));
+});
+
+test('init adds only the task-state ignores .gitignore is missing, once', () => {
+  const root = sandbox();
+  writeFileSync(join(root, '.gitignore'), 'node_modules/\n.claude/tasks/');
+  ignoreTaskState(root);
+  ignoreTaskState(root);
+  assert.equal(
+    readFileSync(join(root, '.gitignore'), 'utf8'),
+    'node_modules/\n.claude/tasks/\n.claude/plans/\n.claude/crew/work/\n.claude/crew/log.jsonl\n',
+  );
 });
