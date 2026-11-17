@@ -3,6 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULTS } from '../src/lib/config.js';
 
+// The fixture repos would otherwise run the machine's global crew hooks
+// (core.hooksPath), so the suite passes in CI and fails on a dev machine.
+process.env.GIT_CONFIG_GLOBAL = '/dev/null';
+
 /** A throwaway directory with a .claude/tasks/ in it. */
 export const sandbox = () => {
   const root = mkdtempSync(join(tmpdir(), 'crew-test-'));
