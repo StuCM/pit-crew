@@ -4,6 +4,9 @@ The half of the crew roles that is about *this* project. The worker role and
 the reviewer agent both include this file; neither one mentions your project by
 name.
 
+Style and conventions belong in the repo's CLAUDE.md or AGENTS.md, which every
+session loads; the brief holds what makes a diff wrong here.
+
 Keep it to what makes a plausible-looking diff wrong here. Not a tour of the
 codebase — the spec names the files, and a worker that reads this instead of
 writing code has cost you the thing crew exists to save.

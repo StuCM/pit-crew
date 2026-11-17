@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { taskStateLeaks, tooOldForMods } from '../src/commands/doctor.js';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { agentsImportGaps, taskStateLeaks, tooOldForMods } from '../src/commands/doctor.js';
 import { sandbox, task, writeTask } from './helpers.js';
 
 test('tooOldForMods compares against 2.1.286', () => {
@@ -24,4 +26,15 @@ test('a repository that tracks .claude/tasks is flagged', () => {
   const leaks = taskStateLeaks(root);
   assert.deepEqual(leaks.tracked, ['.claude/tasks/001-thing.md']);
   assert.ok(leaks.unignored.includes('.claude/tasks/'));
+});
+
+test('agentsImportGaps names CLAUDE.md files that do not import AGENTS.md', () => {
+  const root = sandbox();
+  assert.deepEqual(agentsImportGaps(root), []);
+  writeFileSync(join(root, 'AGENTS.md'), 'rules\n');
+  assert.deepEqual(agentsImportGaps(root), []);
+  writeFileSync(join(root, 'CLAUDE.md'), 'mine\n');
+  assert.deepEqual(agentsImportGaps(root), ['CLAUDE.md']);
+  writeFileSync(join(root, 'CLAUDE.md'), '@AGENTS.md\n');
+  assert.deepEqual(agentsImportGaps(root), []);
 });

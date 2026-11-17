@@ -36,6 +36,18 @@ export const taskStateLeaks = (root) => ({
   ),
 });
 
+const CLAUDE_MDS = ['CLAUDE.md', join('.claude', 'CLAUDE.md'), 'CLAUDE.local.md'];
+
+/** CLAUDE.md files at root that exist without `@AGENTS.md`, so AGENTS.md never loads. */
+export const agentsImportGaps = (root) => {
+  if (!existsSync(join(root, 'AGENTS.md'))) return [];
+  return CLAUDE_MDS.filter(
+    (file) =>
+      existsSync(join(root, file)) &&
+      !readFileSync(join(root, file), 'utf8').includes('@AGENTS.md'),
+  );
+};
+
 export const run = (cfg) => {
   const notes = [];
   const fails = [];
@@ -71,6 +83,11 @@ export const run = (cfg) => {
 
   if (!existsSync(join(cfg.root, cfg.projectBrief))) {
     fails.push(`no ${cfg.projectBrief} — the roles have no project rules to include`);
+  }
+
+  for (const file of agentsImportGaps(cfg.root)) {
+    notes.push(`note: AGENTS.md is skipped because ${file} exists without importing it`);
+    notes.push(`  fix: add a line "@AGENTS.md" to ${file}`);
   }
 
   // A note, never a failure: the loop works without a planning layer, and
