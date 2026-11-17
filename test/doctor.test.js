@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { agentsImportGaps, taskStateLeaks, tooOldForMods } from '../src/commands/doctor.js';
+import {
+  agentsImportGaps,
+  briefRestatedValues,
+  taskStateLeaks,
+  tooOldForMods,
+} from '../src/commands/doctor.js';
 import { sandbox, task, writeTask } from './helpers.js';
 
 test('tooOldForMods compares against 2.1.286', () => {
@@ -37,4 +42,13 @@ test('agentsImportGaps names CLAUDE.md files that do not import AGENTS.md', () =
   assert.deepEqual(agentsImportGaps(root), ['CLAUDE.md']);
   writeFileSync(join(root, 'CLAUDE.md'), '@AGENTS.md\n');
   assert.deepEqual(agentsImportGaps(root), []);
+});
+
+test('briefRestatedValues flags bare versions and ports only', () => {
+  assert.deepEqual(briefRestatedValues('Arches 8.2.0a13'), [{ line: 1, value: '8.2.0a13' }]);
+  assert.deepEqual(briefRestatedValues('ok\nthe stack on :8000'), [{ line: 2, value: ':8000' }]);
+  assert.deepEqual(briefRestatedValues('listens on port 8500'), [{ line: 1, value: 'port 8500' }]);
+  assert.deepEqual(briefRestatedValues('Arches version: see `pyproject.toml`'), []);
+  assert.deepEqual(briefRestatedValues('```\narches==8.2.0a13\n```'), []);
+  assert.deepEqual(briefRestatedValues('A plain sentence.'), []);
 });

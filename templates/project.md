@@ -33,6 +33,10 @@ therefore the tasks whose honest end state is `pending-<env>` rather than
 
 ## Baseline
 
+Versions, ports, branches and scripts change: name where each lives
+(`pyproject.toml`, `WEB_PORT` in `.env`, `git -C extensions/x status`) instead of
+copying the value, which goes stale.
+
 What a clean run actually scores, and anything that must be set up before the
 gate is meaningful — a fixture, a seeded database, a service on a port. An
 agent that cannot tell its own breakage from the one it inherited will invent
