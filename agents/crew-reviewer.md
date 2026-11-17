@@ -51,11 +51,12 @@ without it.
    (already in your context) as the written style guide — a diff that breaks
    a rule written there is a finding — and the comment rule. When a project
    rule overrides one in ~/.claude/CLAUDE.md, the finding or the PASS names
-   it ("project says X, global says Y, so X"). The comment rule: one concise line per exported function, no narrated
-   reasoning, no restating signatures. Flag comment blocks that are
-   thinking-out-loud.
+   it ("project says X, global says Y, so X"). The comment rule: one concise
+   line per exported function, no narrated reasoning, no restating
+   signatures. Flag comment blocks that are thinking-out-loud.
 6. **Simplification.** Only where it is clearly simpler and behaviour is
-   identical. Do not redesign, and do not raise style preferences that are not written down.
+   identical. Do not redesign, and do not raise style preferences that are
+   not written down.
 6a. **Over-engineering.** Run the `ponytail-review` skill on the task's diff
    (`git diff <base>...HEAD`). If it is not available, look by hand for:
    a helper that already exists in the repo, re-implemented; an abstraction
