@@ -81,6 +81,10 @@ headings in the template say it. A runtime ceiling, a protocol the server
 rejects, a migration that must not be reordered, a file where an innocent edit
 breaks something two services away.
 
+Keep style and conventions out of the brief: they belong in the repo's
+CLAUDE.md or AGENTS.md, which every session loads. If AGENTS.md exists beside a
+CLAUDE.md, add `@AGENTS.md` to the CLAUDE.md, or AGENTS.md stops loading.
+
 **An empty section beats an invented one.** "Follow good practice" and "write
 clean code" cost tokens in every downstream agent and change no behaviour. If
 you genuinely cannot find a hard constraint in this repository, write `None
