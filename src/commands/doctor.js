@@ -48,6 +48,21 @@ export const agentsImportGaps = (root) => {
   );
 };
 
+const RESTATED = /\b\d+\.\d+(?:\.\d+)?[a-z]*\d*\b|:\d{4,5}\b|\bport \d{2,5}\b/i;
+
+/** Brief lines outside code fences that state a version or port without citing a backticked source. */
+export const briefRestatedValues = (text) => {
+  const hits = [];
+  let fenced = false;
+  text.split('\n').forEach((line, i) => {
+    if (line.trimStart().startsWith('```')) fenced = !fenced;
+    if (fenced || line.includes('`')) return;
+    const match = RESTATED.exec(line);
+    if (match) hits.push({ line: i + 1, value: match[0] });
+  });
+  return hits;
+};
+
 export const run = (cfg) => {
   const notes = [];
   const fails = [];
@@ -83,6 +98,13 @@ export const run = (cfg) => {
 
   if (!existsSync(join(cfg.root, cfg.projectBrief))) {
     fails.push(`no ${cfg.projectBrief} — the roles have no project rules to include`);
+  }
+
+  const briefPath = join(cfg.root, cfg.projectBrief);
+  if (existsSync(briefPath)) {
+    for (const { line, value } of briefRestatedValues(readFileSync(briefPath, 'utf8'))) {
+      notes.push(`note: ${cfg.projectBrief}:${line} states ${value}; name where it lives instead`);
+    }
   }
 
   for (const file of agentsImportGaps(cfg.root)) {

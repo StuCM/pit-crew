@@ -85,6 +85,10 @@ Keep style and conventions out of the brief: they belong in the repo's
 CLAUDE.md or AGENTS.md, which every session loads. If AGENTS.md exists beside a
 CLAUDE.md, add `@AGENTS.md` to the CLAUDE.md, or AGENTS.md stops loading.
 
+**Name where a value lives; do not copy it.** Versions, ports, branches and
+scripts go stale: write "Arches version: see `pyproject.toml`", not
+`8.2.0a25`. `crew doctor` notes brief lines that restate a version or port.
+
 **An empty section beats an invented one.** "Follow good practice" and "write
 clean code" cost tokens in every downstream agent and change no behaviour. If
 you genuinely cannot find a hard constraint in this repository, write `None
